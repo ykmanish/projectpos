@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   X,
   Send,
+  ShieldCheck,
   Paperclip,
   Image as ImageIcon,
   Video,
@@ -16,7 +17,8 @@ import {
   UserPlus,
   Users,
   Info,
-  Lock
+  Lock,
+  Shield
 } from "lucide-react";
 import { BeanHead } from "beanheads";
 import EmojiPicker from 'emoji-picker-react';
@@ -27,6 +29,8 @@ import MessageInfoModal from "./MessageInfoModal";
 import GroupInfoModal from "./GroupInfoModal";
 import Avatar from "./Avatar";
 import useLongPress from "@/hooks/useLongPress";
+import encryptionService from "@/utils/encryptionService";
+import GroupEncryptionModal from "./GroupEncryptionModal";
 
 export default function GroupChatInterface({ 
   group, 
@@ -47,6 +51,11 @@ export default function GroupChatInterface({
   const [roomJoined, setRoomJoined] = useState(false);
   const [groupData, setGroupData] = useState(group);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  
+  const [encryptionReady, setEncryptionReady] = useState(false);
+  const [groupKey, setGroupKey] = useState(null);
+  const [showGroupEncryptionModal, setShowGroupEncryptionModal] = useState(false);
+  const [decryptedMessages, setDecryptedMessages] = useState(new Map());
   
   const [showMessageInfo, setShowMessageInfo] = useState(false);
   const [messageInfoData, setMessageInfoData] = useState(null);
@@ -71,6 +80,76 @@ export default function GroupChatInterface({
   
   const { socket, isConnected } = useSocket();
   const roomId = group.groupId;
+
+  // Initialize encryption
+  useEffect(() => {
+    if (group?.groupId && currentUserId) {
+      initializeGroupEncryption();
+    }
+  }, [currentUserId, group?.groupId]);
+
+  const initializeGroupEncryption = async () => {
+    try {
+      console.log('🔐 Initializing group encryption...');
+      
+      await encryptionService.initializeKeys(currentUserId);
+      
+      if (group.members) {
+        console.log('🔑 Ensuring all group members have keys...');
+        for (const member of group.members) {
+          const memberKeyCheck = await fetch(`/api/chat/encryption?userId=${member.userId}&action=my-keys`);
+          if (!memberKeyCheck.ok) {
+            console.log('🔑 Generating keys for member:', member.userId);
+            await fetch('/api/chat/encryption', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: member.userId,
+                action: 'generate-keys'
+              })
+            });
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      console.log('✅ All members have keys, getting group key...');
+      const key = await encryptionService.getGroupKey(currentUserId, group.groupId);
+      
+      setGroupKey(key);
+      setEncryptionReady(true);
+      
+      console.log('✅ Group encryption ready');
+    } catch (error) {
+      console.error('❌ Group encryption failed:', error);
+      setEncryptionReady(false);
+    }
+  };
+
+  // Decrypt all messages when groupKey is available
+  useEffect(() => {
+    if (groupKey && messages.length > 0) {
+      decryptAllMessages();
+    }
+  }, [groupKey, messages]);
+
+  const decryptAllMessages = async () => {
+    const newDecryptedMap = new Map(decryptedMessages);
+    
+    for (const message of messages) {
+      if (message.encryptedContent && !decryptedMessages.has(message.timestamp)) {
+        try {
+          const decrypted = await encryptionService.decryptMessage(message.encryptedContent, groupKey);
+          newDecryptedMap.set(message.timestamp, decrypted);
+        } catch (error) {
+          console.error('Decryption error:', error);
+          newDecryptedMap.set(message.timestamp, '[Decryption failed]');
+        }
+      }
+    }
+    
+    setDecryptedMessages(newDecryptedMap);
+  };
 
   const canSendMessage = () => {
     if (!groupData.settings?.onlyAdminsCanMessage) return true;
@@ -170,7 +249,7 @@ export default function GroupChatInterface({
     socket.emit('join-chat', { 
       roomId, 
       userId: currentUserId,
-      groupMembers: groupData.members // Pass members array
+      groupMembers: groupData.members
     });
 
     const onJoinedRoom = ({ roomId: joinedRoom, success }) => {
@@ -185,6 +264,18 @@ export default function GroupChatInterface({
     const onMessage = (message) => {
       console.log('📩 Group message received:', message);
       if (message.roomId === roomId) {
+        // If message has encrypted content and we have group key, pre-decrypt it
+        if (message.encryptedContent && groupKey) {
+          encryptionService.decryptMessage(message.encryptedContent, groupKey)
+            .then(decrypted => {
+              setDecryptedMessages(prev => new Map(prev).set(message.timestamp, decrypted));
+            })
+            .catch(error => {
+              console.error('Decryption error:', error);
+              setDecryptedMessages(prev => new Map(prev).set(message.timestamp, '[Decryption failed]'));
+            });
+        }
+        
         setMessages(prev => {
           const exists = prev.some(m => 
             m.timestamp === message.timestamp && 
@@ -194,7 +285,6 @@ export default function GroupChatInterface({
           return [...prev, message];
         });
         
-        // Auto-mark as read if sender is not current user
         if (message.senderId !== currentUserId) {
           setTimeout(() => markMessagesAsRead(), 500);
         }
@@ -215,6 +305,12 @@ export default function GroupChatInterface({
               : msg
           )
         );
+        // Clear decrypted cache for updated message
+        setDecryptedMessages(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(data.timestamp);
+          return newMap;
+        });
       }
     };
 
@@ -229,12 +325,22 @@ export default function GroupChatInterface({
                 : msg
             )
           );
+          setDecryptedMessages(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(data.timestamp);
+            return newMap;
+          });
         } else {
           setMessages(prev =>
             prev.filter(msg =>
               !(msg.timestamp === data.timestamp && msg.senderId === data.senderId)
             )
           );
+          setDecryptedMessages(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(data.timestamp);
+            return newMap;
+          });
         }
       }
     };
@@ -282,7 +388,6 @@ export default function GroupChatInterface({
           })
         );
 
-        // Persist to database
         fetch('/api/chat/messages/delivered', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -338,7 +443,7 @@ export default function GroupChatInterface({
         clearTimeout(typingTimeoutRef.current);
       }
     };
-  }, [socket, isConnected, group?.groupId, currentUserId, roomId]);
+  }, [socket, isConnected, group?.groupId, currentUserId, roomId, groupKey]);
 
   const fetchMessages = async () => {
     try {
@@ -400,6 +505,169 @@ export default function GroupChatInterface({
     } catch (error) {
       console.error('Error marking messages as read:', error);
     }
+  };
+
+  const handleSendMessage = async () => {
+    if ((!newMessage.trim() && attachments.length === 0) || !socket || !isConnected || !roomJoined || !canSendMessage()) return;
+
+    const now = new Date().toISOString();
+    const originalMessage = newMessage.trim();
+    
+    let encryptedContent = null;
+    let contentForDB = originalMessage;
+    
+    if (encryptionReady && groupKey && originalMessage) {
+      try {
+        encryptedContent = await encryptionService.encryptMessage(originalMessage, groupKey);
+        contentForDB = null;
+      } catch (error) {
+        console.error('❌ Group encryption failed:', error);
+      }
+    }
+    
+    const messageData = {
+      roomId,
+      senderId: currentUserId,
+      senderName: getMemberName(currentUserId),
+      receiverId: 'group',
+      isGroupMessage: true,
+      content: contentForDB,
+      encryptedContent: encryptedContent,
+      attachments: attachments.map(att => ({
+        url: att.url,
+        type: att.type,
+        name: att.name,
+      })),
+      timestamp: now,
+      delivered: true,
+      deliveredAt: now,
+      read: false,
+      readBy: [currentUserId],
+      reactions: [],
+      isEncrypted: !!encryptedContent
+    };
+
+    const localMessage = {
+      ...messageData,
+      content: originalMessage
+    };
+
+    // Pre-decrypt the message for display
+    if (encryptedContent && groupKey && originalMessage) {
+      setDecryptedMessages(prev => new Map(prev).set(now, originalMessage));
+    }
+
+    setMessages(prev => [...prev, localMessage]);
+    setNewMessage("");
+    setAttachments([]);
+    setShowAttachments(false);
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      handleTyping(false);
+    }
+
+    console.log('📤 Sending encrypted group message');
+    socket.emit('send-message', messageData);
+
+    fetch('/api/chat/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(messageData),
+    }).then(() => {
+      if (onMessageUpdate) {
+        onMessageUpdate(localMessage);
+      }
+    }).catch(console.error);
+  };
+
+  const handleSendWithAttachments = async () => {
+    if ((!newMessage.trim() && attachments.length === 0) || !socket || !isConnected || !roomJoined || !canSendMessage()) return;
+
+    setUploading(true);
+    
+    const uploadedAttachments = await uploadAttachments();
+    
+    const existingUploaded = attachments.filter(att => att.url).map(att => ({
+      url: att.url,
+      type: att.type,
+      name: att.name,
+    }));
+    
+    const allUploadedAttachments = [...existingUploaded, ...uploadedAttachments];
+
+    const now = new Date().toISOString();
+    const originalMessage = newMessage.trim();
+
+    let encryptedContent = null;
+    let contentForDB = originalMessage;
+    
+    if (encryptionReady && groupKey && originalMessage) {
+      try {
+        encryptedContent = await encryptionService.encryptMessage(originalMessage, groupKey);
+        contentForDB = null;
+      } catch (error) {
+        console.error('❌ Group encryption failed:', error);
+      }
+    }
+
+    const messageData = {
+      roomId,
+      senderId: currentUserId,
+      senderName: getMemberName(currentUserId),
+      receiverId: 'group',
+      isGroupMessage: true,
+      content: contentForDB,
+      encryptedContent: encryptedContent,
+      attachments: allUploadedAttachments,
+      timestamp: now,
+      delivered: false,
+      read: false,
+      readBy: [currentUserId],
+      reactions: [],
+      isEncrypted: !!encryptedContent
+    };
+
+    const localMessage = {
+      ...messageData,
+      content: originalMessage
+    };
+
+    // Pre-decrypt the message for display
+    if (encryptedContent && groupKey && originalMessage) {
+      setDecryptedMessages(prev => new Map(prev).set(now, originalMessage));
+    }
+
+    setMessages(prev => [...prev, localMessage]);
+    setNewMessage("");
+    
+    attachments.forEach(att => {
+      if (att.preview) {
+        URL.revokeObjectURL(att.preview);
+      }
+    });
+    setAttachments([]);
+    setShowAttachments(false);
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      handleTyping(false);
+    }
+
+    console.log('📤 Sending encrypted group message with attachments');
+    socket.emit('send-message', messageData);
+
+    fetch('/api/chat/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(messageData),
+    }).then(() => {
+      if (onMessageUpdate) {
+        onMessageUpdate(localMessage);
+      }
+    }).catch(console.error).finally(() => {
+      setUploading(false);
+    });
   };
 
   const handleEditMessage = async () => {
@@ -641,116 +909,6 @@ export default function GroupChatInterface({
     return uploadedAttachments;
   };
 
-  const handleSendMessage = async () => {
-    if ((!newMessage.trim() && attachments.length === 0) || !socket || !isConnected || !roomJoined || !canSendMessage()) return;
-
-    const now = new Date().toISOString();
-    const messageData = {
-      roomId,
-      senderId: currentUserId,
-      senderName: getMemberName(currentUserId),
-      receiverId: 'group',
-      isGroupMessage: true,
-      content: newMessage.trim(),
-      attachments: attachments.map(att => ({
-        url: att.url,
-        type: att.type,
-        name: att.name,
-      })),
-      timestamp: now,
-      delivered: true, // Set to true immediately
-      deliveredAt: now, // Set deliveredAt immediately
-      read: false,
-      readBy: [currentUserId],
-      reactions: [],
-    };
-
-    setMessages(prev => [...prev, messageData]);
-    setNewMessage("");
-    setAttachments([]);
-    setShowAttachments(false);
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-      handleTyping(false);
-    }
-
-    console.log('📤 Sending group message:', messageData);
-    socket.emit('send-message', messageData);
-
-    fetch('/api/chat/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(messageData),
-    }).then(() => {
-      if (onMessageUpdate) {
-        onMessageUpdate(messageData);
-      }
-    }).catch(console.error);
-  };
-
-  const handleSendWithAttachments = async () => {
-    if ((!newMessage.trim() && attachments.length === 0) || !socket || !isConnected || !roomJoined || !canSendMessage()) return;
-
-    setUploading(true);
-    
-    const uploadedAttachments = await uploadAttachments();
-    
-    const existingUploaded = attachments.filter(att => att.url).map(att => ({
-      url: att.url,
-      type: att.type,
-      name: att.name,
-    }));
-    
-    const allUploadedAttachments = [...existingUploaded, ...uploadedAttachments];
-
-    const messageData = {
-      roomId,
-      senderId: currentUserId,
-      senderName: getMemberName(currentUserId),
-      receiverId: 'group',
-      isGroupMessage: true,
-      content: newMessage.trim(),
-      attachments: allUploadedAttachments,
-      timestamp: new Date().toISOString(),
-      delivered: false,
-      read: false,
-      readBy: [currentUserId], // Initialize with current user
-      reactions: [],
-    };
-
-    setMessages(prev => [...prev, messageData]);
-    setNewMessage("");
-    
-    attachments.forEach(att => {
-      if (att.preview) {
-        URL.revokeObjectURL(att.preview);
-      }
-    });
-    setAttachments([]);
-    setShowAttachments(false);
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-      handleTyping(false);
-    }
-
-    console.log('📤 Sending group message with attachments:', messageData);
-    socket.emit('send-message', messageData);
-
-    fetch('/api/chat/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(messageData),
-    }).then(() => {
-      if (onMessageUpdate) {
-        onMessageUpdate(messageData);
-      }
-    }).catch(console.error).finally(() => {
-      setUploading(false);
-    });
-  };
-
   const handleAttachmentClick = (attachment, index) => {
     setPreviewAttachment(attachment);
     setCurrentAttachmentIndex(index);
@@ -895,7 +1053,6 @@ export default function GroupChatInterface({
     }
   };
 
-  // NEW: Handle leaving group
   const handleLeaveGroup = async () => {
     try {
       const res = await fetch(`/api/chat/groups?groupId=${group.groupId}&userId=${currentUserId}&action=leave`, {
@@ -910,7 +1067,6 @@ export default function GroupChatInterface({
     }
   };
 
-  // NEW: Handle deleting group
   const handleDeleteGroup = async () => {
     try {
       const res = await fetch(`/api/chat/groups?groupId=${group.groupId}&userId=${currentUserId}&action=delete`, {
@@ -934,23 +1090,19 @@ export default function GroupChatInterface({
     return groups;
   }, {});
 
-  // Render message status ticks for GROUP messages
   const renderMessageStatus = (message) => {
     if (message.senderId !== currentUserId) return null;
     
     const totalMembers = groupData.members?.length || 0;
     const readByCount = message.readBy?.length || 0;
-    const otherMembersCount = totalMembers - 1; // Exclude sender
+    const otherMembersCount = totalMembers - 1;
     
-    // All members (except sender) have read
     if (readByCount >= otherMembersCount && otherMembersCount > 0) {
       return <CheckCheck size={16} className="text-blue-500" />;
     } 
-    // Some members have read (delivered)
     else if (message.delivered || readByCount > 0) {
       return <CheckCheck size={16} className="text-gray-400" />;
     } 
-    // Just sent
     else {
       return <Check size={16} className="text-gray-400" />;
     }
@@ -974,6 +1126,17 @@ export default function GroupChatInterface({
     );
   };
 
+  // Get message content (decrypted or plain)
+  const getMessageContent = (message) => {
+    if (message.deleted) {
+      return message.content;
+    }
+    if (message.encryptedContent) {
+      return decryptedMessages.get(message.timestamp) || '';
+    }
+    return message.content || '';
+  };
+
   return (
     <>
       <div className="h-full flex flex-col bg-white rounded-3xl border-[#dadce0] overflow-hidden">
@@ -982,7 +1145,7 @@ export default function GroupChatInterface({
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <button
               onClick={onClose}
-              className="lg:hidden p-2 hover:bg-gray-100 rounded-full"
+              className="lg:hidden p-2 hover:bg-gray-100 rounded-full transition-colors"
             >
               <ChevronLeft size={20} />
             </button>
@@ -990,7 +1153,6 @@ export default function GroupChatInterface({
             {/* Group Avatar */}
             <div className="w-10 h-10 rounded-full overflow-hidden bg-zinc-100 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
               {(() => {
-                // Parse group avatar
                 let groupAvatar = null;
                 if (groupData.avatar) {
                   try {
@@ -1002,7 +1164,6 @@ export default function GroupChatInterface({
                   }
                 }
 
-                // Render BeanHead or initials
                 if (groupAvatar?.beanConfig) {
                   return <BeanHead {...groupAvatar.beanConfig} />;
                 } else {
@@ -1035,19 +1196,31 @@ export default function GroupChatInterface({
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Group Encryption Button */}
+            
+
             <button
               onClick={() => {
                 fetchGroupData();
                 setShowGroupInfo(true);
               }}
-              className="p-2 hover:bg-gray-100 rounded-full"
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
               title="Group info"
             >
               <Info size={18} className="text-[#5f6368]" />
             </button>
+            <button
+              onClick={() => setShowGroupEncryptionModal(true)}
+              className="p-2 bg-green-100 rounded-full transition-colors group relative"
+              title="Group is encrypted"
+            >
+              <ShieldCheck size={18} className="text-green-600" />
+              
+             
+            </button>
             <button 
               onClick={onClose}
-              className="p-2 bg-red-100 rounded-full transition-colors"
+              className="p-2 bg-red-100 hover:bg-red-200 rounded-full transition-colors"
             >
               <X size={18} className="text-red-600" />
             </button>
@@ -1055,7 +1228,7 @@ export default function GroupChatInterface({
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8F9FA]">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8F9FA]" style={{scrollBehavior: 'smooth'}}>
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#34A853]"></div>
@@ -1083,11 +1256,13 @@ export default function GroupChatInterface({
                     index === 0 || 
                     dateMessages[index - 1]?.senderId !== msg.senderId
                   );
+                  const messageContent = getMessageContent(msg);
+                  const hasTextContent = messageContent && messageContent.trim().length > 0;
 
                   return (
                     <MessageWrapper key={`${msg.timestamp}-${index}`} message={msg} isOwn={isOwn}>
                       <div
-                        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2`}
+                        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2 transition-all duration-200 ease-out`}
                       >
                         <div className={`max-w-[70%] ${isOwn ? 'order-2' : 'order-1'}`}>
                           {!isOwn && showSenderInfo && (
@@ -1105,7 +1280,7 @@ export default function GroupChatInterface({
                           
                           {/* Media attachments */}
                           {msg.attachments && msg.attachments.length > 0 && !msg.deleted && (
-                            <div className={`space-y-2 ${msg.content ? 'mb-2' : ''}`}>
+                            <div className={`space-y-2 ${hasTextContent ? 'mb-2' : ''}`}>
                               {msg.attachments.map((att, idx) => {
                                 const globalIndex = allAttachments.findIndex(
                                   a => a.url === att.url && a.messageId === msg.timestamp
@@ -1153,35 +1328,33 @@ export default function GroupChatInterface({
                             </div>
                           )}
                           
-                          {/* Text content */}
-                          {msg.content && (
+                          {/* Text content - only show if there's actual text */}
+                          {hasTextContent && (
                             <div
                               className={`rounded-2xl p-3 ${
                                 msg.deleted 
                                   ? 'bg-gray-100 italic text-gray-500'
                                   : isOwn
                                   ? 'bg-zinc-100 text-black rounded-br-none'
-                                  : 'bg-white border-[#dadce0] rounded-bl-none'
+                                  : 'bg-white  border-[#dadce0] rounded-tl-none'
                               }`}
                             >
                               <p className="text-sm whitespace-pre-wrap break-words">
-                                {msg.content}
+                                {msg.deleted ? (
+                                  msg.content
+                                ) : (
+                                  messageContent
+                                )}
                                 {msg.edited && !msg.deleted && (
                                   <span className="text-xs text-gray-400 ml-2">(edited)</span>
                                 )}
                               </p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <p className={`text-xs ${isOwn ? 'text-zinc-500' : 'text-[#5f6368]'}`}>
-                                  {formatTime(msg.timestamp)}
-                                </p>
-                                {renderMessageStatus(msg)}
-                              </div>
                             </div>
                           )}
                           
                           {/* Reactions */}
                           {msg.reactions && msg.reactions.length > 0 && (
-                            <div className="flex flex-wrap gap-1 -mt-2 px-2">
+                            <div className="flex flex-wrap gap-1 mt-1 px-2">
                               {Object.entries(
                                 msg.reactions.reduce((acc, r) => {
                                   acc[r.emoji] = (acc[r.emoji] || 0) + 1;
@@ -1199,15 +1372,16 @@ export default function GroupChatInterface({
                             </div>
                           )}
                           
-                          {/* Timestamp for media-only messages */}
-                          {!msg.content && msg.attachments && msg.attachments.length > 0 && (
-                            <div className="flex items-center gap-2 mt-1 px-2">
-                              <p className={`text-xs ${isOwn ? 'text-right text-[#5f6368]' : 'text-left text-[#5f6368]'}`}>
-                                {formatTime(msg.timestamp)}
-                              </p>
-                              {renderMessageStatus(msg)}
-                            </div>
-                          )}
+                          {/* Timestamp and status - always show for all messages */}
+                          <div className="flex items-center justify-end gap-1 mt-1 px-2">
+                            <p className={`text-xs ${isOwn ? 'text-[#5f6368]' : 'text-[#5f6368]'}`}>
+                              {formatTime(msg.timestamp)}
+                            </p>
+                            {renderMessageStatus(msg)}
+                            {/* {msg.isEncrypted && (
+                              <Shield size={10} className="text-green-600" />
+                            )} */}
+                          </div>
                         </div>
                       </div>
                     </MessageWrapper>
@@ -1249,7 +1423,7 @@ export default function GroupChatInterface({
             </div>
             <button
               onClick={handleEditMessage}
-              className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600"
+              className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
             >
               <Send size={18} />
             </button>
@@ -1258,7 +1432,7 @@ export default function GroupChatInterface({
                 setEditingMessage(null);
                 setEditText("");
               }}
-              className="p-2 bg-gray-200 text-gray-600 rounded-full hover:bg-gray-300"
+              className="p-2 bg-gray-200 text-gray-600 rounded-full hover:bg-gray-300 transition-colors"
             >
               <X size={18} />
             </button>
@@ -1269,9 +1443,9 @@ export default function GroupChatInterface({
         <div className="p-4 border-t border-[#f1f3f4] bg-white relative">
           {!canSendMessage() && (
             <div className="absolute -top-8 left-0 right-0 text-center">
-              <span className="text-xs flex items-center justify-center text-red-600 bg-red-50 px-3 py-2 ">
+              <span className="text-xs flex items-center justify-center text-red-600 bg-red-50 px-3 py-2 rounded-full">
                 <Lock size={12} className="inline mr-1" />
-                 Only admins can send messages in this group
+                Only admins can send messages in this group
               </span>
             </div>
           )}
@@ -1284,14 +1458,14 @@ export default function GroupChatInterface({
                   setShowAttachments(!showAttachments);
                   setShowEmojiPicker(false);
                 }}
-                className="p-2 hover:bg-gray-100 rounded-full relative"
+                className="p-2 hover:bg-gray-100 rounded-full relative transition-colors"
                 disabled={!isConnected || !roomJoined || editingMessage || !canSendMessage()}
               >
                 <Paperclip size={20} className="text-[#5f6368]" />
               </button>
 
               {showAttachments && (
-                <div className="absolute bottom-16 left-0 bg-white border-[#dadce0] rounded-2xl shadow-xl z-20 p-3 min-w-[200px]">
+                <div className="absolute bottom-16 left-0 bg-white border border-[#dadce0] rounded-2xl shadow-xl z-50 p-3 min-w-[200px]">
                   <div className="space-y-2">
                     <button
                       onClick={() => fileInputRef.current?.click()}
@@ -1318,18 +1492,18 @@ export default function GroupChatInterface({
                         <p className="text-xs text-[#5f6368]">Share videos</p>
                       </div>
                     </button>
-                    
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*,video/*"
-                      multiple
-                      className="hidden"
-                      onChange={handleFileSelect}
-                    />
                   </div>
                 </div>
               )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                className="hidden"
+                onChange={handleFileSelect}
+              />
             </div>
 
             {/* Emoji Button */}
@@ -1339,14 +1513,14 @@ export default function GroupChatInterface({
                   setShowEmojiPicker(!showEmojiPicker);
                   setShowAttachments(false);
                 }}
-                className="p-2 hover:bg-gray-100 rounded-full"
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
                 disabled={!isConnected || !roomJoined || !canSendMessage()}
               >
                 <span className="text-xl">😊</span>
               </button>
 
               {showEmojiPicker && (
-                <div className="absolute bottom-14 left-0 z-20">
+                <div className="absolute bottom-14 left-0 z-50">
                   <EmojiPicker
                     onEmojiClick={onEmojiClick}
                     width={320}
@@ -1377,7 +1551,7 @@ export default function GroupChatInterface({
                 }
               }}
               placeholder={!isConnected ? "Connecting..." : !roomJoined ? "Joining chat..." : !canSendMessage() ? "Only admins can send messages" : "Type a message..."}
-              className="flex-1 px-4 py-4 border border-[#dadce0] rounded-3xl focus:ring focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none"
+              className="flex-1 px-4 py-3 border border-[#dadce0] rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
               disabled={!isConnected || !roomJoined || uploading || !canSendMessage()}
             />
             
@@ -1389,7 +1563,7 @@ export default function GroupChatInterface({
                   ? !editText.trim()
                   : ((!newMessage.trim() && attachments.length === 0) || !isConnected || !roomJoined || uploading || !canSendMessage())
               }
-              className="p-2 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 disabled:text-gray-400 transition-all relative"
+              className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 disabled:text-gray-400 transition-all relative"
             >
               {uploading ? (
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
@@ -1471,7 +1645,7 @@ export default function GroupChatInterface({
         groupMembers={groupData.members}
       />
 
-      {/* Group Info Modal - Now with leave and delete handlers */}
+      {/* Group Info Modal */}
       <GroupInfoModal
         isOpen={showGroupInfo}
         onClose={() => setShowGroupInfo(false)}
@@ -1482,6 +1656,13 @@ export default function GroupChatInterface({
         onRegenerateInvite={handleRegenerateInvite}
         onLeaveGroup={handleLeaveGroup}
         onDeleteGroup={handleDeleteGroup}
+      />
+
+      {/* Group Encryption Modal */}
+      <GroupEncryptionModal
+        isOpen={showGroupEncryptionModal}
+        onClose={() => setShowGroupEncryptionModal(false)}
+        group={groupData}
       />
     </>
   );

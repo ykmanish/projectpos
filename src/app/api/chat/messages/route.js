@@ -1,3 +1,4 @@
+// app/api/chat/messages/route.js
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 
@@ -18,7 +19,6 @@ export async function GET(request) {
     // Get last messages for all GROUP rooms
     if (action === 'group-last-messages' && userId) {
       try {
-        // Get all groups where user is a member
         const userGroups = await groups
           .find({
             'members.userId': userId
@@ -34,7 +34,6 @@ export async function GET(request) {
           });
         }
 
-        // Get user's deleted messages
         const userDeletedMessages = await deletedMessages
           .find({ userId })
           .toArray();
@@ -79,9 +78,7 @@ export async function GET(request) {
                     as: 'msg',
                     cond: {
                       $and: [
-                        // Message NOT sent by current user
                         { $ne: ['$$msg.senderId', userId] },
-                        // Current user is NOT in readBy array (or readBy doesn't exist)
                         {
                           $or: [
                             { $eq: [{ $ifNull: ['$$msg.readBy', []] }, []] },
@@ -105,9 +102,6 @@ export async function GET(request) {
         ]).toArray();
 
         console.log('📨 Group last messages fetched:', lastMessages.length);
-        lastMessages.forEach(msg => {
-          console.log(`  ↳ Group ${msg._id}: ${msg.unreadCount} unread messages`);
-        });
 
         return NextResponse.json({
           success: true,
@@ -124,7 +118,6 @@ export async function GET(request) {
 
     // Get last messages for all DIRECT MESSAGE rooms
     if (action === 'last-messages' && userId) {
-      // Get user's deleted messages
       const userDeletedMessages = await deletedMessages
         .find({ userId })
         .toArray();
@@ -199,15 +192,13 @@ export async function GET(request) {
       );
     }
 
-    // Get user's deleted messages for this room
     const userDeletedMessages = await deletedMessages
       .find({ userId, roomId })
       .toArray();
     
     const deletedMessageIds = userDeletedMessages.map(dm => dm.messageId);
 
-    // Get messages for this room, sorted by timestamp
-    // Include deleted messages (they will show as "This message was deleted")
+    // Get messages for this room - they are stored encrypted
     const chatMessages = await messages
       .find({ 
         roomId
@@ -216,13 +207,13 @@ export async function GET(request) {
       .limit(100)
       .toArray();
 
-    // Filter out messages deleted by this user (delete for me only)
+    // Filter out messages deleted by this user
     const filteredMessages = chatMessages.filter(msg => {
       const msgId = `${msg.roomId}-${msg.timestamp}-${msg.senderId}`;
       return !deletedMessageIds.includes(msgId);
     });
 
-    console.log(`📨 Fetched ${filteredMessages.length} messages for room ${roomId}`);
+    console.log(`📨 Fetched ${filteredMessages.length} encrypted messages for room ${roomId}`);
 
     return NextResponse.json({
       success: true,
@@ -238,7 +229,7 @@ export async function GET(request) {
   }
 }
 
-// POST - Create a new message
+// POST - Create a new message (encrypted content)
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -246,7 +237,8 @@ export async function POST(request) {
       roomId, 
       senderId, 
       receiverId, 
-      content, 
+      content,  // This will be encrypted content
+      encryptedContent, // Encrypted message object
       attachments, 
       timestamp, 
       isGroupMessage,
@@ -268,11 +260,13 @@ export async function POST(request) {
 
     const now = new Date().toISOString();
 
+    // Store the encrypted content
     const message = {
       roomId,
       senderId,
       receiverId,
-      content: content || '',
+      content: content || '', // Keep for preview (encrypted)
+      encryptedContent: encryptedContent || null, // Full encrypted data
       attachments: attachments || [],
       timestamp: timestamp || now,
       delivered: delivered !== undefined ? delivered : true,
@@ -283,19 +277,18 @@ export async function POST(request) {
       edited: false,
       deleted: false,
       isGroupMessage: isGroupMessage || false,
+      isEncrypted: true, // Flag indicating message is encrypted
       senderName: senderName || undefined,
       createdAt: new Date()
     };
 
     const result = await messages.insertOne(message);
 
-    console.log('✅ Message saved to DB:', {
+    console.log('🔐 Encrypted message saved to DB:', {
       roomId,
       senderId,
       isGroupMessage,
-      delivered: message.delivered,
-      deliveredAt: message.deliveredAt,
-      readBy: message.readBy
+      isEncrypted: true
     });
 
     return NextResponse.json({
@@ -312,7 +305,7 @@ export async function POST(request) {
   }
 }
 
-// PATCH - Mark messages as read (kept for backward compatibility)
+// PATCH - Mark messages as read
 export async function PATCH(request) {
   try {
     const body = await request.json();
@@ -334,7 +327,6 @@ export async function PATCH(request) {
     if (isGroupMessage) {
       console.log(`📖 Marking group messages as read for user ${userId} in room ${roomId}`);
       
-      // For group messages, add userId to readBy array
       result = await messages.updateMany(
         {
           roomId: roomId,
@@ -358,7 +350,6 @@ export async function PATCH(request) {
     } else {
       console.log(`📖 Marking direct messages as read in room ${roomId}`);
       
-      // For direct messages, use the old method
       result = await messages.updateMany(
         {
           roomId: roomId,

@@ -63,6 +63,10 @@ export default function FriendsPage() {
   const [unreadCounts, setUnreadCounts] = useState({});
   const [groupLastMessages, setGroupLastMessages] = useState({});
   const [groupUnreadCounts, setGroupUnreadCounts] = useState({});
+  
+  // Store decrypted message previews
+  const [decryptedPreviews, setDecryptedPreviews] = useState({});
+  const [decryptingQueue, setDecryptingQueue] = useState(new Set());
 
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -81,6 +85,76 @@ export default function FriendsPage() {
     }
   }, [userId]);
 
+  // Function to decrypt message previews
+  const decryptMessagePreview = async (message, key) => {
+    if (!message || !message.encryptedContent || decryptingQueue.has(key)) return;
+    
+    // Don't decrypt if we already have it
+    if (decryptedPreviews[key]) return;
+    
+    // Mark as decrypting to prevent multiple requests
+    setDecryptingQueue(prev => new Set(prev).add(key));
+    
+    try {
+      const response = await fetch('/api/chat/decrypt-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          encryptedContent: message.encryptedContent,
+          senderId: message.senderId,
+          receiverId: userId,
+          isGroupMessage: message.isGroupMessage,
+          groupId: message.isGroupMessage ? message.roomId : null
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.decrypted) {
+        setDecryptedPreviews(prev => ({
+          ...prev,
+          [key]: data.decrypted
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to decrypt preview:', error);
+    } finally {
+      setDecryptingQueue(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(key);
+        return newSet;
+      });
+    }
+  };
+
+  // Decrypt all last messages when they're loaded
+  useEffect(() => {
+    const decryptMessages = async () => {
+      // Decrypt direct messages
+      for (const [roomId, message] of Object.entries(lastMessages)) {
+        if (message?.encryptedContent && !decryptedPreviews[roomId]) {
+          await decryptMessagePreview(message, roomId);
+        }
+      }
+    };
+    
+    decryptMessages();
+  }, [lastMessages]);
+
+  // Decrypt all group last messages when they're loaded
+  useEffect(() => {
+    const decryptGroupMessages = async () => {
+      // Decrypt group messages
+      for (const [groupId, message] of Object.entries(groupLastMessages)) {
+        if (message?.encryptedContent && !decryptedPreviews[groupId]) {
+          await decryptMessagePreview(message, groupId);
+        }
+      }
+    };
+    
+    decryptGroupMessages();
+  }, [groupLastMessages]);
+
   const fetchBlockedUsers = async () => {
     try {
       const res = await fetch(`/api/friends/blocked?userId=${userId}`);
@@ -97,7 +171,6 @@ export default function FriendsPage() {
   const handleBlock = (blockedUserId) => {
     console.log('🚫 Blocking user:', blockedUserId);
     
-    // Update the friends list to mark user as blocked - KEEP THEM IN LIST
     setFriends(prevFriends => {
       const updated = prevFriends.map(friend => 
         friend.userId === blockedUserId 
@@ -108,13 +181,9 @@ export default function FriendsPage() {
       return updated;
     });
     
-    // Update blocked users count
     setBlockedCount(prev => prev + 1);
-    
-    // Refresh blocked users list
     fetchBlockedUsers();
     
-    // If this user is currently selected in chat, close the chat
     if (selectedChat?.userId === blockedUserId) {
       setSelectedChat(null);
       setMobileView('list');
@@ -124,7 +193,6 @@ export default function FriendsPage() {
   const handleUnblock = (unblockedUserId) => {
     console.log('✅ Unblocking user:', unblockedUserId);
     
-    // Update the friends list to mark user as unblocked
     setFriends(prevFriends => {
       const updated = prevFriends.map(friend => 
         friend.userId === unblockedUserId 
@@ -135,10 +203,7 @@ export default function FriendsPage() {
       return updated;
     });
     
-    // Update blocked users count
     setBlockedCount(prev => Math.max(0, prev - 1));
-    
-    // Refresh blocked users list
     fetchBlockedUsers();
   };
 
@@ -146,7 +211,6 @@ export default function FriendsPage() {
     console.log('🔔 NEW MESSAGE RECEIVED IN FRIENDS PAGE:', message);
     
     if (message.isGroupMessage) {
-      // Handle group message
       if (message.roomId) {
         console.log('📥 Updating group last message for:', message.roomId);
         setGroupLastMessages(prev => ({
@@ -154,16 +218,13 @@ export default function FriendsPage() {
           [message.roomId]: message
         }));
         
-        // Update unread count if not currently in this group AND not sent by current user
+        // Decrypt the message preview
+        if (message.encryptedContent) {
+          decryptMessagePreview(message, message.roomId);
+        }
+        
         const isCurrentGroup = selectedGroup?.groupId === message.roomId;
         const isSentByMe = message.senderId === userId;
-        
-        console.log('🔍 Group message check:', {
-          isCurrentGroup,
-          isSentByMe,
-          selectedGroupId: selectedGroup?.groupId,
-          messageRoomId: message.roomId
-        });
         
         if (!isSentByMe && !isCurrentGroup) {
           console.log('➕ Incrementing unread count for group:', message.roomId);
@@ -174,12 +235,16 @@ export default function FriendsPage() {
         }
       }
     } else if (message.senderId === userId || message.receiverId === userId) {
-      // Handle direct message
       console.log('📥 Updating direct message for:', message.roomId);
       setLastMessages(prev => ({
         ...prev,
         [message.roomId]: message
       }));
+      
+      // Decrypt the message preview
+      if (message.encryptedContent) {
+        decryptMessagePreview(message, message.roomId);
+      }
       
       if (message.receiverId === userId) {
         const senderIdFromMessage = message.senderId;
@@ -200,7 +265,6 @@ export default function FriendsPage() {
     console.log('✓✓ Message read event received:', data);
     if (data.roomId) {
       if (data.isGroupMessage) {
-        // For groups, only clear when current user marks as read
         if (data.userId === userId) {
           console.log('🔄 Clearing group unread count for:', data.roomId);
           setGroupUnreadCounts(prev => ({
@@ -209,7 +273,6 @@ export default function FriendsPage() {
           }));
         }
       } else {
-        // For direct messages
         if (data.userId === userId) {
           console.log('🔄 Clearing direct message unread count for:', data.roomId);
           setUnreadCounts(prev => ({
@@ -401,13 +464,11 @@ export default function FriendsPage() {
     setSelectedUser(user);
 
     try {
-      // First check friendship status
       const res = await fetch(
         `/api/friends/status?userId=${userId}&targetUserId=${user.userId}`,
       );
       const data = await res.json();
       
-      // Then check if user is blocked
       const blockRes = await fetch(`/api/friends/block/check?userId=${userId}&targetId=${user.userId}`);
       const blockData = await blockRes.json();
       
@@ -499,31 +560,27 @@ export default function FriendsPage() {
     }
   };
 
- // In the handleChatSelect function, add block check
-const handleChatSelect = (friend) => {
-  // Check if either user has blocked the other
-  const isCurrentUserBlocked = friend.isBlockedByThem || false; // You'll need to add this field
-  const isOtherUserBlocked = friend.isBlocked || false;
-  
-  if (isCurrentUserBlocked) {
-    alert("You cannot chat with this user because they have blocked you.");
-    return;
-  }
-  
-  // Allow opening chat even with blocked users (but with restrictions)
-  setSelectedChat(friend);
-  setSelectedGroup(null);
-  setMobileView('chat');
-  
-  const roomId = getRoomId(friend.userId);
-  console.log('💬 Opening chat for room:', roomId);
-  
-  setUnreadCounts(prev => ({
-    ...prev,
-    [roomId]: 0
-  }));
-};
-
+  const handleChatSelect = (friend) => {
+    const isCurrentUserBlocked = friend.isBlockedByThem || false;
+    const isOtherUserBlocked = friend.isBlocked || false;
+    
+    if (isCurrentUserBlocked) {
+      alert("You cannot chat with this user because they have blocked you.");
+      return;
+    }
+    
+    setSelectedChat(friend);
+    setSelectedGroup(null);
+    setMobileView('chat');
+    
+    const roomId = getRoomId(friend.userId);
+    console.log('💬 Opening chat for room:', roomId);
+    
+    setUnreadCounts(prev => ({
+      ...prev,
+      [roomId]: 0
+    }));
+  };
 
   const handleGroupSelect = (group) => {
     setSelectedGroup(group);
@@ -532,7 +589,6 @@ const handleChatSelect = (friend) => {
     
     console.log('💬 Opening group chat for:', group.groupId);
     
-    // Clear unread count for this group immediately
     setGroupUnreadCounts(prev => ({
       ...prev,
       [group.groupId]: 0
@@ -563,19 +619,34 @@ const handleChatSelect = (friend) => {
         }));
       }
     } else {
-      // New message sent, update last message
       if (data.isGroupMessage) {
         console.log('📤 Updating group last message after send:', data.roomId);
         setGroupLastMessages(prev => ({
           ...prev,
           [data.roomId]: data
         }));
+        
+        // Store the plain text for preview
+        if (data.content) {
+          setDecryptedPreviews(prev => ({
+            ...prev,
+            [data.roomId]: data.content
+          }));
+        }
       } else {
         console.log('📤 Updating direct last message after send:', data.roomId);
         setLastMessages(prev => ({
           ...prev,
           [data.roomId]: data
         }));
+        
+        // Store the plain text for preview
+        if (data.content) {
+          setDecryptedPreviews(prev => ({
+            ...prev,
+            [data.roomId]: data.content
+          }));
+        }
       }
     }
   }, []);
@@ -642,7 +713,6 @@ const handleChatSelect = (friend) => {
   };
 
   const handleSendMessageFromModal = (user) => {
-    // Check if user is blocked
     if (user.isBlocked) {
       alert('You have blocked this user. Unblock them to send messages.');
       return;
@@ -672,8 +742,49 @@ const handleChatSelect = (friend) => {
     return messageDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
+  // Fixed: Properly format message preview based on content type
+  const getMessagePreview = (message, key) => {
+    if (!message) return 'No messages yet';
+    
+    // Check if it's a deleted message
+    if (message.deleted) {
+      return 'This message was deleted';
+    }
+    
+    // Check if we have a decrypted preview for encrypted messages
+    if (message.isEncrypted || message.encryptedContent) {
+      const decrypted = decryptedPreviews[key];
+      if (decrypted && decrypted.trim().length > 0) {
+        return truncateMessage(decrypted);
+      }
+      // Show loading indicator while decrypting
+      if (decryptingQueue.has(key)) {
+        return 'Decrypting...';
+      }
+    }
+    
+    // Check if there's text content
+    if (message.content && message.content.trim().length > 0) {
+      return truncateMessage(message.content);
+    }
+    
+    // Check if there are attachments
+    if (message.attachments && message.attachments.length > 0) {
+      const attachment = message.attachments[0];
+      if (attachment.type === 'image') {
+        return '📷 Photo';
+      } else if (attachment.type === 'video') {
+        return '🎥 Video';
+      } else {
+        return '📎 Attachment';
+      }
+    }
+    
+    return 'New message';
+  };
+
   const truncateMessage = (content, maxLength = 30) => {
-    if (!content) return 'No messages yet';
+    if (!content) return '';
     if (content.length <= maxLength) return content;
     return content.substring(0, maxLength) + '...';
   };
@@ -702,7 +813,7 @@ const handleChatSelect = (friend) => {
                   <span>{today}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {/* Blocked Icon - Always visible and clickable */}
+                  {/* Blocked Icon */}
                   <button
                     onClick={() => setShowBlockedModal(true)}
                     className="relative p-2 hover:bg-gray-100 rounded-full"
@@ -854,7 +965,6 @@ const handleChatSelect = (friend) => {
                         const lastMsg = groupLastMessages[group.groupId];
                         const unreadCount = groupUnreadCounts[group.groupId] || 0;
                         
-                        // Parse group avatar
                         let groupAvatar = null;
                         if (group.avatar) {
                           try {
@@ -912,7 +1022,7 @@ const handleChatSelect = (friend) => {
                                         {lastMsg.senderId === userId && (
                                           <span className="mr-1">You:</span>
                                         )}
-                                        {lastMsg.content ? truncateMessage(lastMsg.content) : '📎 Attachment'}
+                                        {getMessagePreview(lastMsg, group.groupId)}
                                       </>
                                     ) : (
                                       <span className="text-[#5f6368]">{group.members?.length || 0} members</span>
@@ -938,7 +1048,7 @@ const handleChatSelect = (friend) => {
                   )}
                 </div>
 
-                {/* Friends Section - ALL friends shown, including blocked */}
+                {/* Friends Section */}
                 <div>
                   <h2 className="text-sm font-semibold text-[#202124] mb-3 flex items-center justify-between">
                     <span>Direct Messages ({friends.length})</span>
@@ -1012,7 +1122,7 @@ const handleChatSelect = (friend) => {
                                         {lastMsg.senderId === userId && (
                                           <span className="mr-1">You:</span>
                                         )}
-                                        {lastMsg.content ? truncateMessage(lastMsg.content) : '📎 Attachment'}
+                                        {getMessagePreview(lastMsg, roomId)}
                                       </>
                                     ) : (
                                       'No messages yet'

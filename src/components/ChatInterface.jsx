@@ -14,7 +14,10 @@ import {
   Check,
   CheckCheck,
   Info,
-  Ban
+  Ban,
+  Shield,
+  ShieldCheck,
+  ShieldAlert
 } from "lucide-react";
 import { BeanHead } from "beanheads";
 import EmojiPicker from 'emoji-picker-react';
@@ -24,6 +27,8 @@ import MessageContextMenu from "./MessageContextMenu";
 import useLongPress from "@/hooks/useLongPress";
 import MessageInfoModal from "./MessageInfoModal";
 import UserInfoModal from "./UserInfoModal";
+import encryptionService from "@/utils/encryptionService";
+import EncryptionVerificationModal from "./EncryptionVerificationModal";
 
 export default function ChatInterface({ friend, currentUserId, currentUserAvatar, onClose, onMessageUpdate }) {
   const [messages, setMessages] = useState([]);
@@ -40,11 +45,17 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const [friendshipStatus, setFriendshipStatus] = useState(null);
   const [showUserInfo, setShowUserInfo] = useState(false);
   
-  // Block states
   const [blockStatus, setBlockStatus] = useState({
     iBlockedThem: false,
     theyBlockedMe: false
   });
+  
+  const [encryptionReady, setEncryptionReady] = useState(false);
+  const [isEncrypted, setIsEncrypted] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
+  const [showEncryptionModal, setShowEncryptionModal] = useState(false);
+  const [sharedSecret, setSharedSecret] = useState(null);
+  const [decryptedMessages, setDecryptedMessages] = useState(new Map());
   
   const [showMessageInfo, setShowMessageInfo] = useState(false);
   const [messageInfoData, setMessageInfoData] = useState(null);
@@ -70,8 +81,82 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const { socket, isConnected } = useSocket();
   const roomId = [currentUserId, friend.userId].sort().join('-');
 
-  // Check if user can send messages
   const canSendMessages = !blockStatus.iBlockedThem && !blockStatus.theyBlockedMe;
+
+  // Initialize encryption
+  useEffect(() => {
+    if (friend?.userId && currentUserId) {
+      initializeEncryption();
+    }
+  }, [currentUserId, friend?.userId]);
+
+  const initializeEncryption = async () => {
+    try {
+      console.log('🔐 Initializing encryption for chat...');
+      
+      await encryptionService.initializeKeys(currentUserId);
+      
+      const targetKeyCheck = await fetch(`/api/chat/encryption?userId=${friend.userId}&action=my-keys`);
+      if (!targetKeyCheck.ok) {
+        console.log('🔑 Generating keys for friend:', friend.userId);
+        await fetch('/api/chat/encryption', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: friend.userId,
+            action: 'generate-keys'
+          })
+        });
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+      
+      console.log('✅ Both users have keys, establishing shared secret...');
+      
+      const secret = await encryptionService.getSharedSecret(currentUserId, friend.userId);
+      setSharedSecret(secret.secret);
+      setIsVerified(secret.isVerified);
+      setIsEncrypted(true);
+      setEncryptionReady(true);
+      
+      console.log('✅ Encryption ready, verified:', secret.isVerified);
+    } catch (error) {
+      console.error('❌ Encryption initialization failed:', error);
+      setEncryptionReady(false);
+    }
+  };
+
+  // Decrypt all messages when sharedSecret is available
+  useEffect(() => {
+    if (sharedSecret && messages.length > 0) {
+      decryptAllMessages();
+    }
+  }, [sharedSecret, messages]);
+
+  const decryptAllMessages = async () => {
+    const newDecryptedMap = new Map(decryptedMessages);
+    
+    for (const message of messages) {
+      if (message.encryptedContent && !decryptedMessages.has(message.timestamp)) {
+        try {
+          const decrypted = await encryptionService.decryptMessage(
+            message.encryptedContent,
+            sharedSecret
+          );
+          newDecryptedMap.set(message.timestamp, decrypted);
+        } catch (error) {
+          console.error('Decryption error:', error);
+          newDecryptedMap.set(message.timestamp, '[Decryption failed]');
+        }
+      }
+    }
+    
+    setDecryptedMessages(newDecryptedMap);
+  };
+
+  const handleVerificationChange = (verified) => {
+    console.log('🔐 Verification status changed:', verified);
+    setIsVerified(verified);
+  };
 
   useEffect(() => {
     if (friend?.userId) {
@@ -82,20 +167,13 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const checkBlockStatus = async () => {
     try {
-      // Check if current user blocked the friend
       const iBlockedRes = await fetch(`/api/friends/blocked/check?userId=${currentUserId}&targetId=${friend.userId}`);
       const iBlockedData = await iBlockedRes.json();
       
-      // Check if friend blocked the current user
       const theyBlockedRes = await fetch(`/api/friends/blocked/check?userId=${friend.userId}&targetId=${currentUserId}`);
       const theyBlockedData = await theyBlockedRes.json();
       
       setBlockStatus({
-        iBlockedThem: iBlockedData.success && iBlockedData.isBlocked,
-        theyBlockedMe: theyBlockedData.success && theyBlockedData.isBlocked
-      });
-      
-      console.log('🔍 Block status:', {
         iBlockedThem: iBlockedData.success && iBlockedData.isBlocked,
         theyBlockedMe: theyBlockedData.success && theyBlockedData.isBlocked
       });
@@ -244,6 +322,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     const onMessage = (message) => {
       console.log('📩 Message received in chat:', message);
       if (message.roomId === roomId) {
+        // If message has encrypted content and we have shared secret, pre-decrypt it
+        if (message.encryptedContent && sharedSecret) {
+          encryptionService.decryptMessage(message.encryptedContent, sharedSecret)
+            .then(decrypted => {
+              setDecryptedMessages(prev => new Map(prev).set(message.timestamp, decrypted));
+            })
+            .catch(error => {
+              console.error('Decryption error:', error);
+              setDecryptedMessages(prev => new Map(prev).set(message.timestamp, '[Decryption failed]'));
+            });
+        }
+        
         setMessages(prev => {
           const exists = prev.some(m => 
             m.timestamp === message.timestamp && 
@@ -273,6 +363,13 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               : msg
           )
         );
+        
+        // Clear decrypted cache for updated message
+        setDecryptedMessages(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(data.timestamp);
+          return newMap;
+        });
       }
     };
 
@@ -293,12 +390,23 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                 : msg
             )
           );
+          // Clear decrypted cache for deleted message
+          setDecryptedMessages(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(data.timestamp);
+            return newMap;
+          });
         } else {
           setMessages(prev =>
             prev.filter(msg =>
               !(msg.timestamp === data.timestamp && msg.senderId === data.senderId)
             )
           );
+          setDecryptedMessages(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(data.timestamp);
+            return newMap;
+          });
         }
       }
     };
@@ -400,7 +508,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         clearTimeout(typingTimeoutRef.current);
       }
     };
-  }, [socket, isConnected, friend?.userId, currentUserId, roomId]);
+  }, [socket, isConnected, friend?.userId, currentUserId, roomId, sharedSecret]);
 
   const fetchMessages = async () => {
     try {
@@ -437,7 +545,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   };
 
   const handleSendMessage = async () => {
-    // Check if user can send messages
     if (!canSendMessages) {
       alert(blockStatus.iBlockedThem 
         ? "You have blocked this user. Unblock to send messages."
@@ -448,11 +555,26 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     if ((!newMessage.trim() && attachments.length === 0) || !socket || !isConnected || !roomJoined) return;
 
     const now = new Date().toISOString();
+    const originalMessage = newMessage.trim();
+    
+    let encryptedContent = null;
+    let contentForDB = originalMessage;
+    
+    if (encryptionReady && sharedSecret && originalMessage) {
+      try {
+        encryptedContent = await encryptionService.encryptMessage(originalMessage, sharedSecret);
+        contentForDB = null;
+      } catch (error) {
+        console.error('❌ Encryption failed:', error);
+      }
+    }
+    
     const messageData = {
       roomId,
       senderId: currentUserId,
       receiverId: friend.userId,
-      content: newMessage.trim(),
+      content: contentForDB,
+      encryptedContent: encryptedContent,
       attachments: attachments.map(att => ({
         url: att.url,
         type: att.type,
@@ -463,10 +585,16 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       deliveredAt: now,
       read: false,
       reactions: [],
-      isGroupMessage: false
+      isGroupMessage: false,
+      isEncrypted: !!encryptedContent
     };
 
-    setMessages(prev => [...prev, messageData]);
+    const localMessage = {
+      ...messageData,
+      content: originalMessage
+    };
+
+    setMessages(prev => [...prev, localMessage]);
     setNewMessage("");
     setAttachments([]);
     setShowAttachments(false);
@@ -476,7 +604,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       handleTyping(false);
     }
 
-    console.log('📤 Sending direct message with deliveredAt:', messageData);
     socket.emit('send-message', messageData);
 
     fetch('/api/chat/messages', {
@@ -485,13 +612,12 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       body: JSON.stringify(messageData),
     }).then(() => {
       if (onMessageUpdate) {
-        onMessageUpdate(messageData);
+        onMessageUpdate(localMessage);
       }
     }).catch(console.error);
   };
 
   const handleSendWithAttachments = async () => {
-    // Check if user can send messages
     if (!canSendMessages) {
       alert(blockStatus.iBlockedThem 
         ? "You have blocked this user. Unblock to send messages."
@@ -514,21 +640,42 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     const allUploadedAttachments = [...existingUploaded, ...uploadedAttachments];
 
     const now = new Date().toISOString();
+    const originalMessage = newMessage.trim();
+    
+    let encryptedContent = null;
+    let contentForDB = originalMessage;
+    
+    if (encryptionReady && sharedSecret && originalMessage) {
+      try {
+        encryptedContent = await encryptionService.encryptMessage(originalMessage, sharedSecret);
+        contentForDB = null;
+      } catch (error) {
+        console.error('❌ Encryption failed:', error);
+      }
+    }
+    
     const messageData = {
       roomId,
       senderId: currentUserId,
       receiverId: friend.userId,
-      content: newMessage.trim(),
+      content: contentForDB,
+      encryptedContent: encryptedContent,
       attachments: allUploadedAttachments,
       timestamp: now,
       delivered: true,
       deliveredAt: now,
       read: false,
       reactions: [],
-      isGroupMessage: false
+      isGroupMessage: false,
+      isEncrypted: !!encryptedContent
     };
 
-    setMessages(prev => [...prev, messageData]);
+    const localMessage = {
+      ...messageData,
+      content: originalMessage
+    };
+
+    setMessages(prev => [...prev, localMessage]);
     setNewMessage("");
     
     attachments.forEach(att => {
@@ -544,7 +691,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       handleTyping(false);
     }
 
-    console.log('📤 Sending direct message with attachments and deliveredAt:', messageData);
     socket.emit('send-message', messageData);
 
     fetch('/api/chat/messages', {
@@ -553,7 +699,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       body: JSON.stringify(messageData),
     }).then(() => {
       if (onMessageUpdate) {
-        onMessageUpdate(messageData);
+        onMessageUpdate(localMessage);
       }
     }).catch(console.error).finally(() => {
       setUploading(false);
@@ -725,7 +871,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   };
 
   const handleFileSelect = (e) => {
-    // Check if user can send messages before allowing file selection
     if (!canSendMessages) {
       alert(blockStatus.iBlockedThem 
         ? "You have blocked this user. Unblock to send messages."
@@ -954,7 +1099,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     );
   };
 
-  // Get appropriate block message
   const getBlockMessage = () => {
     if (blockStatus.iBlockedThem) {
       return "You have blocked this user. Unblock to send messages.";
@@ -965,6 +1109,17 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     return null;
   };
 
+  // Get message content (decrypted or plain)
+  const getMessageContent = (message) => {
+    if (message.deleted) {
+      return message.content;
+    }
+    if (message.encryptedContent) {
+      return decryptedMessages.get(message.timestamp) || '';
+    }
+    return message.content || '';
+  };
+
   return (
     <>
       <div className="h-full flex flex-col bg-white rounded-3xl border-[#dadce0] overflow-hidden">
@@ -973,7 +1128,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <button
               onClick={onClose}
-              className="lg:hidden p-2 hover:bg-gray-100 rounded-full"
+              className="lg:hidden p-2 hover:bg-gray-100 rounded-full transition-colors"
             >
               <ChevronLeft size={20} />
             </button>
@@ -1006,17 +1161,31 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Info Button */}
             <button
               onClick={() => setShowUserInfo(true)}
-              className="p-2 hover:bg-gray-100 rounded-full"
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
               title="User info"
             >
               <Info size={18} className="text-[#5f6368]" />
             </button>
+            <button
+              onClick={() => setShowEncryptionModal(true)}
+              className="p-2 bg-green-50 hover:bg-green-100 rounded-full transition-colors group relative"
+              title={isVerified ? "Verified encryption" : "Tap to verify encryption"}
+            >
+              {isEncrypted ? (
+                isVerified ? (
+                  <ShieldCheck size={18} className="text-green-600" />
+                ) : (
+                  <ShieldAlert size={18} className="text-yellow-600" />
+                )
+              ) : (
+                <Shield size={18} className="text-gray-400" />
+              )}
+            </button>
             <button 
               onClick={onClose}
-              className="p-2 bg-red-100 rounded-full transition-colors"
+              className="p-2 bg-red-100 hover:bg-red-200 rounded-full transition-colors"
             >
               <X size={18} className="text-red-600" />
             </button>
@@ -1025,7 +1194,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
         {/* Blocked Banner */}
         {(blockStatus.iBlockedThem || blockStatus.theyBlockedMe) && (
-          <div className="bg-red-50 p-3 text-center  border-red-200">
+          <div className="bg-red-50 p-3 text-center border-b border-red-200">
             <p className="text-xs text-red-600 flex items-center justify-center gap-1">
               <Ban size={14} />
               {getBlockMessage()}
@@ -1034,7 +1203,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         )}
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8F9FA]">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8F9FA]" style={{scrollBehavior: 'smooth'}}>
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#34A853]"></div>
@@ -1068,11 +1237,13 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                     index === 0 || 
                     dateMessages[index - 1]?.senderId !== msg.senderId
                   );
+                  const messageContent = getMessageContent(msg);
+                  const hasTextContent = messageContent && messageContent.trim().length > 0;
 
                   return (
                     <MessageWrapper key={`${msg.timestamp}-${index}`} message={msg} isOwn={isOwn}>
                       <div
-                        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2`}
+                        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2 transition-all duration-200 ease-out`}
                       >
                         <div className={`max-w-[70%] ${isOwn ? 'order-2' : 'order-1'}`}>
                           {!isOwn && showAvatar && (
@@ -1084,7 +1255,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                           
                           {/* Media attachments */}
                           {msg.attachments && msg.attachments.length > 0 && !msg.deleted && (
-                            <div className={`space-y-2 ${msg.content ? 'mb-2' : ''}`}>
+                            <div className={`space-y-2 ${hasTextContent ? 'mb-2' : ''}`}>
                               {msg.attachments.map((att, idx) => {
                                 const globalIndex = allAttachments.findIndex(
                                   a => a.url === att.url && a.messageId === msg.timestamp
@@ -1132,35 +1303,33 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                             </div>
                           )}
                           
-                          {/* Text content */}
-                          {msg.content && (
+                          {/* Text content - only show if there's actual text */}
+                          {hasTextContent && (
                             <div
                               className={`rounded-2xl p-3 ${
                                 msg.deleted 
                                   ? 'bg-gray-100 italic text-gray-500'
                                   : isOwn
                                   ? 'bg-zinc-100 text-black rounded-br-none'
-                                  : 'bg-white border-[#dadce0] rounded-bl-none'
+                                  : 'bg-white  border-[#dadce0] rounded-tl-none'
                               }`}
                             >
                               <p className="text-sm whitespace-pre-wrap break-words">
-                                {msg.content}
+                                {msg.deleted ? (
+                                  msg.content
+                                ) : (
+                                  messageContent
+                                )}
                                 {msg.edited && !msg.deleted && (
                                   <span className="text-xs text-gray-400 ml-2">(edited)</span>
                                 )}
                               </p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <p className={`text-xs ${isOwn ? 'text-zinc-500' : 'text-[#5f6368]'}`}>
-                                  {formatTime(msg.timestamp)}
-                                </p>
-                                {renderMessageStatus(msg)}
-                              </div>
                             </div>
                           )}
                           
                           {/* Reactions */}
                           {msg.reactions && msg.reactions.length > 0 && (
-                            <div className="flex flex-wrap gap-1 -mt-2 px-2">
+                            <div className="flex flex-wrap gap-1 -mt-2  px-2">
                               {Object.entries(
                                 msg.reactions.reduce((acc, r) => {
                                   acc[r.emoji] = (acc[r.emoji] || 0) + 1;
@@ -1169,7 +1338,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                               ).map(([emoji, count]) => (
                                 <span
                                   key={emoji}
-                                  className="text-xs bg-gray-100 rounded-full px-2 py-1 flex items-center gap-1"
+                                  className="text-xs bg-gray-100 z-50 rounded-full px-2 py-1 flex items-center gap-1"
                                 >
                                   <span>{emoji}</span>
                                   {count > 1 && <span className="text-gray-600">{count}</span>}
@@ -1178,15 +1347,16 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                             </div>
                           )}
                           
-                          {/* Timestamp for media-only messages */}
-                          {!msg.content && msg.attachments && msg.attachments.length > 0 && (
-                            <div className="flex items-center gap-2 mt-1 px-2">
-                              <p className={`text-xs ${isOwn ? 'text-right text-[#5f6368]' : 'text-left text-[#5f6368]'}`}>
-                                {formatTime(msg.timestamp)}
-                              </p>
-                              {renderMessageStatus(msg)}
-                            </div>
-                          )}
+                          {/* Timestamp and status - always show for all messages */}
+                          <div className="flex items-center justify-end gap-1 mt-1 px-2">
+                            <p className={`text-xs ${isOwn ? 'text-[#5f6368]' : 'text-[#5f6368]'}`}>
+                              {formatTime(msg.timestamp)}
+                            </p>
+                            {renderMessageStatus(msg)}
+                            {/* {msg.isEncrypted && (
+                              <Shield size={10} className="text-green-600" />
+                            )} */}
+                          </div>
                         </div>
                       </div>
                     </MessageWrapper>
@@ -1197,7 +1367,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           )}
           
           {friendTyping && canSendMessages && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 transition-all duration-200 ease-in">
               {renderAvatar(friend.avatar, friend.userName, "w-6 h-6")}
               <div className="bg-white border border-[#dadce0] rounded-2xl rounded-bl-none p-3">
                 <div className="flex gap-1">
@@ -1240,7 +1410,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             </div>
             <button
               onClick={handleEditMessage}
-              className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600"
+              className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
             >
               <Send size={18} />
             </button>
@@ -1249,7 +1419,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                 setEditingMessage(null);
                 setEditText("");
               }}
-              className="p-2 bg-gray-200 text-gray-600 rounded-full hover:bg-gray-300"
+              className="p-2 bg-gray-200 text-gray-600 rounded-full hover:bg-gray-300 transition-colors"
             >
               <X size={18} />
             </button>
@@ -1270,11 +1440,51 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                   setShowAttachments(!showAttachments);
                   setShowEmojiPicker(false);
                 }}
-                className="p-2 hover:bg-gray-100 rounded-full relative"
+                className="p-2 hover:bg-gray-100 rounded-full relative transition-colors"
                 disabled={!isConnected || !roomJoined || editingMessage || !canSendMessages}
               >
                 <Paperclip size={20} className={!canSendMessages ? "text-gray-400" : "text-[#5f6368]"} />
               </button>
+
+              {/* Attachment Picker Popup */}
+              {showAttachments && (
+                <div className="absolute bottom-16 left-0 bg-white border border-[#dadce0] rounded-2xl shadow-xl z-50 p-3 min-w-[200px]">
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        fileInputRef.current?.click();
+                        setShowAttachments(false);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 rounded-xl transition-colors group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                        <ImageIcon size={20} className="text-blue-600" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="text-sm font-medium text-[#202124]">Send Image</p>
+                        <p className="text-xs text-[#5f6368]">Share photos</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        fileInputRef.current?.click();
+                        setShowAttachments(false);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 rounded-xl transition-colors group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center group-hover:bg-red-200 transition-colors">
+                        <Video size={20} className="text-red-600" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="text-sm font-medium text-[#202124]">Send Video</p>
+                        <p className="text-xs text-[#5f6368]">Share videos</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <input
                 type="file"
                 ref={fileInputRef}
@@ -1296,7 +1506,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                   setShowEmojiPicker(!showEmojiPicker);
                   setShowAttachments(false);
                 }}
-                className="p-2 hover:bg-gray-100 rounded-full"
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
                 disabled={!isConnected || !roomJoined || !canSendMessages}
               >
                 <span className={`text-xl ${!canSendMessages ? 'opacity-50' : ''}`}>😊</span>
@@ -1330,7 +1540,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                   ? getBlockMessage()
                   : (!isConnected ? "Connecting..." : !roomJoined ? "Joining chat..." : "Type a message...")
               }
-              className="flex-1 px-4 py-4 border border-[#dadce0] rounded-3xl focus:ring focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none"
+              className="flex-1 px-4 py-3 border border-[#dadce0] rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
               disabled={!isConnected || !roomJoined || uploading || !canSendMessages}
             />
             
@@ -1342,7 +1552,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                   ? !editText.trim()
                   : ((!newMessage.trim() && attachments.length === 0) || !isConnected || !roomJoined || uploading || !canSendMessages)
               }
-              className="p-2 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 disabled:text-gray-400 transition-all relative"
+              className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 disabled:text-gray-400 transition-all relative"
             >
               {uploading ? (
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
@@ -1369,45 +1579,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           )}
         </div>
       </div>
-
-      {/* Attachment Picker Popup */}
-      {showAttachments && (
-        <div 
-          ref={attachmentPickerRef}
-          className="absolute bottom-20 left-4 bg-white rounded-2xl shadow-lg border border-[#dadce0] p-2 z-50"
-        >
-          <button
-            onClick={() => {
-              fileInputRef.current?.click();
-              setShowAttachments(false);
-            }}
-            className="w-full flex items-center gap-2 p-3 hover:bg-gray-50 rounded-xl text-left"
-          >
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <ImageIcon size={16} className="text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium">Image</p>
-              <p className="text-xs text-[#5f6368]">Upload images</p>
-            </div>
-          </button>
-          <button
-            onClick={() => {
-              fileInputRef.current?.click();
-              setShowAttachments(false);
-            }}
-            className="w-full flex items-center gap-2 p-3 hover:bg-gray-50 rounded-xl text-left"
-          >
-            <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
-              <Video size={16} className="text-purple-600" />
-            </div>
-            <div>
-              <p className="text-sm font-medium">Video</p>
-              <p className="text-xs text-[#5f6368]">Upload videos</p>
-            </div>
-          </button>
-        </div>
-      )}
 
       {/* Context Menu */}
       {contextMenu && selectedMessage && (
@@ -1470,6 +1641,16 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         onUnblock={handleUnblock}
         onSendMessage={handleSendMessageFromInfo}
         blockStatus={blockStatus}
+      />
+
+      {/* Encryption Verification Modal */}
+      <EncryptionVerificationModal
+        isOpen={showEncryptionModal}
+        onClose={() => setShowEncryptionModal(false)}
+        friend={friend}
+        currentUserId={currentUserId}
+        isVerified={isVerified}
+        onVerificationChange={handleVerificationChange}
       />
     </>
   );

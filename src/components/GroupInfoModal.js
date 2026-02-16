@@ -534,7 +534,7 @@ export default function GroupInfoModal({
                           Leave Group
                         </button>
                       ) : (
-                        <div className="p-4 bg-orange-50 rounded-xl space-y-3">
+                        <div className="p-4 bg-orange-50 rounded-3xl space-y-3">
                           <div className="flex items-start gap-3">
                             <AlertTriangle size={20} className="text-orange-600 flex-shrink-0 mt-0.5" />
                             <div>
@@ -585,7 +585,7 @@ export default function GroupInfoModal({
                               Delete Group
                             </button>
                           ) : (
-                            <div className="p-4 bg-red-50 rounded-xl space-y-3">
+                            <div className="p-4 bg-red-50 rounded-3xl space-y-3">
                               <div className="flex items-start gap-3">
                                 <AlertTriangle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
                                 <div>
@@ -685,7 +685,7 @@ export default function GroupInfoModal({
               {/* Invite Tab */}
               {activeTab === 'invite' && (
                 <div className="space-y-6">
-                  <div className="text-center p-6 bg-green-50 rounded-xl">
+                  <div className="text-center p-6 bg-green-50 rounded-3xl">
                     <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
                       <Users size={32} className="text-green-600" />
                     </div>
@@ -710,7 +710,7 @@ export default function GroupInfoModal({
                       <button
                         onClick={onRegenerateInvite}
                         disabled={updating}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-[#dadce0] rounded-xl hover:bg-gray-50 text-sm transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-white  border-[#dadce0] rounded-xl hover:bg-gray-50 text-sm transition-colors"
                       >
                         <RefreshCw size={16} />
                         Generate New Code

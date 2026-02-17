@@ -36,6 +36,7 @@ export async function POST(request) {
     const db = client.db('positivity');
     const users = db.collection('users');
     const referrals = db.collection('referrals');
+    const encryptionKeys = db.collection('encryptionKeys');
 
     // Check if user already exists
     const existingUser = await users.findOne({ email: email.toLowerCase() });
@@ -51,6 +52,28 @@ export async function POST(request) {
 
     // Generate userId
     const userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+    // Generate encryption keys for the new user
+    console.log('🔐 Generating encryption keys for new user:', userId);
+    let publicKey = null;
+    let privateKey = null;
+    let fingerprint = null;
+
+    try {
+      // Generate RSA key pair for encryption
+      const keyPair = await generateKeyPair();
+      publicKey = keyPair.publicKey;
+      privateKey = keyPair.privateKey;
+      
+      // Generate fingerprint from public key
+      fingerprint = generateFingerprint(publicKey);
+      
+      console.log('✅ Encryption keys generated successfully');
+    } catch (keyError) {
+      console.error('❌ Failed to generate encryption keys:', keyError);
+      // Continue with signup even if key generation fails
+      // We can retry key generation later
+    }
 
     // Initial points (start with 0)
     let initialPoints = 0;
@@ -140,6 +163,19 @@ export async function POST(request) {
 
     await users.insertOne(newUser);
 
+    // Store encryption keys if they were generated successfully
+    if (publicKey && privateKey) {
+      await encryptionKeys.insertOne({
+        userId,
+        publicKey,
+        privateKey,
+        fingerprint,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      console.log('🔐 Encryption keys stored in database');
+    }
+
     // Create referral record for new user (for their own referral code)
     await referrals.insertOne({
       userId,
@@ -167,5 +203,39 @@ export async function POST(request) {
       { error: 'Failed to create account', details: error.message },
       { status: 500 }
     );
+  }
+}
+
+// Helper function to generate RSA key pair
+async function generateKeyPair() {
+  try {
+    const crypto = require('crypto');
+    
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+    });
+    
+    return { publicKey, privateKey };
+  } catch (error) {
+    console.error('Error generating key pair:', error);
+    throw error;
+  }
+}
+
+// Helper function to generate fingerprint from public key
+function generateFingerprint(publicKey) {
+  try {
+    const crypto = require('crypto');
+    const hash = crypto.createHash('sha256').update(publicKey).digest('hex');
+    const groups = hash.match(/.{1,4}/g);
+    if (groups && groups.length >= 8) {
+      return groups.slice(0, 8).join(' ').toUpperCase();
+    }
+    return hash.substring(0, 32).toUpperCase();
+  } catch (error) {
+    console.error('❌ Error generating fingerprint:', error);
+    return 'ERROR';
   }
 }

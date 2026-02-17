@@ -1,4 +1,3 @@
-// src/app/api/chat/encryption/route.js
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import crypto from 'crypto';
@@ -41,14 +40,11 @@ function encryptSharedSecret(sharedSecret, publicKey) {
 
 function generateSafetyNumber(publicKey1, publicKey2) {
   try {
-    // Sort keys to ensure consistency
     const keys = [publicKey1, publicKey2].sort();
     const combined = keys.join('');
     
-    // Create SHA-256 hash
     const hash = crypto.createHash('sha256').update(combined).digest();
     
-    // Generate 12 groups of 5 digits (60 digits total)
     const safetyNumber = [];
     for (let i = 0; i < 12; i++) {
       const offset = i * 4;
@@ -61,13 +57,11 @@ function generateSafetyNumber(publicKey1, publicKey2) {
     return safetyNumber.join(' ');
   } catch (error) {
     console.error('❌ Error generating safety number:', error);
-    // Fallback method
     try {
       const fallbackHash = crypto.createHash('sha256')
         .update(publicKey1 + publicKey2)
         .digest('hex');
       
-      // Take first 60 hex characters and format as 12 groups of 5
       const digits = fallbackHash.replace(/[^0-9]/g, '').substring(0, 60);
       const formatted = digits.match(/.{1,5}/g) || [];
       return formatted.join(' ');
@@ -434,6 +428,121 @@ export async function POST(request) {
     console.error('❌ Error in encryption API POST:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to process request', message: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// New endpoint for sharing group key with new member
+export async function PUT(request) {
+  try {
+    const body = await request.json();
+    const { groupId, currentUserId, newMemberId } = body;
+
+    console.log('🔑 Sharing group key with new member:', { groupId, currentUserId, newMemberId });
+
+    if (!groupId || !currentUserId || !newMemberId) {
+      return NextResponse.json(
+        { success: false, error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    const client = await clientPromise;
+    const db = client.db('positivity');
+    const groupKeys = db.collection('groupEncryptionKeys');
+    const keys = db.collection('encryptionKeys');
+
+    // Get the group key document
+    const groupKeyDoc = await groupKeys.findOne({ groupId });
+    
+    if (!groupKeyDoc) {
+      console.log('❌ Group key not found');
+      return NextResponse.json(
+        { success: false, error: 'Group key not found' },
+        { status: 404 }
+      );
+    }
+
+    // Get new member's public key
+    const newMemberKeys = await keys.findOne({ userId: newMemberId });
+    
+    if (!newMemberKeys || !newMemberKeys.publicKey) {
+      console.log('❌ New member keys not found');
+      return NextResponse.json(
+        { success: false, error: 'New member keys not found' },
+        { status: 404 }
+      );
+    }
+
+    // Get the existing group key (it's stored encrypted for members, but we need the raw key)
+    // We'll use the current user's private key to decrypt the group key
+    const currentUserKeys = await keys.findOne({ userId: currentUserId });
+    
+    if (!currentUserKeys || !currentUserKeys.privateKey) {
+      console.log('❌ Current user keys not found');
+      return NextResponse.json(
+        { success: false, error: 'Current user keys not found' },
+        { status: 404 }
+      );
+    }
+
+    // Find the encrypted group key for the current user
+    const currentUserKeyEntry = groupKeyDoc.memberKeys.find(mk => mk.userId === currentUserId);
+    
+    if (!currentUserKeyEntry) {
+      console.log('❌ Current user key entry not found');
+      return NextResponse.json(
+        { success: false, error: 'Current user key entry not found' },
+        { status: 404 }
+      );
+    }
+
+    // Decrypt the group key using current user's private key
+    const decryptedGroupKey = crypto.privateDecrypt(
+      {
+        key: currentUserKeys.privateKey,
+        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: 'sha256'
+      },
+      Buffer.from(currentUserKeyEntry.encryptedKey, 'base64')
+    ).toString('base64');
+
+    // Encrypt the group key for the new member
+    const encryptedForNewMember = crypto.publicEncrypt(
+      {
+        key: newMemberKeys.publicKey,
+        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: 'sha256'
+      },
+      Buffer.from(decryptedGroupKey, 'base64')
+    ).toString('base64');
+
+    // Add the new member's encrypted key to the group keys document
+    await groupKeys.updateOne(
+      { groupId },
+      { 
+        $push: { 
+          memberKeys: {
+            userId: newMemberId,
+            encryptedKey: encryptedForNewMember
+          }
+        },
+        $set: { updatedAt: new Date() }
+      }
+    );
+
+    console.log('✅ Group key shared with new member');
+
+    return NextResponse.json({
+      success: true,
+      message: 'Group key shared successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error sharing group key:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to share group key', message: error.message },
       { status: 500 }
     );
   }

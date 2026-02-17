@@ -68,19 +68,19 @@ export default function BlockedUsersModal({ isOpen, onClose, userId, onUnblock }
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.2 }}
-        className="bg-white rounded-[30px] max-w-md w-full max-h-[80vh] overflow-hidden"
+        className="bg-white dark:bg-[#0c0c0c] rounded-[30px] max-w-md w-full max-h-[80vh] overflow-hidden transition-colors duration-300"
       >
         {/* Header */}
-        <div className="p-6 border-b border-[#f1f3f4] flex items-center justify-between">
+        <div className="p-6 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Ban size={20} className="text-red-500" />
-            <h2 className="text-xl font-semibold text-[#000000]">Blocked Users</h2>
+            <h2 className="text-xl font-semibold text-[#000000] dark:text-white">Blocked Users</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-2 bg-gray-100 dark:bg-[#101010] rounded-full transition-colors hover:bg-gray-200 dark:hover:bg-[#181A1E]"
           >
-            <X size={20} />
+            <X size={20} className="text-[#202124] dark:text-white" />
           </button>
         </div>
 
@@ -92,11 +92,11 @@ export default function BlockedUsersModal({ isOpen, onClose, userId, onUnblock }
             </div>
           ) : blockedUsers.length === 0 ? (
             <div className="text-center py-12">
-              <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                <Ban size={32} className="text-gray-400" />
+              <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-[#101010] flex items-center justify-center mx-auto mb-4">
+                <Ban size={32} className="text-gray-400 dark:text-gray-500" />
               </div>
-              <p className="text-[#5f6368] text-sm">No blocked users</p>
-              <p className="text-xs text-[#5f6368] mt-2">
+              <p className="text-[#5f6368] dark:text-gray-400 text-sm">No blocked users</p>
+              <p className="text-xs text-[#5f6368] dark:text-gray-500 mt-2">
                 When you block someone, they'll appear here
               </p>
             </div>
@@ -116,10 +116,10 @@ export default function BlockedUsersModal({ isOpen, onClose, userId, onUnblock }
                 return (
                   <div
                     key={user.userId}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#101010] rounded-xl hover:bg-gray-100 dark:hover:bg-[#181A1E] transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full overflow-hidden bg-zinc-100 flex items-center justify-center text-white font-semibold text-lg">
+                      <div className="w-12 h-12 rounded-full overflow-hidden bg-zinc-100 dark:bg-[#232529] flex items-center justify-center text-white font-semibold text-lg">
                         {userAvatar?.beanConfig ? (
                           <BeanHead {...userAvatar.beanConfig} />
                         ) : (
@@ -127,9 +127,9 @@ export default function BlockedUsersModal({ isOpen, onClose, userId, onUnblock }
                         )}
                       </div>
                       <div>
-                        <p className="font-medium text-[#202124]">{user.userName}</p>
+                        <p className="font-medium text-[#202124] dark:text-white">{user.userName}</p>
                         {user.username && (
-                          <p className="text-xs text-[#5f6368]">@{user.username}</p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">@{user.username}</p>
                         )}
                       </div>
                     </div>
@@ -138,7 +138,7 @@ export default function BlockedUsersModal({ isOpen, onClose, userId, onUnblock }
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setShowConfirm(null)}
-                          className="px-3 py-1.5 text-sm bg-white text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                          className="px-3 py-1.5 text-sm bg-white dark:bg-[#0c0c0c] text-[#202124] dark:text-white rounded-lg hover:bg-gray-200 dark:hover:bg-[#181A1E] transition-colors"
                         >
                           Cancel
                         </button>
@@ -163,7 +163,7 @@ export default function BlockedUsersModal({ isOpen, onClose, userId, onUnblock }
                     ) : (
                       <button
                         onClick={() => setShowConfirm(user.userId)}
-                        className="px-4 py-2 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-colors text-sm font-medium"
+                        className="px-4 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-sm font-medium"
                       >
                         Unblock
                       </button>
@@ -175,11 +175,11 @@ export default function BlockedUsersModal({ isOpen, onClose, userId, onUnblock }
           )}
 
           {/* Info Note */}
-          <div className="mt-6 p-4 bg-yellow-50 rounded-xl">
+          <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl">
             <div className="flex items-start gap-2">
-              <AlertTriangle size={18} className="text-yellow-600 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-yellow-700">
-                Blocked users cannot message you or see your profile. You can unblock them anytime to restore communication.
+              <AlertTriangle size={18} className="text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                Blocked users cannot message you. You can unblock them anytime to restore communication.
               </p>
             </div>
           </div>

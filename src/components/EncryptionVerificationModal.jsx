@@ -119,7 +119,7 @@ export default function EncryptionVerificationModal({
     return number.split(' ').map((group, i) => (
       <span key={i} className="inline-block font-mono">
         {group}
-        {i < 5 && <span className="mx-2 text-[#5f6368]">·</span>}
+        {i < 5 && <span className="mx-2 text-[#5f6368] dark:text-gray-400">·</span>}
       </span>
     ));
   };
@@ -148,42 +148,42 @@ export default function EncryptionVerificationModal({
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.2 }}
-        className="bg-white rounded-[30px] max-w-2xl w-full max-h-[90vh] overflow-hidden"
+        className="bg-white dark:bg-[#0c0c0c] rounded-[30px] max-w-2xl w-full max-h-[90vh] overflow-hidden transition-colors duration-300"
       >
         {/* Header */}
-        <div className="p-6 border-b border-[#f1f3f4]">
+        <div className="p-6 border-b border-[#f1f3f4] dark:border-[#181A1E]">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
               <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                isVerified ? 'bg-green-100' : 'bg-yellow-100'
+                isVerified ? 'bg-green-100 dark:bg-green-900/30' : 'bg-yellow-100 dark:bg-yellow-900/30'
               }`}>
-                <Shield size={24} className={isVerified ? 'text-green-600' : 'text-yellow-600'} />
+                <Shield size={24} className={isVerified ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'} />
               </div>
               <div>
-                <h2 className="text-xl text-[#000000] font-semibold">End-to-End Encryption</h2>
-                <p className="text-sm text-[#5f6368]">with {friend?.userName}</p>
+                <h2 className="text-xl text-[#000000] dark:text-white font-semibold">End-to-End Encryption</h2>
+                <p className="text-sm text-[#5f6368] dark:text-gray-400">with {friend?.userName}</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 bg-gray-100 rounded-full transition-colors hover:bg-gray-200"
+              className="p-2 bg-gray-100 dark:bg-[#101010] rounded-full transition-colors hover:bg-gray-200 dark:hover:bg-[#181A1E]"
             >
-              <X size={20} />
+              <X size={20} className="text-[#202124] dark:text-white" />
             </button>
           </div>
 
           {/* Status Badge */}
           {isVerified ? (
-            <div className="flex items-center gap-2 px-4 py-3 bg-green-50 rounded-2xl mt-4">
-              <BadgeCheck size={20} className="text-green-600" />
-              <span className="text-sm font-medium text-green-700">
+            <div className="flex items-center gap-2 px-4 py-3 bg-green-50 dark:bg-green-900/30 rounded-2xl mt-4">
+              <BadgeCheck size={20} className="text-green-600 dark:text-green-400" />
+              <span className="text-sm font-medium text-green-700 dark:text-green-300">
                 Verified Encryption - This conversation is secure
               </span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 px-4 py-3 bg-yellow-50 rounded-2xl mt-4">
-              <AlertCircle size={20} className="text-yellow-600" />
-              <span className="text-sm font-medium text-yellow-700">
+            <div className="flex items-center gap-2 px-4 py-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-2xl mt-4">
+              <AlertCircle size={20} className="text-yellow-600 dark:text-yellow-400" />
+              <span className="text-sm font-medium text-yellow-700 dark:text-yellow-300">
                 Not Verified - Verify to ensure your messages are secure
               </span>
             </div>
@@ -191,7 +191,7 @@ export default function EncryptionVerificationModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex p-2 gap-1 bg-gray-50/50">
+        <div className="flex p-2 gap-1 bg-gray-50/50 dark:bg-[#101010]/50">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -205,12 +205,12 @@ export default function EncryptionVerificationModal({
                 {isActive && (
                   <motion.div
                     layoutId="activeTab"
-                    className="absolute inset-0 bg-green-100 rounded-xl"
+                    className="absolute inset-0 bg-green-100 dark:bg-green-900/30 rounded-xl"
                     transition={{ type: "spring", duration: 0.5, bounce: 0.2 }}
                   />
                 )}
                 <span className={`relative z-10 flex items-center justify-center gap-2 text-sm ${
-                  isActive ? 'text-green-700' : 'text-[#5f6368]'
+                  isActive ? 'text-green-700 dark:text-green-400' : 'text-[#5f6368] dark:text-gray-400'
                 }`}>
                   <Icon size={18} />
                   {tab.label}
@@ -232,34 +232,34 @@ export default function EncryptionVerificationModal({
               {activeTab === 'overview' && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-lg font-semibold text-[#202124] mb-3">
+                    <h3 className="text-lg font-semibold text-[#202124] dark:text-white mb-3">
                       What is End-to-End Encryption?
                     </h3>
-                    <p className="text-[#5f6368] text-sm leading-relaxed">
+                    <p className="text-[#5f6368] dark:text-gray-400 text-sm leading-relaxed">
                       Your messages are secured with end-to-end encryption. This means only you and {friend?.userName} can read them. Not even our servers can access your messages.
                     </p>
                   </div>
 
-                  <div className="bg-green-50 rounded-2xl p-5">
+                  <div className="bg-green-50 dark:bg-green-900/30 rounded-2xl p-5">
                     <div className="flex items-start gap-3">
-                      <Lock size={20} className="text-green-600 mt-0.5" />
+                      <Lock size={20} className="text-green-600 dark:text-green-400 mt-0.5" />
                       <div>
-                        <h4 className="font-medium text-green-900 mb-2">How it works</h4>
-                        <ul className="text-sm text-green-800 space-y-2">
+                        <h4 className="font-medium text-green-900 dark:text-green-300 mb-2">How it works</h4>
+                        <ul className="text-sm text-green-800 dark:text-green-200 space-y-2">
                           <li className="flex items-start gap-2">
-                            <span className="text-green-600">•</span>
+                            <span className="text-green-600 dark:text-green-400">•</span>
                             <span>Messages are encrypted on your device before sending</span>
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="text-blue-600">•</span>
+                            <span className="text-blue-600 dark:text-blue-400">•</span>
                             <span>Only the recipient's device can decrypt them</span>
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="text-blue-600">•</span>
+                            <span className="text-blue-600 dark:text-blue-400">•</span>
                             <span>Each conversation has a unique encryption key</span>
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="text-blue-600">•</span>
+                            <span className="text-blue-600 dark:text-blue-400">•</span>
                             <span>Keys are never sent to our servers</span>
                           </li>
                         </ul>
@@ -268,29 +268,29 @@ export default function EncryptionVerificationModal({
                   </div>
 
                   <div>
-                    <h3 className="text-lg font-semibold text-[#202124] mb-3">
+                    <h3 className="text-lg font-semibold text-[#202124] dark:text-white mb-3">
                       Key Fingerprints
                     </h3>
                     <div className="space-y-3">
-                      <div className="bg-gray-50 rounded-xl p-4">
+                      <div className="bg-gray-50 dark:bg-[#101010] rounded-xl p-4">
                         <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs text-[#5f6368]">Your fingerprint</p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">Your fingerprint</p>
                           <div className="flex items-center gap-2">
-                            <Smartphone size={14} className="text-[#5f6368]" />
-                            <span className="text-xs text-[#5f6368]">Your device</span>
+                            <Smartphone size={14} className="text-[#5f6368] dark:text-gray-400" />
+                            <span className="text-xs text-[#5f6368] dark:text-gray-400">Your device</span>
                           </div>
                         </div>
-                        <p className="text-sm font-mono text-[#202124] tracking-wider">{fingerprints.mine}</p>
+                        <p className="text-sm font-mono text-[#202124] dark:text-white tracking-wider">{fingerprints.mine}</p>
                       </div>
-                      <div className="bg-gray-50 rounded-xl p-4">
+                      <div className="bg-gray-50 dark:bg-[#101010] rounded-xl p-4">
                         <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs text-[#5f6368]">{friend?.userName}'s fingerprint</p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">{friend?.userName}'s fingerprint</p>
                           <div className="flex items-center gap-2">
-                            <Smartphone size={14} className="text-[#5f6368]" />
-                            <span className="text-xs text-[#5f6368]">{friend?.userName}'s device</span>
+                            <Smartphone size={14} className="text-[#5f6368] dark:text-gray-400" />
+                            <span className="text-xs text-[#5f6368] dark:text-gray-400">{friend?.userName}'s device</span>
                           </div>
                         </div>
-                        <p className="text-sm font-mono text-[#202124] tracking-wider">{fingerprints.theirs}</p>
+                        <p className="text-sm font-mono text-[#202124] dark:text-white tracking-wider">{fingerprints.theirs}</p>
                       </div>
                     </div>
                   </div>
@@ -316,53 +316,52 @@ export default function EncryptionVerificationModal({
               {activeTab === 'safety-number' && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-lg font-semibold text-[#202124] mb-3">
+                    <h3 className="text-lg font-semibold text-[#202124] dark:text-white mb-3">
                       Safety Number
                     </h3>
-                    <p className="text-[#5f6368] text-sm leading-relaxed mb-4">
+                    <p className="text-[#5f6368] dark:text-gray-400 text-sm leading-relaxed mb-4">
                       This 60-digit number is unique to your conversation with {friend?.userName}. 
                       Compare it with them to verify your connection is secure.
                     </p>
                   </div>
 
-                  <div className="bg-green-50 rounded-3xl p-6">
+                  <div className="bg-green-50 dark:bg-green-900/30 rounded-3xl p-6">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
-                        {/* <Hash size={20} className="text-blue-600" /> */}
-                        <span className="font-medium text-[#202124]">Safety Number</span>
+                        <span className="font-medium text-[#202124] dark:text-white">Safety Number</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setShowSafetyNumber(!showSafetyNumber)}
-                          className="p-2 hover:bg-white/50 rounded-lg transition-colors"
+                          className="p-2 hover:bg-white/50 dark:hover:bg-black/20 rounded-lg transition-colors"
                           title={showSafetyNumber ? "Hide safety number" : "Show safety number"}
                         >
-                          {showSafetyNumber ? <EyeOff size={16} className="text-gray-600" /> : <Eye size={16} className="text-gray-600" />}
+                          {showSafetyNumber ? <EyeOff size={16} className="text-gray-600 dark:text-gray-400" /> : <Eye size={16} className="text-gray-600 dark:text-gray-400" />}
                         </button>
                         <button
                           onClick={() => copyToClipboard(safetyNumber.replace(/\s/g, ''))}
-                          className="p-2 hover:bg-white/50 rounded-lg transition-colors"
+                          className="p-2 hover:bg-white/50 dark:hover:bg-black/20 rounded-lg transition-colors"
                           title="Copy safety number"
                         >
                           {copied ? (
-                            <Check size={16} className="text-green-600" />
+                            <Check size={16} className="text-green-600 dark:text-green-400" />
                           ) : (
-                            <Copy size={16} className="text-gray-600" />
+                            <Copy size={16} className="text-gray-600 dark:text-gray-400" />
                           )}
                         </button>
                       </div>
                     </div>
                     
                     {showSafetyNumber ? (
-                      <div className="text-xl font-mono text-[#202124] leading-relaxed text-center break-all">
+                      <div className="text-xl font-mono text-[#202124] dark:text-white leading-relaxed text-center break-all">
                         {formatSafetyNumber(safetyNumber)}
                       </div>
                     ) : (
                       <div className="text-center py-6">
-                        <p className="text-[#5f6368] text-sm mb-2">Safety number is hidden</p>
+                        <p className="text-[#5f6368] dark:text-gray-400 text-sm mb-2">Safety number is hidden</p>
                         <button
                           onClick={() => setShowSafetyNumber(true)}
-                          className="text-green-800 text-sm font-medium hover:underline"
+                          className="text-green-800 dark:text-green-400 text-sm font-medium hover:underline"
                         >
                           Click to reveal
                         </button>
@@ -370,23 +369,23 @@ export default function EncryptionVerificationModal({
                     )}
                   </div>
 
-                  <div className="bg-yellow-50 rounded-2xl p-5">
-                    <h4 className="font-medium text-yellow-900 mb-3">How to verify</h4>
-                    <ol className="text-sm text-yellow-800 space-y-2">
+                  <div className="bg-yellow-50 dark:bg-yellow-900/30 rounded-2xl p-5">
+                    <h4 className="font-medium text-yellow-900 dark:text-yellow-300 mb-3">How to verify</h4>
+                    <ol className="text-sm text-yellow-800 dark:text-yellow-200 space-y-2">
                       <li className="flex items-start gap-2">
-                        <span className="w-5 h-5 bg-yellow-200 rounded-full flex items-center justify-center text-xs font-medium text-yellow-800">1</span>
+                        <span className="w-5 h-5 bg-yellow-200 dark:bg-yellow-700 rounded-full flex items-center justify-center text-xs font-medium text-yellow-800 dark:text-yellow-200">1</span>
                         <span>Meet {friend?.userName} in person or video call</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="w-5 h-5 bg-yellow-200 rounded-full flex items-center justify-center text-xs font-medium text-yellow-800">2</span>
+                        <span className="w-5 h-5 bg-yellow-200 dark:bg-yellow-700 rounded-full flex items-center justify-center text-xs font-medium text-yellow-800 dark:text-yellow-200">2</span>
                         <span>Compare this number with theirs</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="w-5 h-5 bg-yellow-200 rounded-full flex items-center justify-center text-xs font-medium text-yellow-800">3</span>
+                        <span className="w-5 h-5 bg-yellow-200 dark:bg-yellow-700 rounded-full flex items-center justify-center text-xs font-medium text-yellow-800 dark:text-yellow-200">3</span>
                         <span>If they match, mark as verified</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="w-5 h-5 bg-yellow-200 rounded-full flex items-center justify-center text-xs font-medium text-yellow-800">4</span>
+                        <span className="w-5 h-5 bg-yellow-200 dark:bg-yellow-700 rounded-full flex items-center justify-center text-xs font-medium text-yellow-800 dark:text-yellow-200">4</span>
                         <span>If they don't match, someone may be intercepting</span>
                       </li>
                     </ol>
@@ -413,16 +412,16 @@ export default function EncryptionVerificationModal({
               {activeTab === 'qr-code' && (
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-lg font-semibold text-[#202124] mb-3">
+                    <h3 className="text-lg font-semibold text-[#202124] dark:text-white mb-3">
                       QR Code Verification
                     </h3>
-                    <p className="text-[#5f6368] text-sm leading-relaxed mb-4">
+                    <p className="text-[#5f6368] dark:text-gray-400 text-sm leading-relaxed mb-4">
                       Scan this QR code with {friend?.userName}'s device to quickly verify your encrypted connection.
                     </p>
                   </div>
 
                   <div className="flex justify-center">
-                    <div className="bg-white p-2 rounded-[40px]  border-[#f1f3f4]">
+                    <div className="bg-white dark:bg-white p-2 rounded-[40px] border border-[#f1f3f4] dark:border-[#232529]">
                       <QRCodeSVG
                         value={qrData}
                         size={256}
@@ -432,22 +431,22 @@ export default function EncryptionVerificationModal({
                     </div>
                   </div>
 
-                  <div className="bg-green-50 rounded-2xl p-5">
+                  <div className="bg-green-50 dark:bg-green-900/30 rounded-2xl p-5">
                     <div className="flex items-start gap-3">
-                      <QrCode size={20} className="text-green-600 mt-0.5" />
+                      <QrCode size={20} className="text-green-600 dark:text-green-400 mt-0.5" />
                       <div>
-                        <h4 className="font-medium text-green-900 mb-2">How to scan</h4>
-                        <ol className="text-sm text-green-800 space-y-2">
+                        <h4 className="font-medium text-green-900 dark:text-green-300 mb-2">How to scan</h4>
+                        <ol className="text-sm text-green-800 dark:text-green-200 space-y-2">
                           <li className="flex items-start gap-2">
-                            <span className="w-5 h-5 bg-green-200 rounded-full flex items-center justify-center text-xs font-medium text-green-800">1</span>
+                            <span className="w-5 h-5 bg-green-200 dark:bg-green-700 rounded-full flex items-center justify-center text-xs font-medium text-green-800 dark:text-green-200">1</span>
                             <span>Ask {friend?.userName} to open this verification screen</span>
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="w-5 h-5 bg-green-200 rounded-full flex items-center justify-center text-xs font-medium text-green-800">2</span>
+                            <span className="w-5 h-5 bg-green-200 dark:bg-green-700 rounded-full flex items-center justify-center text-xs font-medium text-green-800 dark:text-green-200">2</span>
                             <span>They should scan your QR code using their device</span>
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="w-5 h-5 bg-green-200 rounded-full flex items-center justify-center text-xs font-medium text-green-800">3</span>
+                            <span className="w-5 h-5 bg-green-200 dark:bg-green-700 rounded-full flex items-center justify-center text-xs font-medium text-green-800 dark:text-green-200">3</span>
                             <span>If verification succeeds, you're both secure!</span>
                           </li>
                         </ol>
@@ -455,8 +454,8 @@ export default function EncryptionVerificationModal({
                     </div>
                   </div>
 
-                  <div className="p-4 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-[#5f6368]">
+                  <div className="p-4 bg-gray-50 dark:bg-[#101010] rounded-xl">
+                    <p className="text-xs text-[#5f6368] dark:text-gray-400">
                       QR code contains your safety number encrypted with a temporary key. 
                       It expires after 5 minutes for security.
                     </p>

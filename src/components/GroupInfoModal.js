@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
   X, Users, Copy, Check, Shield, ShieldCheck, UserPlus,
   UserMinus, Crown, Lock, MessageSquare, Settings, CircleMinus,
@@ -47,6 +47,7 @@ export default function GroupInfoModal({
     hat: 'none',
     hatColor: 'black',
     lashes: 'false',
+    lipColor: 'red',
     mask: true,
     faceMask: false,
     mouth: 'grin',
@@ -247,14 +248,14 @@ export default function GroupInfoModal({
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.2 }}
-        className="bg-white rounded-[30px] max-w-2xl w-full max-h-[90vh] overflow-hidden"
+        className="bg-white dark:bg-[#0c0c0c] rounded-[30px] max-w-2xl w-full max-h-[90vh] overflow-hidden transition-colors duration-300"
       >
         {/* Header */}
-        <div className="p-6 border-b border-[#f1f3f4]">
+        <div className="p-6 border-b border-[#f1f3f4] dark:border-[#181A1E]">
           {!isEditMode ? (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-zinc-100 flex items-center justify-center text-white font-semibold text-lg">
+                <div className="w-12 h-12 rounded-full overflow-hidden bg-zinc-100 dark:bg-[#232529] flex items-center justify-center text-[#202124] dark:text-white font-semibold text-lg">
                   {currentGroupAvatar?.beanConfig ? (
                     <BeanHead {...currentGroupAvatar.beanConfig} />
                   ) : (
@@ -262,15 +263,15 @@ export default function GroupInfoModal({
                   )}
                 </div>
                 <div>
-                  <h2 className="text-xl text-[#000000] small font-semibold">{group.groupName || group.name}</h2>
-                  <p className="text-sm text-[#5f6368]">Created {formatDate(group.createdAt)}</p>
+                  <h2 className="text-xl text-[#000000] dark:text-white small font-semibold">{group.groupName || group.name}</h2>
+                  <p className="text-sm text-[#5f6368] dark:text-gray-400">Created {formatDate(group.createdAt)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 {isAdmin && (
                   <button
                     onClick={handleStartEdit}
-                    className="p-2 bg-green-100 rounded-full text-green-600 transition-colors hover:bg-green-200"
+                    className="p-2 bg-green-100 dark:bg-green-900/30 rounded-full text-green-600 dark:text-green-400 transition-colors hover:bg-green-200 dark:hover:bg-green-900/50"
                     title="Edit group"
                   >
                     <Edit2 size={20} />
@@ -278,39 +279,39 @@ export default function GroupInfoModal({
                 )}
                 <button
                   onClick={onClose} 
-                  className="p-2 bg-gray-100 rounded-full transition-colors hover:bg-gray-200"
+                  className="p-2 bg-gray-100 dark:bg-[#101010] rounded-full transition-colors hover:bg-gray-200 dark:hover:bg-[#181A1E]"
                 >
-                  <X size={20} />
+                  <X size={20} className="text-[#202124] dark:text-white" />
                 </button>
               </div>
             </div>
           ) : (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Edit Group</h2>
+                <h2 className="text-xl font-semibold text-[#000000] dark:text-white">Edit Group</h2>
                 <button
                   onClick={handleCancelEdit} 
-                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
                 >
-                  <X size={20} />
+                  <X size={20} className="text-[#202124] dark:text-white" />
                 </button>
               </div>
 
               {/* Avatar Editor */}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#5f6368] mb-3">
+                  <label className="block text-sm font-medium text-[#5f6368] dark:text-gray-400 mb-3">
                     Group Avatar
                   </label>
                   
                   {/* Avatar Preview */}
                   <div className="flex items-center gap-4">
-                    <div className="w-20 h-20 rounded-full overflow-hidden bg-green-50 flex items-center justify-center border-2 border-green-200">
+                    <div className="w-20 h-20 rounded-full overflow-hidden bg-green-50 dark:bg-green-900/30 flex items-center justify-center border-2 border-green-200 dark:border-green-800">
                       <BeanHead {...beanConfig} />
                     </div>
                     <button
                       onClick={randomizeAvatar}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-50 hover:bg-green-100 rounded-xl text-green-700 font-medium transition-all"
+                      className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-900/30 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-xl text-green-700 dark:text-green-400 font-medium transition-all"
                     >
                       <RefreshCw size={18} />
                       Randomize
@@ -320,7 +321,7 @@ export default function GroupInfoModal({
 
                 {/* Group Name */}
                 <div>
-                  <label className="block text-sm font-medium text-[#5f6368] mb-2">
+                  <label className="block text-sm font-medium text-[#5f6368] dark:text-gray-400 mb-2">
                     Group Name
                   </label>
                   <input
@@ -328,40 +329,40 @@ export default function GroupInfoModal({
                     value={editGroupName}
                     onChange={(e) => setEditGroupName(e.target.value)}
                     placeholder="Enter group name..."
-                    className="w-full px-4 py-3 border border-[#dadce0] rounded-xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
+                    className="w-full px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
                     maxLength={50}
                   />
-                  <p className="text-xs text-[#5f6368] mt-1">{editGroupName.length}/50 characters</p>
+                  <p className="text-xs text-[#5f6368] dark:text-gray-400 mt-1">{editGroupName.length}/50 characters</p>
                 </div>
 
                 {/* Description */}
                 <div>
-                  <label className="block text-sm font-medium text-[#5f6368] mb-2">
+                  <label className="block text-sm font-medium text-[#5f6368] dark:text-gray-400 mb-2">
                     Description
                   </label>
                   <textarea
                     value={editDescription}
                     onChange={(e) => setEditDescription(e.target.value)}
                     placeholder="What's this group about?"
-                    className="w-full px-4 py-3 border border-[#dadce0] rounded-xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none resize-none transition-all"
+                    className="w-full px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none resize-none transition-all"
                     rows={3}
                     maxLength={200}
                   />
-                  <p className="text-xs text-[#5f6368] mt-1">{editDescription.length}/200 characters</p>
+                  <p className="text-xs text-[#5f6368] dark:text-gray-400 mt-1">{editDescription.length}/200 characters</p>
                 </div>
 
                 {/* Save/Cancel Buttons */}
                 <div className="flex gap-3 pt-2">
                   <button
                     onClick={handleCancelEdit}
-                    className="flex-1 px-4 py-3 border border-[#dadce0] rounded-xl hover:bg-gray-50 transition-colors font-medium"
+                    className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] text-[#202124] dark:text-white rounded-xl hover:bg-gray-50 dark:hover:bg-[#101010] transition-colors font-medium"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSaveEdit}
                     disabled={!editGroupName.trim() || updating}
-                    className="flex-1 px-4 py-3 bg-[#34A853] text-white rounded-xl hover:bg-[#2D9249] disabled:bg-gray-200 disabled:text-gray-400 transition-colors flex items-center justify-center gap-2 font-medium"
+                    className="flex-1 px-4 py-3 bg-[#34A853] text-white rounded-xl hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-colors flex items-center justify-center gap-2 font-medium"
                   >
                     {updating ? (
                       <>
@@ -385,7 +386,7 @@ export default function GroupInfoModal({
         {!isEditMode && (
           <>
             {/* Tabs */}
-            <div className="flex p-2 gap-1 bg-gray-50/50">
+            <div className="flex p-2 gap-1 bg-gray-50/50 dark:bg-[#101010]/50">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -399,12 +400,12 @@ export default function GroupInfoModal({
                     {isActive && (
                       <motion.div
                         layoutId="activeTab"
-                        className="absolute inset-0 bg-green-100 rounded-xl"
+                        className="absolute inset-0 bg-green-100 dark:bg-green-900/30 rounded-xl"
                         transition={{ type: "spring", duration: 0.5, bounce: 0.2 }}
                       />
                     )}
-                    <span className={`relative z-10 flex items-center justify-center gap-2 ${
-                      isActive ? 'text-green-700' : 'text-[#5f6368]'
+                    <span className={`relative z-10 flex items-center justify-center gap-2 text-sm ${
+                      isActive ? 'text-green-700 dark:text-green-400' : 'text-[#5f6368] dark:text-gray-400'
                     }`}>
                       <Icon size={18} />
                       {tab.label} {tab.id === 'members' && `(${group.members?.length || 0})`}
@@ -421,7 +422,7 @@ export default function GroupInfoModal({
                 <div className="space-y-6">
                   {/* Admins */}
                   <div>
-                    <h3 className="text-sm font-medium text-[#202124] mb-3 flex items-center gap-2">
+                    <h3 className="text-sm font-medium text-[#202124] dark:text-white mb-3 flex items-center gap-2">
                       <Crown size={16} className="text-yellow-600" />
                       Admins
                     </h3>
@@ -429,18 +430,18 @@ export default function GroupInfoModal({
                       {admins.map(member => (
                         <div 
                           key={member.userId}
-                          className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                          className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#101010] rounded-xl hover:bg-gray-100 dark:hover:bg-[#181A1E] transition-colors"
                         >
                           <div className="flex items-center gap-3">
                             <Avatar userAvatar={member.avatar} name={member.userName} size="w-10 h-10" />
                             <div>
-                              <p className="font-medium text-[#202124]">
+                              <p className="font-medium text-[#202124] dark:text-white">
                                 {member.userName}
                                 {member.userId === currentUserId && (
-                                  <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">You</span>
+                                  <span className="ml-2 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full">You</span>
                                 )}
                               </p>
-                              <p className="text-xs text-[#5f6368]">Joined {formatDate(member.joinedAt)}</p>
+                              <p className="text-xs text-[#5f6368] dark:text-gray-400">Joined {formatDate(member.joinedAt)}</p>
                             </div>
                           </div>
                           
@@ -448,7 +449,7 @@ export default function GroupInfoModal({
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleMemberAction(member.userId, 'demote')}
-                                className="p-2 px-4 bg-yellow-100 flex items-center text-sm gap-2 rounded-full text-yellow-800 hover:bg-yellow-200 transition-colors"
+                                className="p-2 px-4 bg-yellow-100 dark:bg-yellow-900/30 flex items-center text-sm gap-2 rounded-full text-yellow-800 dark:text-yellow-400 hover:bg-yellow-200 dark:hover:bg-yellow-900/50 transition-colors"
                                 title="Demote to member"
                               >
                                 <Shield size={18} />
@@ -456,7 +457,7 @@ export default function GroupInfoModal({
                               </button>
                               <button
                                 onClick={() => handleMemberAction(member.userId, 'remove')}
-                                className="p-2 px-4 bg-red-100 flex items-center gap-2 text-sm rounded-full text-red-600 hover:bg-red-200 transition-colors"
+                                className="p-2 px-4 bg-red-100 dark:bg-red-900/30 flex items-center gap-2 text-sm rounded-full text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
                                 title="Remove from group"
                               >
                                 <CircleMinus size={18} />
@@ -472,26 +473,26 @@ export default function GroupInfoModal({
                   {/* Members */}
                   {members.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-medium text-[#202124] mb-3 flex items-center gap-2">
-                        <Users size={16} className="text-[#5f6368]" />
+                      <h3 className="text-sm font-medium text-[#202124] dark:text-white mb-3 flex items-center gap-2">
+                        <Users size={16} className="text-[#5f6368] dark:text-gray-400" />
                         Members
                       </h3>
                       <div className="space-y-3">
                         {members.map(member => (
                           <div 
                             key={member.userId}
-                            className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                            className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#101010] rounded-xl hover:bg-gray-100 dark:hover:bg-[#181A1E] transition-colors"
                           >
                             <div className="flex items-center gap-3">
                               <Avatar userAvatar={member.avatar} name={member.userName} size="w-10 h-10" />
                               <div>
-                                <p className="font-medium text-[#202124]">
+                                <p className="font-medium text-[#202124] dark:text-white">
                                   {member.userName}
                                   {member.userId === currentUserId && (
-                                    <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">You</span>
+                                    <span className="ml-2 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full">You</span>
                                   )}
                                 </p>
-                                <p className="text-xs text-[#5f6368]">Joined {formatDate(member.joinedAt)}</p>
+                                <p className="text-xs text-[#5f6368] dark:text-gray-400">Joined {formatDate(member.joinedAt)}</p>
                               </div>
                             </div>
                             
@@ -499,7 +500,7 @@ export default function GroupInfoModal({
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => handleMemberAction(member.userId, 'promote')}
-                                  className="p-2 bg-green-100 px-4 text-sm flex items-center gap-2 rounded-full text-green-800 hover:bg-green-200 transition-colors"
+                                  className="p-2 bg-green-100 dark:bg-green-900/30 px-4 text-sm flex items-center gap-2 rounded-full text-green-800 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
                                   title="Promote to admin"
                                 >
                                   <ShieldCheck size={18} />
@@ -507,7 +508,7 @@ export default function GroupInfoModal({
                                 </button>
                                 <button
                                   onClick={() => handleMemberAction(member.userId, 'remove')}
-                                  className="p-2 bg-red-100 px-4 text-sm flex items-center gap-2 rounded-full text-red-600 hover:bg-red-200 transition-colors"
+                                  className="p-2 bg-red-100 dark:bg-red-900/30 px-4 text-sm flex items-center gap-2 rounded-full text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
                                   title="Remove from group"
                                 >
                                   <CircleMinus size={18} />
@@ -522,24 +523,24 @@ export default function GroupInfoModal({
                   )}
 
                   {/* Leave/Delete Group Section */}
-                  <div className="pt-6 border-t border-[#f1f3f4]">
+                  <div className="pt-6 border-t border-[#f1f3f4] dark:border-[#181A1E]">
                     <div className="space-y-3">
                       {/* Leave Group Button */}
                       {!showLeaveConfirm ? (
                         <button
                           onClick={() => setShowLeaveConfirm(true)}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-50 text-orange-700 rounded-xl hover:bg-orange-100 transition-colors font-medium"
+                          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded-xl hover:bg-orange-100 dark:hover:bg-orange-900/50 transition-colors font-medium"
                         >
                           <LogOut size={18} />
                           Leave Group
                         </button>
                       ) : (
-                        <div className="p-4 bg-orange-50 rounded-3xl space-y-3">
+                        <div className="p-4 bg-orange-50 dark:bg-orange-900/30 rounded-3xl space-y-3">
                           <div className="flex items-start gap-3">
-                            <AlertTriangle size={20} className="text-orange-600 flex-shrink-0 mt-0.5" />
+                            <AlertTriangle size={20} className="text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" />
                             <div>
-                              <p className="text-sm font-medium text-orange-800">Are you sure you want to leave?</p>
-                              <p className="text-xs text-orange-700 mt-1">
+                              <p className="text-sm font-medium text-orange-800 dark:text-orange-300">Are you sure you want to leave?</p>
+                              <p className="text-xs text-orange-700 dark:text-orange-400 mt-1">
                                 You will no longer have access to this group's messages and content.
                                 {isLastAdmin && " As the last admin, if you leave, another member will be promoted to admin."}
                               </p>
@@ -548,7 +549,7 @@ export default function GroupInfoModal({
                           <div className="flex gap-2">
                             <button
                               onClick={() => setShowLeaveConfirm(false)}
-                              className="flex-1 px-3 py-2 bg-white text-orange-700 rounded-lg hover:bg-orange-100 transition-colors text-sm"
+                              className="flex-1 px-3 py-2 bg-white dark:bg-[#0c0c0c] text-orange-700 dark:text-orange-400 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900/50 transition-colors text-sm"
                             >
                               Cancel
                             </button>
@@ -579,18 +580,18 @@ export default function GroupInfoModal({
                           {!showDeleteConfirm ? (
                             <button
                               onClick={() => setShowDeleteConfirm(true)}
-                              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-700 rounded-xl hover:bg-red-100 transition-colors font-medium"
+                              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors font-medium"
                             >
                               <Trash2 size={18} />
                               Delete Group
                             </button>
                           ) : (
-                            <div className="p-4 bg-red-50 rounded-3xl space-y-3">
+                            <div className="p-4 bg-red-50 dark:bg-red-900/30 rounded-3xl space-y-3">
                               <div className="flex items-start gap-3">
-                                <AlertTriangle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+                                <AlertTriangle size={20} className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                                 <div>
-                                  <p className="text-sm font-medium text-red-800">Delete this group?</p>
-                                  <p className="text-xs text-red-700 mt-1">
+                                  <p className="text-sm font-medium text-red-800 dark:text-red-300">Delete this group?</p>
+                                  <p className="text-xs text-red-700 dark:text-red-400 mt-1">
                                     This action cannot be undone. All messages and group data will be permanently deleted for everyone.
                                   </p>
                                 </div>
@@ -598,7 +599,7 @@ export default function GroupInfoModal({
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => setShowDeleteConfirm(false)}
-                                  className="flex-1 px-3 py-2 bg-white text-red-700 rounded-lg hover:bg-red-100 transition-colors text-sm"
+                                  className="flex-1 px-3 py-2 bg-white dark:bg-[#0c0c0c] text-red-700 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors text-sm"
                                 >
                                   Cancel
                                 </button>
@@ -633,18 +634,18 @@ export default function GroupInfoModal({
               {activeTab === 'settings' && (
                 <div className="space-y-6">
                   {!isAdmin && (
-                    <div className="p-4 bg-yellow-50 text-yellow-700 rounded-xl text-sm">
+                    <div className="p-4 bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-xl text-sm">
                       Only admins can change group settings
                     </div>
                   )}
 
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#101010] rounded-xl hover:bg-gray-100 dark:hover:bg-[#181A1E] transition-colors">
                       <div className="flex items-center gap-3">
-                        <Lock size={20} className="text-[#5f6368]" />
+                        <Lock size={20} className="text-[#5f6368] dark:text-gray-400" />
                         <div>
-                          <p className="font-medium text-[#202124]">Admin Only Messaging</p>
-                          <p className="text-xs text-[#5f6368]">Only admins can send messages</p>
+                          <p className="font-medium text-[#202124] dark:text-white">Admin Only Messaging</p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">Only admins can send messages</p>
                         </div>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
@@ -655,16 +656,16 @@ export default function GroupInfoModal({
                           disabled={!isAdmin || updating}
                           className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#34A853]"></div>
+                        <div className="w-11 h-6 bg-gray-200 dark:bg-[#232529] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#34A853]"></div>
                       </label>
                     </div>
 
-                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#101010] rounded-xl hover:bg-gray-100 dark:hover:bg-[#181A1E] transition-colors">
                       <div className="flex items-center gap-3">
-                        <UserPlus size={20} className="text-[#5f6368]" />
+                        <UserPlus size={20} className="text-[#5f6368] dark:text-gray-400" />
                         <div>
-                          <p className="font-medium text-[#202124]">Allow Member Invites</p>
-                          <p className="text-xs text-[#5f6368]">Members can invite others with invite code</p>
+                          <p className="font-medium text-[#202124] dark:text-white">Allow Member Invites</p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">Members can invite others with invite code</p>
                         </div>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
@@ -675,7 +676,7 @@ export default function GroupInfoModal({
                           disabled={!isAdmin || updating}
                           className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#34A853]"></div>
+                        <div className="w-11 h-6 bg-gray-200 dark:bg-[#232529] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#34A853]"></div>
                       </label>
                     </div>
                   </div>
@@ -685,12 +686,12 @@ export default function GroupInfoModal({
               {/* Invite Tab */}
               {activeTab === 'invite' && (
                 <div className="space-y-6">
-                  <div className="text-center p-6 bg-green-50 rounded-3xl">
-                    <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-                      <Users size={32} className="text-green-600" />
+                  <div className="text-center p-6 bg-green-50 dark:bg-green-900/30 rounded-3xl">
+                    <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center mx-auto mb-4">
+                      <Users size={32} className="text-green-600 dark:text-green-400" />
                     </div>
-                    <h3 className="text-lg font-semibold text-[#202124] mb-2">Invite People</h3>
-                    <p className="text-sm text-[#5f6368] mb-4">
+                    <h3 className="text-lg font-semibold text-[#202124] dark:text-white mb-2">Invite People</h3>
+                    <p className="text-sm text-[#5f6368] dark:text-gray-400 mb-4">
                       Share this code with friends to join the group
                     </p>
                     
@@ -700,9 +701,9 @@ export default function GroupInfoModal({
                       </div>
                       <button
                         onClick={handleCopyInvite}
-                        className="p-3 bg-white border border-[#dadce0] rounded-xl hover:bg-gray-50 transition-colors"
+                        className="p-3 bg-white dark:bg-[#0c0c0c] border border-[#dadce0] dark:border-[#232529] rounded-xl hover:bg-gray-50 dark:hover:bg-[#101010] transition-colors"
                       >
-                        {copied ? <Check size={20} className="text-green-600" /> : <Copy size={20} />}
+                        {copied ? <Check size={20} className="text-green-600" /> : <Copy size={20} className="text-[#202124] dark:text-white" />}
                       </button>
                     </div>
 
@@ -710,7 +711,7 @@ export default function GroupInfoModal({
                       <button
                         onClick={onRegenerateInvite}
                         disabled={updating}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-white  border-[#dadce0] rounded-xl hover:bg-gray-50 text-sm transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#0c0c0c] border border-[#dadce0] dark:border-[#232529] text-[#202124] dark:text-white rounded-xl hover:bg-gray-50 dark:hover:bg-[#101010] text-sm transition-colors"
                       >
                         <RefreshCw size={16} />
                         Generate New Code
@@ -718,8 +719,8 @@ export default function GroupInfoModal({
                     )}
                   </div>
 
-                  <div className="p-4 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-[#5f6368]">
+                  <div className="p-4 bg-gray-50 dark:bg-[#101010] rounded-xl">
+                    <p className="text-xs text-[#5f6368] dark:text-gray-400">
                       Anyone with this code can join the group. 
                       {group.settings?.allowMemberInvite 
                         ? ' Share it with friends you want to add.' 

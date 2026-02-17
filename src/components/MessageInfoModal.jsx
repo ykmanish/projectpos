@@ -1,6 +1,6 @@
 "use client";
 
-import { X, Check, CheckCheck, Send as SendIcon, Eye, Users } from "lucide-react";
+import { X, Check, CheckCheck, Send as SendIcon, Eye } from "lucide-react";
 import Avatar from "./Avatar";
 
 export default function MessageInfoModal({ 
@@ -46,24 +46,63 @@ export default function MessageInfoModal({
     }
   };
 
-  // Get read by members (for group messages)
+  // Check if message uses new readBy format (array of objects)
+  const isNewReadByFormat = () => {
+    return message.readBy && 
+           message.readBy.length > 0 && 
+           typeof message.readBy[0] === 'object';
+  };
+
+  // Get read by members with their individual read times
   const getReadByMembers = () => {
-    if (!isGroupMessage || !message.readBy || !groupMembers) return [];
-    return groupMembers.filter(member => 
-      message.readBy.includes(member.userId) && member.userId !== message.senderId
-    );
+    if (!isGroupMessage || !groupMembers) return [];
+    
+    if (isNewReadByFormat()) {
+      // New format - array of objects with userId and readAt
+      return message.readBy
+        .filter(read => read.userId !== message.senderId)
+        .map(read => {
+          const member = groupMembers.find(m => m.userId === read.userId);
+          return {
+            ...member,
+            readAt: read.readAt
+          };
+        })
+        .filter(member => member); // Remove any undefined members
+    } else {
+      // Old format - array of userIds
+      return groupMembers.filter(member => 
+        message.readBy?.includes(member.userId) && member.userId !== message.senderId
+      );
+    }
   };
 
   const getNotReadByMembers = () => {
     if (!isGroupMessage || !groupMembers) return [];
-    const readByIds = message.readBy || [message.senderId];
+    
+    const readUserIds = isNewReadByFormat()
+      ? message.readBy?.map(r => r.userId) || []
+      : message.readBy || [];
+    
     return groupMembers.filter(member => 
-      !readByIds.includes(member.userId) && member.userId !== message.senderId
+      !readUserIds.includes(member.userId) && member.userId !== message.senderId
     );
+  };
+
+  // Get read time for a specific user (for group messages)
+  const getUserReadTime = (userId) => {
+    if (!isGroupMessage || !isNewReadByFormat()) return null;
+    const readEntry = message.readBy?.find(r => r.userId === userId);
+    return readEntry?.readAt;
   };
 
   const readByMembers = getReadByMembers();
   const notReadByMembers = getNotReadByMembers();
+
+  // Determine if message has been read by anyone (for overall read status)
+  const hasBeenRead = isGroupMessage 
+    ? readByMembers.length > 0 
+    : message.read;
 
   return (
     <>
@@ -74,71 +113,52 @@ export default function MessageInfoModal({
       >
         {/* Modal */}
         <div
-          className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+          className="bg-white dark:bg-[#0c0c0c] rounded-3xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200 transition-colors"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="p-6 border-b border-[#f1f3f4] flex items-center justify-between sticky top-0 bg-white z-10">
-            <h2 className="text-xl font-semibold text-[#202124]">Message Info</h2>
+          <div className="p-6 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between sticky top-0 bg-white dark:bg-[#0c0c0c] z-10">
+            <h2 className="text-xl font-semibold text-[#202124] dark:text-white">Message Info</h2>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
             >
-              <X size={20} className="text-[#5f6368]" />
+              <X size={20} className="text-[#5f6368] dark:text-white" />
             </button>
           </div>
 
           {/* Content */}
           <div className="p-6 space-y-6">
-            {/* Message Preview */}
-            {/* <div className="bg-[#F8F9FA] rounded-2xl p-4 border border-[#dadce0]">
-              <p className="text-xs text-[#5f6368] mb-2 font-medium">MESSAGE</p>
-              {message.content ? (
-                <p className="text-sm text-[#202124] break-words whitespace-pre-wrap">
-                  {message.content}
-                </p>
-              ) : message.attachments && message.attachments.length > 0 ? (
-                <div className="flex items-center gap-2 text-sm text-[#5f6368]">
-                  {message.attachments[0].type === 'image' ? '📷' : '🎥'}
-                  <span>
-                    {message.attachments.length} {message.attachments.length === 1 ? 'attachment' : 'attachments'}
-                  </span>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400 italic">No content</p>
-              )}
-            </div> */}
-
             {/* Timeline */}
             <div className="space-y-4">
               {/* Sent */}
               <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                  <SendIcon size={18} className="text-blue-600" />
+                <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                  <SendIcon size={18} className="text-blue-600 dark:text-blue-400" />
                 </div>
                 <div className="flex-1 pt-1">
-                  <p className="text-sm font-medium text-[#202124] mb-1">Sent</p>
-                  <p className="text-xs text-[#5f6368]">
+                  <p className="text-sm font-medium text-[#202124] dark:text-white mb-1">Sent</p>
+                  <p className="text-xs text-[#5f6368] dark:text-gray-400">
                     {formatDateTime(message.timestamp)}
                   </p>
                 </div>
-                <Check size={18} className="text-blue-600 mt-2" />
+                <Check size={18} className="text-blue-600 dark:text-blue-400 mt-2" />
               </div>
 
               {/* Delivered */}
               <div className="flex items-start gap-4">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  message.delivered ? 'bg-green-100' : 'bg-gray-100'
+                  message.delivered ? 'bg-green-100 dark:bg-green-900/30' : 'bg-gray-100 dark:bg-[#232529]'
                 }`}>
-                  <CheckCheck size={18} className={message.delivered ? 'text-green-600' : 'text-gray-400'} />
+                  <CheckCheck size={18} className={message.delivered ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'} />
                 </div>
                 <div className="flex-1 pt-1">
                   <p className={`text-sm font-medium mb-1 ${
-                    message.delivered ? 'text-[#202124]' : 'text-gray-400'
+                    message.delivered ? 'text-[#202124] dark:text-white' : 'text-gray-400 dark:text-gray-500'
                   }`}>
                     Delivered
                   </p>
-                  <p className="text-xs text-[#5f6368]">
+                  <p className="text-xs text-[#5f6368] dark:text-gray-400">
                     {message.deliveredAt 
                       ? formatDateTime(message.deliveredAt)
                       : message.delivered 
@@ -147,28 +167,28 @@ export default function MessageInfoModal({
                     }
                   </p>
                 </div>
-                {message.delivered && <CheckCheck size={18} className="text-green-600 mt-2" />}
+                {message.delivered && <CheckCheck size={18} className="text-green-600 dark:text-green-400 mt-2" />}
               </div>
 
               {/* Read */}
               <div className="flex items-start gap-4">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  message.read || (isGroupMessage && readByMembers.length > 0) ? 'bg-blue-100' : 'bg-gray-100'
+                  hasBeenRead ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-gray-100 dark:bg-[#232529]'
                 }`}>
                   <Eye size={18} className={
-                    message.read || (isGroupMessage && readByMembers.length > 0) ? 'text-blue-600' : 'text-gray-400'
+                    hasBeenRead ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'
                   } />
                 </div>
                 <div className="flex-1 pt-1">
                   <p className={`text-sm font-medium mb-1 ${
-                    message.read || (isGroupMessage && readByMembers.length > 0) ? 'text-[#202124]' : 'text-gray-400'
+                    hasBeenRead ? 'text-[#202124] dark:text-white' : 'text-gray-400 dark:text-gray-500'
                   }`}>
                     Read
                   </p>
                   
                   {!isGroupMessage ? (
                     <>
-                      <p className="text-xs text-[#5f6368]">
+                      <p className="text-xs text-[#5f6368] dark:text-gray-400">
                         {message.readAt 
                           ? formatDateTime(message.readAt)
                           : message.read
@@ -177,13 +197,13 @@ export default function MessageInfoModal({
                         }
                       </p>
                       {message.read && friendName && (
-                        <p className="text-xs text-[#5f6368] mt-1">
+                        <p className="text-xs text-[#5f6368] dark:text-gray-400 mt-1">
                           Read by {friendName}
                         </p>
                       )}
                     </>
                   ) : (
-                    <p className="text-xs text-[#5f6368]">
+                    <p className="text-xs text-[#5f6368] dark:text-gray-400">
                       {readByMembers.length > 0 
                         ? `Read by ${readByMembers.length} ${readByMembers.length === 1 ? 'member' : 'members'}`
                         : 'Not read yet'
@@ -191,8 +211,8 @@ export default function MessageInfoModal({
                     </p>
                   )}
                 </div>
-                {(message.read || (isGroupMessage && readByMembers.length > 0)) && (
-                  <CheckCheck size={18} className="text-blue-500 mt-2" />
+                {hasBeenRead && (
+                  <CheckCheck size={18} className="text-blue-500 dark:text-blue-400 mt-2" />
                 )}
               </div>
             </div>
@@ -200,12 +220,12 @@ export default function MessageInfoModal({
             {/* Group Read Receipts */}
             {isGroupMessage && (
               <div className="space-y-4">
-                {/* Read By */}
+                {/* Read By with individual timestamps */}
                 {readByMembers.length > 0 && (
-                  <div className="bg-zinc-100/60  border-blue-200 rounded-2xl p-4">
+                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-2xl p-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <CheckCheck size={16} className="text-blue-600" />
-                      <p className="text-sm font-medium text-blue-900">
+                      <CheckCheck size={16} className="text-blue-600 dark:text-blue-400" />
+                      <p className="text-sm font-medium text-blue-900 dark:text-blue-300">
                         Read by {readByMembers.length}
                       </p>
                     </div>
@@ -218,12 +238,14 @@ export default function MessageInfoModal({
                             size="w-8 h-8" 
                           />
                           <div className="flex-1">
-                            <p className="text-sm text-blue-900">{member.userName}</p>
-                            {message.readAt && (
-                              <p className="text-xs text-blue-700">
-                                {formatDateTime(message.readAt)}
-                              </p>
-                            )}
+                            <p className="text-sm text-blue-900 dark:text-blue-300">{member.userName}</p>
+                            <p className="text-xs text-blue-700 dark:text-blue-400">
+                              {formatDateTime(
+                                isNewReadByFormat() 
+                                  ? getUserReadTime(member.userId) 
+                                  : message.readAt
+                              )}
+                            </p>
                           </div>
                         </div>
                       ))}
@@ -233,10 +255,10 @@ export default function MessageInfoModal({
 
                 {/* Not Read By */}
                 {notReadByMembers.length > 0 && (
-                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                  <div className="bg-gray-50 dark:bg-[#101010] border border-gray-200 dark:border-[#232529] rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <Check size={16} className="text-gray-600" />
-                      <p className="text-sm font-medium text-gray-900">
+                      <Check size={16} className="text-gray-600 dark:text-gray-400" />
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
                         Delivered to {notReadByMembers.length}
                       </p>
                     </div>
@@ -249,8 +271,8 @@ export default function MessageInfoModal({
                             size="w-8 h-8" 
                           />
                           <div className="flex-1">
-                            <p className="text-sm text-gray-900">{member.userName}</p>
-                            <p className="text-xs text-gray-600">Not read yet</p>
+                            <p className="text-sm text-gray-900 dark:text-white">{member.userName}</p>
+                            <p className="text-xs text-gray-600 dark:text-gray-400">Not read yet</p>
                           </div>
                         </div>
                       ))}
@@ -262,18 +284,18 @@ export default function MessageInfoModal({
 
             {/* Additional Info */}
             {message.edited && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-                <p className="text-xs font-medium text-yellow-800 mb-1">Edited Message</p>
-                <p className="text-xs text-yellow-700">
+              <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-xl p-3">
+                <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300 mb-1">Edited Message</p>
+                <p className="text-xs text-yellow-700 dark:text-yellow-400">
                   {message.editedAt ? formatDateTime(message.editedAt) : 'Edit time not available'}
                 </p>
               </div>
             )}
 
             {message.deleted && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                <p className="text-xs font-medium text-red-800 mb-1">Deleted Message</p>
-                <p className="text-xs text-red-700">
+              <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-3">
+                <p className="text-xs font-medium text-red-800 dark:text-red-300 mb-1">Deleted Message</p>
+                <p className="text-xs text-red-700 dark:text-red-400">
                   {message.deletedAt ? formatDateTime(message.deletedAt) : 'Deletion time not available'}
                 </p>
               </div>
@@ -281,7 +303,7 @@ export default function MessageInfoModal({
           </div>
 
           {/* Footer */}
-          <div className="p-4 border-t border-[#f1f3f4] flex justify-end sticky bottom-0 bg-white">
+          <div className="p-4 border-t border-[#f1f3f4] dark:border-[#181A1E] flex justify-end sticky bottom-0 bg-white dark:bg-[#0c0c0c]">
             <button
               onClick={onClose}
               className="px-6 py-2 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] transition-colors"

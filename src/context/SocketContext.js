@@ -68,10 +68,10 @@ export function SocketProvider({ children }) {
       console.error('❌ Reconnection failed after max attempts');
     });
 
-    // Global listener for debugging
-    socketIo.onAny((eventName, ...args) => {
-      console.log('📡 Socket event received:', eventName, args);
-    });
+    // Global listener for debugging (remove in production)
+    // socketIo.onAny((eventName, ...args) => {
+    //   console.log('📡 Socket event received:', eventName, args);
+    // });
 
     // Set socket to state
     setSocket(socketIo);

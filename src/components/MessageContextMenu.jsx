@@ -125,14 +125,14 @@ export default function MessageContextMenu({
     <>
       {/* Backdrop for mobile */}
       <div
-        className="fixed inset-0 bg-black/20 z-40 md:hidden"
+        className="fixed inset-0 bg-black/20 dark:bg-black/40 z-40 md:hidden"
         onClick={onClose}
       />
       
       {/* Context Menu */}
       <div
         ref={menuRef}
-        className="fixed z-50 bg-white rounded-2xl shadow-2xl border border-[#dadce0] py-2 min-w-[200px] max-w-[90vw] animate-in fade-in zoom-in-95 duration-100"
+        className="fixed z-50 bg-white dark:bg-[#0c0c0c] rounded-2xl shadow-2xl border border-[#dadce0] dark:border-[#232529] py-2 min-w-[200px] max-w-[90vw] animate-in fade-in zoom-in-95 duration-100"
         style={getMenuStyle()}
       >
         {/* Emoji Reactions */}
@@ -141,14 +141,14 @@ export default function MessageContextMenu({
             onClick={handleReactClick}
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className="w-full px-4 py-3 hover:bg-gray-50 flex items-center gap-3 transition-colors text-left"
+            className="w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#101010] flex items-center gap-3 transition-colors text-left"
           >
-            <Smile size={18} className="text-[#5f6368]" />
-            <span className="text-sm text-[#202124]">React</span>
+            <Smile size={18} className="text-[#5f6368] dark:text-gray-400" />
+            <span className="text-sm text-[#202124] dark:text-white">React</span>
           </button>
         ) : (
           <>
-            <div className="px-3 py-3 flex flex-wrap gap-2 justify-center border-b border-[#f1f3f4]">
+            <div className="px-3 py-3 flex flex-wrap gap-2 justify-center border-b border-[#f1f3f4] dark:border-[#232529]">
               {EMOJI_REACTIONS.map((emoji) => (
                 <button
                   key={emoji}
@@ -167,9 +167,9 @@ export default function MessageContextMenu({
               onClick={handleBackClick}
               onMouseDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
-              className="w-full px-4 py-2 hover:bg-gray-50 flex items-center gap-3 transition-colors text-left"
+              className="w-full px-4 py-2 hover:bg-gray-50 dark:hover:bg-[#101010] flex items-center gap-3 transition-colors text-left"
             >
-              <span className="text-sm text-[#5f6368]">← Back</span>
+              <span className="text-sm text-[#5f6368] dark:text-gray-400">← Back</span>
             </button>
           </>
         )}
@@ -178,10 +178,10 @@ export default function MessageContextMenu({
         {isOwnMessage && !message.deleted && (
           <button
             onClick={() => handleAction(onMessageInfo)}
-            className="w-full px-4 py-3 hover:bg-blue-50 flex items-center gap-3 transition-colors text-left"
+            className="w-full px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center gap-3 transition-colors text-left"
           >
-            <Info size={18} className="text-blue-600" />
-            <span className="text-sm text-[#202124]">Message Info</span>
+            <Info size={18} className="text-blue-600 dark:text-blue-400" />
+            <span className="text-sm text-[#202124] dark:text-white">Message Info</span>
           </button>
         )}
 
@@ -189,10 +189,10 @@ export default function MessageContextMenu({
         {message.content && !message.deleted && (
           <button
             onClick={() => handleAction(() => onCopy(message.content))}
-            className="w-full px-4 py-3 hover:bg-gray-50 flex items-center gap-3 transition-colors text-left"
+            className="w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#101010] flex items-center gap-3 transition-colors text-left"
           >
-            <Copy size={18} className="text-[#5f6368]" />
-            <span className="text-sm text-[#202124]">Copy</span>
+            <Copy size={18} className="text-[#5f6368] dark:text-gray-400" />
+            <span className="text-sm text-[#202124] dark:text-white">Copy</span>
           </button>
         )}
 
@@ -200,26 +200,26 @@ export default function MessageContextMenu({
         {isOwnMessage && message.content && !message.deleted && (
           <button
             onClick={() => handleAction(onEdit)}
-            className="w-full px-4 py-3 hover:bg-blue-50 flex items-center gap-3 transition-colors text-left"
+            className="w-full px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center gap-3 transition-colors text-left"
           >
-            <Edit size={18} className="text-blue-600" />
-            <span className="text-sm text-[#202124]">Edit</span>
+            <Edit size={18} className="text-blue-600 dark:text-blue-400" />
+            <span className="text-sm text-[#202124] dark:text-white">Edit</span>
           </button>
         )}
 
         {/* Divider */}
         {message.content && !message.deleted && (
-          <div className="border-t border-[#f1f3f4] my-1" />
+          <div className="border-t border-[#f1f3f4] dark:border-[#232529] my-1" />
         )}
 
         {/* Delete for Me */}
         {!message.deleted && (
           <button
             onClick={() => handleAction(onDelete)}
-            className="w-full px-4 py-3 hover:bg-red-50 flex items-center gap-3 transition-colors text-left"
+            className="w-full px-4 py-3 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-3 transition-colors text-left"
           >
-            <Trash2 size={18} className="text-red-600" />
-            <span className="text-sm text-red-600">Delete for Me</span>
+            <Trash2 size={18} className="text-red-600 dark:text-red-400" />
+            <span className="text-sm text-red-600 dark:text-red-400">Delete for Me</span>
           </button>
         )}
 
@@ -227,19 +227,19 @@ export default function MessageContextMenu({
         {canDeleteForEveryone() && !message.deleted && (
           <button
             onClick={() => handleAction(onDeleteForEveryone)}
-            className="w-full px-4 py-3 hover:bg-red-50 flex items-center gap-3 transition-colors text-left"
+            className="w-full px-4 py-3 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-3 transition-colors text-left"
           >
-            <Trash2 size={18} className="text-red-700" />
+            <Trash2 size={18} className="text-red-700 dark:text-red-400" />
             <div className="flex flex-col">
-              <span className="text-sm text-red-700 font-medium">Delete for Everyone</span>
-              <span className="text-xs text-red-500">Available for 1 hour</span>
+              <span className="text-sm text-red-700 dark:text-red-400 font-medium">Delete for Everyone</span>
+              <span className="text-xs text-red-500 dark:text-red-400">Available for 1 hour</span>
             </div>
           </button>
         )}
 
         {/* Message if delete for everyone is not available */}
         {isOwnMessage && !canDeleteForEveryone() && !message.deleted && (
-          <div className="px-4 py-2 text-xs text-gray-400 italic">
+          <div className="px-4 py-2 text-xs text-gray-400 dark:text-gray-500 italic">
             Delete for everyone only available for 1 hour
           </div>
         )}

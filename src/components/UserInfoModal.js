@@ -40,7 +40,9 @@ export default function UserInfoModal({
       nextRequirement: 1000,
       icon: '/bronze.svg',
       bgColor: 'bg-amber-600',
-      textColor: 'text-amber-600'
+      textColor: 'text-amber-600',
+      darkBgColor: 'bg-amber-600', // Same for dark mode
+      darkTextColor: 'text-amber-500'
     },
     { 
       name: 'Silver', 
@@ -49,7 +51,9 @@ export default function UserInfoModal({
       nextRequirement: 4000,
       icon: '/silver.svg',
       bgColor: 'bg-gray-400',
-      textColor: 'text-gray-500'
+      textColor: 'text-gray-500',
+      darkBgColor: 'bg-gray-400',
+      darkTextColor: 'text-gray-400'
     },
     { 
       name: 'Gold', 
@@ -58,7 +62,9 @@ export default function UserInfoModal({
       nextRequirement: 10000,
       icon: '/gold.svg',
       bgColor: 'bg-yellow-500',
-      textColor: 'text-yellow-600'
+      textColor: 'text-yellow-600',
+      darkBgColor: 'bg-yellow-500',
+      darkTextColor: 'text-yellow-500'
     },
     { 
       name: 'Platinum', 
@@ -67,7 +73,9 @@ export default function UserInfoModal({
       nextRequirement: 20000,
       icon: '/platinum.svg',
       bgColor: 'bg-cyan-600',
-      textColor: 'text-cyan-600'
+      textColor: 'text-cyan-600',
+      darkBgColor: 'bg-cyan-600',
+      darkTextColor: 'text-cyan-400'
     },
     { 
       name: 'Diamond', 
@@ -76,7 +84,9 @@ export default function UserInfoModal({
       nextRequirement: 35000,
       icon: '/diamond.svg',
       bgColor: 'bg-blue-600',
-      textColor: 'text-blue-600'
+      textColor: 'text-blue-600',
+      darkBgColor: 'bg-blue-600',
+      darkTextColor: 'text-blue-400'
     },
     { 
       name: 'Obsidian', 
@@ -85,7 +95,9 @@ export default function UserInfoModal({
       nextRequirement: 60000,
       icon: '/obsidian.svg',
       bgColor: 'bg-purple-900',
-      textColor: 'text-purple-900'
+      textColor: 'text-purple-900',
+      darkBgColor: 'bg-purple-800',
+      darkTextColor: 'text-purple-400'
     },
     { 
       name: 'Opal', 
@@ -94,7 +106,9 @@ export default function UserInfoModal({
       nextRequirement: 80000,
       icon: '/opal.svg',
       bgColor: 'bg-pink-400',
-      textColor: 'text-pink-500'
+      textColor: 'text-pink-500',
+      darkBgColor: 'bg-pink-500',
+      darkTextColor: 'text-pink-400'
     },
     { 
       name: 'Ultimate', 
@@ -103,7 +117,9 @@ export default function UserInfoModal({
       nextRequirement: null,
       icon: '/ultimate.svg',
       bgColor: 'bg-gradient-to-r from-red-600 via-red-500 to-red-500',
-      textColor: 'text-red-600'
+      textColor: 'text-red-600',
+      darkBgColor: 'bg-gradient-to-r from-red-600 via-red-500 to-red-500',
+      darkTextColor: 'text-red-400'
     },
   ];
 
@@ -318,16 +334,16 @@ export default function UserInfoModal({
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.2 }}
-        className="bg-white rounded-[30px] max-w-md w-full max-h-[90vh] overflow-hidden"
+        className="bg-white dark:bg-[#0c0c0c] rounded-[30px] max-w-md w-full max-h-[90vh] overflow-hidden transition-colors duration-300"
       >
         {/* Header */}
-        <div className="p-6 border-b border-[#f1f3f4] flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-[#000000]">User Profile</h2>
+        <div className="p-6 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-[#000000] dark:text-white">User Profile</h2>
           <button
             onClick={onClose}
-            className="p-2 bg-gray-100 rounded-full transition-colors"
+            className="p-2 bg-gray-100 dark:bg-[#101010] rounded-full transition-colors hover:bg-gray-200 dark:hover:bg-[#181A1E]"
           >
-            <X size={20} />
+            <X size={20} className="text-[#202124] dark:text-white" />
           </button>
         </div>
 
@@ -336,7 +352,7 @@ export default function UserInfoModal({
           {/* User Avatar & Basic Info */}
           <div className="flex items-center gap-4 mb-6">
             <div className="relative">
-              <div className="w-20 h-20 rounded-full overflow-hidden bg-zinc-100 flex items-center justify-center text-white font-semibold text-2xl">
+              <div className="w-20 h-20 rounded-full overflow-hidden bg-zinc-100 dark:bg-[#232529] flex items-center justify-center text-[#202124] dark:text-white font-semibold text-2xl">
                 {userAvatar?.beanConfig ? (
                   <BeanHead {...userAvatar.beanConfig} />
                 ) : (
@@ -344,29 +360,29 @@ export default function UserInfoModal({
                 )}
               </div>
               {isBlocked && (
-                <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 border-2 border-white rounded-full flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 border-2 border-white dark:border-[#0c0c0c] rounded-full flex items-center justify-center">
                   <Ban size={12} className="text-white" />
                 </span>
               )}
               {isBlockedByThem && !isBlocked && (
-                <span className="absolute -top-1 -right-1 w-6 h-6 bg-orange-500 border-2 border-white rounded-full flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 w-6 h-6 bg-orange-500 border-2 border-white dark:border-[#0c0c0c] rounded-full flex items-center justify-center">
                   <Ban size={12} className="text-white" />
                 </span>
               )}
             </div>
             <div className="flex-1">
-              <h3 className="text-2xl font-semibold text-[#000000]">{user.userName}</h3>
+              <h3 className="text-2xl font-semibold text-[#000000] dark:text-white">{user.userName}</h3>
               {user.username && (
-                <p className="text-[#5f6368]">@{user.username}</p>
+                <p className="text-[#5f6368] dark:text-gray-400">@{user.username}</p>
               )}
             </div>
           </div>
 
           {/* Tier Badge - Enhanced Display */}
-          <div className="mb-6 p-4 bg-gray-100  rounded-3xl  border-gray-200">
+          <div className="mb-6 p-4 bg-gray-100 dark:bg-[#101010] rounded-3xl border border-gray-200 dark:border-none">
             <div className="flex items-center gap-4">
               {/* Tier Icon */}
-              <div className={`w-20 h-20 rounded-full  flex items-center justify-center `}>
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center`}>
                 {userTier?.icon && (
                   <Image 
                     src={userTier.icon} 
@@ -381,28 +397,33 @@ export default function UserInfoModal({
               {/* Tier Info */}
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-lg font-bold ${userTier?.textColor || 'text-amber-600'}`}>
+                  <span className={`text-lg font-bold ${
+                    userTier?.darkTextColor || userTier?.textColor || 'text-amber-600 dark:text-amber-500'
+                  }`}>
                     {userTier?.name || 'Bronze'}
                   </span>
-                  <span className="text-sm text-[#5f6368]">Tier</span>
+                  <span className="text-sm text-[#5f6368] dark:text-gray-400">Tier</span>
                 </div>
                 
                 {/* Points Display */}
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-[#202124]">{userPoints}</span>
-                  <span className="text-sm text-[#5f6368]">points</span>
+                  <span className="text-2xl font-bold text-[#202124] dark:text-white">{userPoints}</span>
+                  <span className="text-sm text-[#5f6368] dark:text-gray-400">points</span>
                 </div>
                 
                 {/* Progress to Next Tier */}
                 {userTier?.nextRequirement && (
                   <div className="mt-2">
                     <div className="flex justify-between text-xs mb-1">
-                      <span className="text-[#5f6368]">Progress to {tiers[tiers.indexOf(userTier) + 1]?.name}</span>
-                      {/* <span className="font-medium text-[#202124]">{pointsToNextTier} points needed</span> */}
+                      <span className="text-[#5f6368] dark:text-gray-400">
+                        Progress to {tiers[tiers.indexOf(userTier) + 1]?.name}
+                      </span>
                     </div>
-                    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="w-full h-2 bg-gray-200 dark:bg-[#232529] rounded-full overflow-hidden">
                       <div 
-                        className={`h-full ${userTier?.bgColor || 'bg-amber-600'} rounded-full transition-all duration-300`}
+                        className={`h-full ${
+                          userTier?.darkBgColor || userTier?.bgColor || 'bg-amber-600'
+                        } rounded-full transition-all duration-300`}
                         style={{ width: `${progressPercentage}%` }}
                       />
                     </div>
@@ -412,19 +433,16 @@ export default function UserInfoModal({
             </div>
           </div>
 
-          {/* Points & Stats - Simplified now that we have tier info above */}
-          
-
           {/* Status Badge */}
-          <div className="mb-6 p-4 bg-gray-50 rounded-2xl">
+          <div className="mb-6 p-4 bg-gray-50 dark:bg-[#101010] rounded-2xl">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-[#5f6368]">Friendship Status</span>
+              <span className="text-sm text-[#5f6368] dark:text-gray-400">Friendship Status</span>
               <span className={`text-xs font-medium px-3 py-1 rounded-full ${
-                isBlocked ? 'bg-red-100 text-red-700' :
-                isBlockedByThem ? 'bg-orange-100 text-orange-700' :
-                isFriend ? 'bg-green-100 text-green-700' :
-                isPending ? 'bg-yellow-100 text-yellow-700' :
-                'bg-gray-100 text-gray-700'
+                isBlocked ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                isBlockedByThem ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' :
+                isFriend ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                isPending ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
+                'bg-gray-100 dark:bg-[#232529] text-gray-700 dark:text-gray-400'
               }`}>
                 {isBlocked ? 'You Blocked' :
                  isBlockedByThem ? 'Blocked You' :
@@ -437,12 +455,12 @@ export default function UserInfoModal({
 
           {/* Blocked Warning */}
           {isBlocked && (
-            <div className="mb-4 p-4 bg-red-50  border-red-200 rounded-3xl">
+            <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-3xl">
               <div className="flex items-start gap-3">
-                <Ban size={18} className="text-red-600 flex-shrink-0 mt-0.5" />
+                <Ban size={18} className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-red-800">You Blocked This User</p>
-                  <p className="text-xs text-red-700 mt-1">
+                  <p className="text-sm font-medium text-red-800 dark:text-red-300">You Blocked This User</p>
+                  <p className="text-xs text-red-700 dark:text-red-400 mt-1">
                     You have blocked this user. They cannot message you.
                   </p>
                 </div>
@@ -451,12 +469,12 @@ export default function UserInfoModal({
           )}
 
           {isBlockedByThem && !isBlocked && (
-            <div className="mb-4 p-4 bg-orange-50  border-orange-200 rounded-3xl">
+            <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 rounded-3xl">
               <div className="flex items-start gap-3">
-                <Ban size={18} className="text-orange-600 flex-shrink-0 mt-0.5" />
+                <Ban size={18} className="text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-orange-800">This User Blocked You</p>
-                  <p className="text-xs text-orange-700 mt-1">
+                  <p className="text-sm font-medium text-orange-800 dark:text-orange-300">This User Blocked You</p>
+                  <p className="text-xs text-orange-700 dark:text-orange-400 mt-1">
                     This user has blocked you. You cannot message them.
                   </p>
                 </div>
@@ -472,8 +490,8 @@ export default function UserInfoModal({
               disabled={isBlockedByThem}
               className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-colors font-medium ${
                 isBlockedByThem 
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed' 
-                  : 'bg-green-500 text-white hover:bg-green-600'
+                  ? 'bg-gray-200 dark:bg-[#232529] text-gray-500 dark:text-gray-400 cursor-not-allowed' 
+                  : 'bg-[#34A853] text-white hover:bg-[#2D9249] dark:bg-[#34A853] dark:hover:bg-[#2D9249]'
               }`}
               title={isBlockedByThem ? "This user has blocked you" : "Send a message"}
             >
@@ -485,7 +503,7 @@ export default function UserInfoModal({
             {isFriend && !isBlocked && !isBlockedByThem && !showConfirm && (
               <button
                 onClick={() => setShowConfirm('unfriend')}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-50 text-orange-700 rounded-xl hover:bg-orange-100 transition-colors font-medium"
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded-xl hover:bg-orange-100 dark:hover:bg-orange-900/50 transition-colors font-medium"
               >
                 <UserMinus size={18} />
                 Unfriend
@@ -498,7 +516,7 @@ export default function UserInfoModal({
                 {!isBlocked && !showConfirm && (
                   <button
                     onClick={() => setShowConfirm('block')}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-700 rounded-xl hover:bg-red-100 transition-colors font-medium"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors font-medium"
                   >
                     <Ban size={18} />
                     Block User
@@ -508,7 +526,7 @@ export default function UserInfoModal({
                 {isBlocked && !showConfirm && (
                   <button
                     onClick={() => setShowConfirm('unblock')}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-colors font-medium"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors font-medium"
                   >
                     <ShieldCheck size={18} />
                     Unblock User
@@ -519,12 +537,12 @@ export default function UserInfoModal({
 
             {/* Confirmation UI */}
             {showConfirm === 'unfriend' && (
-              <div className="p-4 bg-orange-50 rounded-xl space-y-3">
+              <div className="p-4 bg-orange-50 dark:bg-orange-900/30 rounded-3xl space-y-3">
                 <div className="flex items-start gap-3">
-                  <AlertTriangle size={20} className="text-orange-600 flex-shrink-0 mt-0.5" />
+                  <AlertTriangle size={20} className="text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-orange-800">Unfriend {user.userName}?</p>
-                    <p className="text-xs text-orange-700 mt-1">
+                    <p className="text-sm font-medium text-orange-800 dark:text-orange-300">Unfriend {user.userName}?</p>
+                    <p className="text-xs text-orange-700 dark:text-orange-400 mt-1">
                       You will no longer be friends. This action can be undone by sending another friend request.
                     </p>
                   </div>
@@ -532,7 +550,7 @@ export default function UserInfoModal({
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowConfirm(null)}
-                    className="flex-1 px-3 py-2 bg-white text-orange-700 rounded-lg hover:bg-orange-100 transition-colors text-sm"
+                    className="flex-1 px-3 py-2 bg-white dark:bg-[#0c0c0c] text-orange-700 dark:text-orange-400 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900/50 transition-colors text-sm"
                   >
                     Cancel
                   </button>
@@ -558,12 +576,12 @@ export default function UserInfoModal({
             )}
 
             {showConfirm === 'block' && (
-              <div className="p-4 bg-red-50 rounded-3xl space-y-3">
+              <div className="p-4 bg-red-50 dark:bg-red-900/30 rounded-3xl space-y-3">
                 <div className="flex items-start gap-3">
-                  <AlertTriangle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+                  <AlertTriangle size={20} className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-red-800">Block {user.userName}?</p>
-                    <p className="text-xs text-red-700 mt-1">
+                    <p className="text-sm font-medium text-red-800 dark:text-red-300">Block {user.userName}?</p>
+                    <p className="text-xs text-red-700 dark:text-red-400 mt-1">
                       They won't be able to message you or see your profile. You can unblock them anytime.
                     </p>
                   </div>
@@ -571,7 +589,7 @@ export default function UserInfoModal({
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowConfirm(null)}
-                    className="flex-1 px-3 py-2 bg-white text-red-700 rounded-lg hover:bg-red-100 transition-colors text-sm"
+                    className="flex-1 px-3 py-2 bg-white dark:bg-[#0c0c0c] text-red-700 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors text-sm"
                   >
                     Cancel
                   </button>
@@ -597,12 +615,12 @@ export default function UserInfoModal({
             )}
 
             {showConfirm === 'unblock' && (
-              <div className="p-4 bg-blue-50 rounded-3xl space-y-3">
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-3xl space-y-3">
                 <div className="flex items-start gap-3">
-                  <AlertTriangle size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                  <AlertTriangle size={20} className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-blue-800">Unblock {user.userName}?</p>
-                    <p className="text-xs text-blue-700 mt-1">
+                    <p className="text-sm font-medium text-blue-800 dark:text-blue-300">Unblock {user.userName}?</p>
+                    <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
                       They will be able to message you again.
                     </p>
                   </div>
@@ -610,7 +628,7 @@ export default function UserInfoModal({
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowConfirm(null)}
-                    className="flex-1 px-3 py-2 bg-white text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm"
+                    className="flex-1 px-3 py-2 bg-white dark:bg-[#0c0c0c] text-blue-700 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-sm"
                   >
                     Cancel
                   </button>
@@ -637,8 +655,8 @@ export default function UserInfoModal({
           </div>
 
           {/* Member Since */}
-          <div className="mt-6 pt-4 flex justify-center border-t border-[#f1f3f4]">
-            <p className="text-xs text-[#5f6368] text-center flex items-center gap-1">
+          <div className="mt-6 pt-4 flex justify-center border-t border-[#f1f3f4] dark:border-[#181A1E]">
+            <p className="text-xs text-[#5f6368] dark:text-gray-400 text-center flex items-center gap-1">
               Member since {formatDate(memberSinceDate)}
             </p>
           </div>

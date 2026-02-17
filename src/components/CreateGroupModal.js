@@ -154,84 +154,73 @@ export default function CreateGroupModal({
   };
 
   const handleCreate = async () => {
-  if (!groupName.trim() || (!editMode && selectedFriends.length === 0)) return;
+    if (!groupName.trim() || (!editMode && selectedFriends.length === 0)) return;
 
-  setCreating(true);
-  try {
-    const avatarConfig = JSON.stringify({
-      gender: selectedGender,
-      beanConfig: beanConfig
-    });
+    setCreating(true);
+    try {
+      const avatarConfig = JSON.stringify({
+        gender: selectedGender,
+        beanConfig: beanConfig
+      });
 
-    const groupData = {
-      name: groupName.trim(),
-      description: description.trim(),
-      avatar: avatarConfig,
-      groupId: editMode ? existingGroup?.groupId : undefined
-    };
+      const groupData = {
+        name: groupName.trim(),
+        description: description.trim(),
+        avatar: avatarConfig,
+        groupId: editMode ? existingGroup?.groupId : undefined
+      };
 
-    // For create mode, add members
-    if (!editMode) {
-      groupData.members = selectedFriends.map(f => f.userId);
+      // For create mode, add members
+      if (!editMode) {
+        groupData.members = selectedFriends.map(f => f.userId);
+      }
+
+      await onCreate(groupData);
+      
+      // Reset form
+      setGroupName('');
+      setDescription('');
+      setSelectedFriends([]);
+      setSearchQuery('');
+      setBeanConfig(generateRandomBeanConfig('male'));
+      setSelectedGender('male');
+      
+      onClose();
+    } catch (error) {
+      console.error('Error creating/updating group:', error);
+    } finally {
+      setCreating(false);
     }
-
-    await onCreate(groupData);
-    
-    // Reset form
-    setGroupName('');
-    setDescription('');
-    setSelectedFriends([]);
-    setSearchQuery('');
-    setBeanConfig(generateRandomBeanConfig('male'));
-    setSelectedGender('male');
-    
-    onClose();
-  } catch (error) {
-    console.error('Error creating/updating group:', error);
-  } finally {
-    setCreating(false);
-  }
-};
-
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-[30px] max-w-2xl w-full max-h-[90vh] overflow-hidden">
-        <div className="p-6 border-b border-[#f1f3f4] flex items-center justify-between">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
-            {editMode ? (
-              <>
-                {/* <Edit2 size={24} className="text-[#34A853]" /> */}
-                Edit Group
-              </>
-            ) : (
-              <>
-                {/* <Users size={24} className="text-[#34A853]" /> */}
-                Create New Group
-              </>
-            )}
+      <div className="bg-white dark:bg-[#0c0c0c] rounded-[30px] max-w-2xl w-full max-h-[90vh] overflow-hidden transition-colors duration-300">
+        <div className="p-6 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between">
+          <h2 className="text-xl font-semibold flex items-center gap-2 text-[#000000] dark:text-white">
+            {editMode ? 'Edit Group' : 'Create New Group'}
           </h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <X size={20} />
+          <button 
+            onClick={onClose} 
+            className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+          >
+            <X size={20} className="text-[#202124] dark:text-white" />
           </button>
         </div>
 
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
           {/* Avatar Selection Section */}
-          <div className="mb-6 pb-6 border-b border-[#f1f3f4]">
-            <h3 className="text-lg font-semibold text-[#202124] mb-4">Group Avatar</h3>
+          <div className="mb-6 pb-6 border-b border-[#f1f3f4] dark:border-[#181A1E]">
+            <h3 className="text-lg font-semibold text-[#202124] dark:text-white mb-4">Group Avatar</h3>
             
-            {/* Gender Selection */}
-            
-
             {/* Avatar Preview and Randomize */}
             <div className="flex items-center gap-6">
-              <div className="w-20 h-20 rounded-full bg-green-50 overflow-hidden flex items-center justify-center border-2 border-green-200">
+              <div className="w-20 h-20 rounded-full bg-green-50 dark:bg-green-900/30 overflow-hidden flex items-center justify-center border-2 border-green-200 dark:border-green-800">
                 <BeanHead {...beanConfig} />
               </div>
               <button
                 onClick={randomizeAvatar}
-                className="flex items-center gap-2 px-5 py-2.5 bg-green-50 hover:bg-green-100 rounded-xl text-green-700 font-medium transition-all"
+                className="flex items-center gap-2 px-5 py-2.5 bg-green-50 dark:bg-green-900/30 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-xl text-green-700 dark:text-green-400 font-medium transition-all"
               >
                 <RefreshCw size={18} />
                 Randomize
@@ -241,7 +230,7 @@ export default function CreateGroupModal({
 
           {/* Group Name */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-[#202124] mb-2">
+            <label className="block text-sm font-medium text-[#202124] dark:text-white mb-2">
               Group Name *
             </label>
             <input
@@ -249,26 +238,26 @@ export default function CreateGroupModal({
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
               placeholder="e.g., Study Group, Family, Friends"
-              className="w-full px-4 py-4 bg-zinc-100/70 border-[#dadce0] rounded-2xl focus:ring focus:ring-zinc-300  focus:outline-none"
+              className="w-full px-4 py-4 bg-zinc-100/70 dark:bg-[#101010] border border-[#dadce0] dark:border-[#232529] text-[#202124] dark:text-white rounded-2xl focus:ring focus:ring-zinc-300 dark:focus:ring-zinc-700 focus:outline-none"
               maxLength={50}
             />
-            <p className="text-xs text-[#5f6368] mt-1">{groupName.length}/50 characters</p>
+            <p className="text-xs text-[#5f6368] dark:text-gray-400 mt-1">{groupName.length}/50 characters</p>
           </div>
 
           {/* Description */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-[#202124] mb-2">
+            <label className="block text-sm font-medium text-[#202124] dark:text-white mb-2">
               Description (Optional)
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What's this group about?"
-              className="w-full px-4 py-4 bg-zinc-100/70 border-[#dadce0] rounded-2xl focus:ring focus:ring-zinc-300  focus:outline-none resize-none"
+              className="w-full px-4 py-4 bg-zinc-100/70 dark:bg-[#101010] border border-[#dadce0] dark:border-[#232529] text-[#202124] dark:text-white rounded-2xl focus:ring focus:ring-zinc-300 dark:focus:ring-zinc-700 focus:outline-none resize-none"
               rows={3}
               maxLength={200}
             />
-            <p className="text-xs text-[#5f6368] mt-1">{description.length}/200 characters</p>
+            <p className="text-xs text-[#5f6368] dark:text-gray-400 mt-1">{description.length}/200 characters</p>
           </div>
 
           {/* Add Members Section (only in create mode) */}
@@ -277,22 +266,22 @@ export default function CreateGroupModal({
               {/* Selected Members */}
               {selectedFriends.length > 0 && (
                 <div className="mb-6">
-                  <label className="block text-sm font-medium text-[#202124] mb-3">
+                  <label className="block text-sm font-medium text-[#202124] dark:text-white mb-3">
                     Selected Members ({selectedFriends.length})
                   </label>
                   <div className="flex flex-wrap gap-2">
                     {selectedFriends.map(friend => (
                       <div
                         key={friend.userId}
-                        className="flex items-center gap-2 bg-green-50 rounded-full pl-2 pr-1 py-1 border border-green-200"
+                        className="flex items-center gap-2 bg-green-50 dark:bg-green-900/30 rounded-full pl-2 pr-1 py-1 border border-green-200 dark:border-green-800"
                       >
                         <Avatar userAvatar={friend.avatar} name={friend.userName} size="w-6 h-6" />
-                        <span className="text-sm text-[#202124] font-medium">{friend.userName}</span>
+                        <span className="text-sm text-[#202124] dark:text-white font-medium">{friend.userName}</span>
                         <button
                           onClick={() => handleRemoveFriend(friend.userId)}
-                          className="p-1 hover:bg-green-100 rounded-full transition-colors"
+                          className="p-1 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full transition-colors"
                         >
-                          <X size={14} className="text-green-600" />
+                          <X size={14} className="text-green-600 dark:text-green-400" />
                         </button>
                       </div>
                     ))}
@@ -302,7 +291,7 @@ export default function CreateGroupModal({
 
               {/* Add Members */}
               <div>
-                <label className="block text-sm font-medium text-[#202124] mb-2">
+                <label className="block text-sm font-medium text-[#202124] dark:text-white mb-2">
                   Add Members *
                 </label>
                 <div className="relative mb-3">
@@ -311,9 +300,9 @@ export default function CreateGroupModal({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search friends..."
-                    className="w-full px-4 py-4 pl-10  bg-zinc-100/70 border-[#dadce0] rounded-2xl focus:ring focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none"
+                    className="w-full px-4 py-4 pl-10 bg-zinc-100/70 dark:bg-[#101010] border border-[#dadce0] dark:border-[#232529] text-[#202124] dark:text-white rounded-2xl focus:ring focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none"
                   />
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5f6368]" size={18} />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5f6368] dark:text-gray-400" size={18} />
                 </div>
 
                 <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -322,13 +311,13 @@ export default function CreateGroupModal({
                       <button
                         key={friend.userId}
                         onClick={() => handleSelectFriend(friend)}
-                        className="w-full flex items-center justify-between p-3 hover:bg-green-50 rounded-2xl transition-all  border-transparent hover:border-green-200"
+                        className="w-full flex items-center justify-between p-3 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-2xl transition-all border border-transparent hover:border-green-200 dark:hover:border-green-800"
                       >
                         <div className="flex items-center gap-3">
                           <Avatar userAvatar={friend.avatar} name={friend.userName} size="w-10 h-10" />
                           <div className="text-left">
-                            <p className="font-medium text-[#202124] text-sm">{friend.userName}</p>
-                            <p className="text-xs text-[#5f6368]">@{friend.username || 'user'}</p>
+                            <p className="font-medium text-[#202124] dark:text-white text-sm">{friend.userName}</p>
+                            <p className="text-xs text-[#5f6368] dark:text-gray-400">@{friend.username || 'user'}</p>
                           </div>
                         </div>
                         <CirclePlus size={18} className="text-[#34A853]" />
@@ -336,12 +325,12 @@ export default function CreateGroupModal({
                     ))
                   ) : searchQuery ? (
                     <div className="text-center py-8">
-                      <p className="text-sm text-[#5f6368]">No friends found</p>
+                      <p className="text-sm text-[#5f6368] dark:text-gray-400">No friends found</p>
                     </div>
                   ) : (
                     <div className="text-center py-8">
-                      <Users size={32} className="mx-auto text-[#dadce0] mb-2" />
-                      <p className="text-sm text-[#5f6368]">Start typing to search friends</p>
+                      <Users size={32} className="mx-auto text-[#dadce0] dark:text-[#232529] mb-2" />
+                      <p className="text-sm text-[#5f6368] dark:text-gray-400">Start typing to search friends</p>
                     </div>
                   )}
                 </div>
@@ -350,17 +339,17 @@ export default function CreateGroupModal({
           )}
         </div>
 
-        <div className="p-6 border-t border-[#f1f3f4] flex gap-3">
+        <div className="p-6 border-t border-[#f1f3f4] dark:border-[#181A1E] flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-3 border border-[#dadce0] rounded-xl hover:bg-gray-50 transition-colors font-medium"
+            className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] text-[#202124] dark:text-white rounded-xl hover:bg-gray-50 dark:hover:bg-[#101010] transition-colors font-medium"
           >
             Cancel
           </button>
           <button
             onClick={handleCreate}
             disabled={!groupName.trim() || (!editMode && selectedFriends.length === 0) || creating}
-            className="flex-1 px-4 py-3 bg-[#34A853] text-white rounded-xl hover:bg-[#2D9249] disabled:bg-gray-200 disabled:text-gray-400 transition-colors flex items-center justify-center gap-2 font-medium"
+            className="flex-1 px-4 py-3 bg-[#34A853] text-white rounded-xl hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-colors flex items-center justify-center gap-2 font-medium"
           >
             {creating ? (
               <>

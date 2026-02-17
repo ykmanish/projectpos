@@ -22,6 +22,7 @@ import {
   AtSign,
   UserPlus,
   Sparkles,
+  Snowflake,
 } from "lucide-react";
 import { BeanHead } from "beanheads";
 import EmojiPicker from "emoji-picker-react";
@@ -35,7 +36,10 @@ import useLongPress from "@/hooks/useLongPress";
 import encryptionService from "@/utils/encryptionService";
 import GroupEncryptionModal from "./GroupEncryptionModal";
 import MentionSuggestions from "./MentionSuggestions";
-import AIEnhancementModal from "./AIEnhancementModal"; // ✅ Correct import
+import AIEnhancementModal from "./AIEnhancementModal";
+import SlowModeModal from "./SlowModeModal";
+import SlowModeBadge from "./SlowModeBadge";
+import { useSlowMode } from "@/hooks/useSlowMode";
 
 export default function GroupChatInterface({
   group,
@@ -56,6 +60,27 @@ export default function GroupChatInterface({
   const [roomJoined, setRoomJoined] = useState(false);
   const [groupData, setGroupData] = useState(group);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [showSlowModeModal, setShowSlowModeModal] = useState(false);
+
+  // Check if current user is admin
+  const isCurrentUserAdmin = groupData.members?.find(m => m.userId === currentUserId)?.role === 'admin';
+
+  // Slow mode settings
+  const [slowModeSettings, setSlowModeSettings] = useState({
+    enabled: group?.settings?.slowMode?.enabled || false,
+    cooldown: group?.settings?.slowMode?.cooldown || 30
+  });
+
+  // Initialize slow mode hook with userId for persistence and admin status
+  const {
+    slowMode: localSlowMode,
+    cooldownActive,
+    timeRemaining,
+    canSendMessage: canSendInSlowMode,
+    registerMessageSent,
+    updateSlowMode: updateLocalSlowMode,
+    resetCooldown
+  } = useSlowMode(slowModeSettings, currentUserId, isCurrentUserAdmin);
 
   // AI Enhancement states
   const [showAIEnhancement, setShowAIEnhancement] = useState(false);
@@ -234,11 +259,23 @@ export default function GroupChatInterface({
     setDecryptedMessages(newDecryptedMap);
   };
 
-  const canSendMessage = () => {
-    if (!groupData.settings?.onlyAdminsCanMessage) return true;
-    const member = groupData.members?.find((m) => m.userId === currentUserId);
-    return member?.role === "admin";
-  };
+  // Updated canSendMessage function with admin bypass
+  const canSendMessage = useCallback(() => {
+    // Check if user is admin - admins bypass all restrictions
+    if (isCurrentUserAdmin) return true;
+    
+    // Check admin message permission first (only if not admin)
+    if (groupData.settings?.onlyAdminsCanMessage) {
+      return false;
+    }
+    
+    // Then check slow mode
+    if (!canSendInSlowMode()) {
+      return false;
+    }
+    
+    return true;
+  }, [groupData.settings?.onlyAdminsCanMessage, isCurrentUserAdmin, canSendInSlowMode]);
 
   const getMemberName = (userId) => {
     const member = groupData.members?.find((m) => m.userId === userId);
@@ -890,6 +927,7 @@ export default function GroupChatInterface({
     return parts;
   };
 
+  // Updated handleSendMessage with slow mode
   const handleSendMessage = async () => {
     if (
       (!newMessage.trim() && attachments.length === 0) ||
@@ -899,6 +937,11 @@ export default function GroupChatInterface({
       !canSendMessage()
     )
       return;
+
+    // Register message sent for slow mode (only if not admin)
+    if (!isCurrentUserAdmin) {
+      registerMessageSent();
+    }
 
     const now = new Date().toISOString();
     const originalMessage = newMessage.trim();
@@ -976,6 +1019,7 @@ export default function GroupChatInterface({
       .catch(console.error);
   };
 
+  // Updated handleSendWithAttachments with slow mode
   const handleSendWithAttachments = async () => {
     if (
       (!newMessage.trim() && attachments.length === 0) ||
@@ -985,6 +1029,11 @@ export default function GroupChatInterface({
       !canSendMessage()
     )
       return;
+
+    // Register message sent for slow mode (only if not admin)
+    if (!isCurrentUserAdmin) {
+      registerMessageSent();
+    }
 
     setUploading(true);
 
@@ -1485,6 +1534,51 @@ export default function GroupChatInterface({
     }
   };
 
+  // Handle slow mode save
+  const handleSaveSlowMode = async (settings) => {
+    try {
+      const res = await fetch("/api/chat/groups/slow-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          groupId: group.groupId,
+          userId: currentUserId,
+          settings
+        }),
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        setSlowModeSettings(settings);
+        updateLocalSlowMode(settings);
+        
+        // Update group data with new settings
+        setGroupData(prev => ({
+          ...prev,
+          settings: {
+            ...prev.settings,
+            slowMode: settings
+          }
+        }));
+        
+        if (onGroupUpdate) {
+          onGroupUpdate({
+            ...groupData,
+            settings: {
+              ...groupData.settings,
+              slowMode: settings
+            }
+          });
+        }
+        
+        setShowSlowModeModal(false);
+      }
+    } catch (error) {
+      console.error("Error saving slow mode settings:", error);
+    }
+  };
+
   const groupedMessages = messages.reduce((groups, message) => {
     const date = formatDate(message.timestamp);
     if (!groups[date]) {
@@ -1610,7 +1704,12 @@ export default function GroupChatInterface({
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-[#202124] dark:text-white truncate flex items-center gap-2">
                 {groupData.groupName || groupData.name}
-                {groupData.settings?.onlyAdminsCanMessage && (
+                {isCurrentUserAdmin && (
+                  <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 px-2 py-0.5 rounded-full">
+                    Admin
+                  </span>
+                )}
+                {groupData.settings?.onlyAdminsCanMessage && !isCurrentUserAdmin && (
                   <Lock size={14} className="text-[#5f6368] dark:text-gray-400" />
                 )}
               </h3>
@@ -1622,14 +1721,36 @@ export default function GroupChatInterface({
                 {groupTyping.length > 0 && (
                   <span className="text-green-600 dark:text-green-400 animate-pulse">
                     {groupTyping.length === 1
-                      ? `${getMemberName(groupTyping[0])} is typing...`
+                      ? `${getMemberName(groupTyping[0])} ${groupData.members?.find(m => m.userId === groupTyping[0])?.role === 'admin' ? '(Admin)' : ''} is typing...`
                       : `${groupTyping.length} people are typing...`}
                   </span>
+                )}
+                {cooldownActive && !isCurrentUserAdmin && (
+                  <SlowModeBadge timeRemaining={timeRemaining} />
                 )}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Slow Mode Button */}
+            <button
+              onClick={() => {
+                fetchGroupData();
+                setShowSlowModeModal(true);
+              }}
+              className={`p-2 rounded-full transition-colors relative ${
+                slowModeSettings.enabled 
+                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
+                  : 'hover:bg-gray-100 dark:hover:bg-[#101010] text-[#5f6368] dark:text-gray-400'
+              }`}
+              title={slowModeSettings.enabled ? `Slow mode (${slowModeSettings.cooldown}s cooldown)` : "Slow mode off"}
+            >
+              <Snowflake size={18} />
+              {slowModeSettings.enabled && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full"></span>
+              )}
+            </button>
+            
             <button
               onClick={() => {
                 fetchGroupData();
@@ -1722,6 +1843,9 @@ export default function GroupChatInterface({
                               )}
                               <span className="text-xs text-[#5f6368] dark:text-gray-400">
                                 {msg.senderName || getMemberName(msg.senderId)}
+                                {groupData.members?.find(m => m.userId === msg.senderId)?.role === 'admin' && (
+                                  <span className="ml-1 text-yellow-600 dark:text-yellow-400">(Admin)</span>
+                                )}
                               </span>
                             </div>
                           )}
@@ -1894,14 +2018,26 @@ export default function GroupChatInterface({
 
         {/* Message Input */}
         <div className="p-4 border-t border-[#f1f3f4] dark:border-[#181A1E] bg-white dark:bg-[#0c0c0c] relative">
-          {!canSendMessage() && (
+          {!canSendMessage() && !isCurrentUserAdmin && (
             <div className="absolute -top-8 left-0 right-0 text-center">
-              <span className="text-xs flex items-center justify-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-2 rounded-full">
+              <span className="text-xs flex items-center justify-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-2">
                 <Lock size={12} className="inline mr-1" />
-                Only admins can send messages in this group
+                {slowModeSettings.enabled && !canSendInSlowMode()
+                  ? `Slow mode active. Please wait ${timeRemaining}s`
+                  : "Only admins can send messages in this group"}
               </span>
             </div>
           )}
+
+          {/* Slow mode cooldown indicator for non-admins */}
+          {/* {cooldownActive && !canSendInSlowMode() && !isCurrentUserAdmin && (
+            <div className="absolute -top-8 left-0 right-0 text-center">
+              <span className="text-xs flex items-center justify-center gap-1 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/30 px-3 py-2 rounded-full">
+                <Clock size={12} />
+                Slow mode active. Please wait {timeRemaining}s before sending another message
+              </span>
+            </div>
+          )} */}
 
           {showMentions && (
             <div className="absolute bottom-full left-0 mb-2 w-64 z-50 mention-suggestions">
@@ -2063,8 +2199,14 @@ export default function GroupChatInterface({
                   : !roomJoined
                     ? "Joining chat..."
                     : !canSendMessage()
-                      ? "Only admins can send messages"
-                      : "Type a message... (Use @ to mention, ✨ for AI)"
+                      ? isCurrentUserAdmin
+                        ? "You are an admin (bypassing slow mode)"
+                        : slowModeSettings.enabled && !canSendInSlowMode()
+                          ? `Slow mode active (${timeRemaining}s)`
+                          : "Only admins can send messages"
+                      : isCurrentUserAdmin
+                        ? "Type a message as admin... (Use @ to mention, ✨ for AI)"
+                        : "Type a message... (Use @ to mention, ✨ for AI)"
               }
               className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
               disabled={
@@ -2201,6 +2343,15 @@ export default function GroupChatInterface({
         isOpen={showGroupEncryptionModal}
         onClose={() => setShowGroupEncryptionModal(false)}
         group={groupData}
+      />
+
+      {/* Slow Mode Modal */}
+      <SlowModeModal
+        isOpen={showSlowModeModal}
+        onClose={() => setShowSlowModeModal(false)}
+        onSave={handleSaveSlowMode}
+        currentSettings={slowModeSettings}
+        isAdmin={isCurrentUserAdmin}
       />
     </>
   );

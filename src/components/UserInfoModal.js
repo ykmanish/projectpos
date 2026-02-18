@@ -379,7 +379,7 @@ export default function UserInfoModal({
           </div>
 
           {/* Tier Badge - Enhanced Display */}
-          <div className="mb-6 p-4 bg-gray-100 dark:bg-[#101010] rounded-3xl border border-gray-200 dark:border-none">
+          <div className="mb-6 p-4 bg-gray-100 dark:bg-[#101010] rounded-3xl  border-gray-200 dark:border-none">
             <div className="flex items-center gap-4">
               {/* Tier Icon */}
               <div className={`w-20 h-20 rounded-full flex items-center justify-center`}>

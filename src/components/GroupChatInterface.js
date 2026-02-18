@@ -17,12 +17,19 @@ import {
   Check,
   CheckCheck,
   Users,
-  Info,
+  Settings2,
   Lock,
   AtSign,
   UserPlus,
   Sparkles,
   Snowflake,
+  MoreVertical,
+  Search,
+  ArrowUp,
+  ArrowDown,
+  XCircle,
+  Reply,
+  CornerDownRight,
 } from "lucide-react";
 import { BeanHead } from "beanheads";
 import EmojiPicker from "emoji-picker-react";
@@ -40,6 +47,8 @@ import AIEnhancementModal from "./AIEnhancementModal";
 import SlowModeModal from "./SlowModeModal";
 import SlowModeBadge from "./SlowModeBadge";
 import { useSlowMode } from "@/hooks/useSlowMode";
+import MessageSearch from "./MessageSearch";
+import ReplyPreview from "./ReplyPreview"; // We'll create this component
 
 export default function GroupChatInterface({
   group,
@@ -61,6 +70,17 @@ export default function GroupChatInterface({
   const [groupData, setGroupData] = useState(group);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [showSlowModeModal, setShowSlowModeModal] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
+  const [isSearching, setIsSearching] = useState(false);
+  const [highlightedText, setHighlightedText] = useState("");
+
+  // Reply feature states
+  const [replyToMessage, setReplyToMessage] = useState(null);
+  const [replyingToMessage, setReplyingToMessage] = useState(null);
 
   // Check if current user is admin
   const isCurrentUserAdmin = groupData.members?.find(m => m.userId === currentUserId)?.role === 'admin';
@@ -120,11 +140,16 @@ export default function GroupChatInterface({
   const [joinNotifications, setJoinNotifications] = useState([]);
 
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const emojiPickerRef = useRef(null);
   const attachmentPickerRef = useRef(null);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const messageRefs = useRef(new Map());
+  const replyMessageRefs = useRef(new Map());
 
   const { socket, isConnected } = useSocket();
   const roomId = group.groupId;
@@ -135,6 +160,20 @@ export default function GroupChatInterface({
       initializeGroupEncryption();
     }
   }, [currentUserId, group?.groupId]);
+
+  // Click outside handler for dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   const initializeGroupEncryption = async () => {
     try {
@@ -321,6 +360,19 @@ export default function GroupChatInterface({
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const scrollToMessage = (messageId) => {
+    const messageElement = messageRefs.current.get(messageId);
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      
+      // Add a temporary highlight effect to the message container
+      messageElement.classList.add("highlight-message");
+      setTimeout(() => {
+        messageElement.classList.remove("highlight-message");
+      }, 2000);
+    }
   };
 
   useEffect(() => {
@@ -792,6 +844,34 @@ export default function GroupChatInterface({
     }
   };
 
+  // Reply feature functions
+  const handleReplyToMessage = (message) => {
+    setReplyingToMessage(message);
+    // Focus on input
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
+
+  const handleCancelReply = () => {
+    setReplyingToMessage(null);
+  };
+
+  const handleReplyClick = (replyTo) => {
+    // Scroll to the original message
+    const messageId = `${replyTo.timestamp}-${replyTo.senderId}`;
+    scrollToMessage(messageId);
+    
+    // Highlight the message briefly
+    const messageElement = messageRefs.current.get(messageId);
+    if (messageElement) {
+      messageElement.classList.add("highlight-reply-message");
+      setTimeout(() => {
+        messageElement.classList.remove("highlight-reply-message");
+      }, 2000);
+    }
+  };
+
   const handleInputChange = (e) => {
     const value = e.target.value;
     setNewMessage(value);
@@ -927,7 +1007,113 @@ export default function GroupChatInterface({
     return parts;
   };
 
-  // Updated handleSendMessage with slow mode
+  // Function to highlight text in content
+  const highlightText = (content, highlight) => {
+    if (!highlight.trim() || !content) {
+      return content;
+    }
+
+    const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const parts = content.split(regex);
+
+    return parts.map((part, index) => {
+      if (regex.test(part)) {
+        return (
+          <mark
+            key={index}
+            className="bg-green-300 dark:bg-green-600 text-inherit px-0.5 rounded"
+          >
+            {part}
+          </mark>
+        );
+      }
+      return part;
+    });
+  };
+
+  // Search functionality
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    setHighlightedText(query);
+    setIsSearching(true);
+
+    if (!query.trim()) {
+      setSearchResults([]);
+      setCurrentSearchIndex(-1);
+      setIsSearching(false);
+      return;
+    }
+
+    const results = [];
+    const searchLower = query.toLowerCase();
+
+    messages.forEach((msg) => {
+      const content = getMessageContent(msg);
+      if (content && content.toLowerCase().includes(searchLower)) {
+        // Find all occurrences of the search term
+        const indices = [];
+        let startPos = 0;
+        let index;
+        const contentLower = content.toLowerCase();
+        
+        while ((index = contentLower.indexOf(searchLower, startPos)) > -1) {
+          indices.push(index);
+          startPos = index + searchLower.length;
+        }
+
+        results.push({
+          messageId: `${msg.timestamp}-${msg.senderId}`,
+          message: msg,
+          content: content,
+          timestamp: msg.timestamp,
+          senderId: msg.senderId,
+          matchIndices: indices,
+          matchCount: indices.length
+        });
+      }
+    });
+
+    // Sort results by timestamp (oldest first for better navigation)
+    results.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    
+    setSearchResults(results);
+    setCurrentSearchIndex(results.length > 0 ? 0 : -1);
+
+    if (results.length > 0) {
+      scrollToMessage(results[0].messageId);
+    }
+
+    setIsSearching(false);
+  };
+
+  const handleNextSearch = () => {
+    if (searchResults.length === 0) return;
+    const nextIndex = (currentSearchIndex + 1) % searchResults.length;
+    setCurrentSearchIndex(nextIndex);
+    scrollToMessage(searchResults[nextIndex].messageId);
+  };
+
+  const handlePreviousSearch = () => {
+    if (searchResults.length === 0) return;
+    const prevIndex = currentSearchIndex - 1;
+    if (prevIndex < 0) {
+      setCurrentSearchIndex(searchResults.length - 1);
+      scrollToMessage(searchResults[searchResults.length - 1].messageId);
+    } else {
+      setCurrentSearchIndex(prevIndex);
+      scrollToMessage(searchResults[prevIndex].messageId);
+    }
+  };
+
+  const handleCloseSearch = () => {
+    setShowSearch(false);
+    setSearchQuery("");
+    setHighlightedText("");
+    setSearchResults([]);
+    setCurrentSearchIndex(-1);
+  };
+
+  // Updated handleSendMessage with reply and slow mode
   const handleSendMessage = async () => {
     if (
       (!newMessage.trim() && attachments.length === 0) ||
@@ -945,6 +1131,21 @@ export default function GroupChatInterface({
 
     const now = new Date().toISOString();
     const originalMessage = newMessage.trim();
+
+    // Prepare reply data if replying to a message
+    let replyTo = null;
+    if (replyingToMessage && !replyingToMessage.deleted) {
+      const replyContent = getMessageContent(replyingToMessage);
+      replyTo = {
+        messageId: `${replyingToMessage.timestamp}-${replyingToMessage.senderId}`,
+        timestamp: replyingToMessage.timestamp,
+        senderId: replyingToMessage.senderId,
+        senderName: replyingToMessage.senderId === currentUserId ? 'You' : getMemberName(replyingToMessage.senderId),
+        content: replyContent,
+        hasAttachments: replyingToMessage.attachments && replyingToMessage.attachments.length > 0,
+        attachmentType: replyingToMessage.attachments?.[0]?.type
+      };
+    }
 
     let contentForDB = originalMessage;
     let encryptedContent = null;
@@ -975,6 +1176,7 @@ export default function GroupChatInterface({
         type: att.type,
         name: att.name,
       })),
+      replyTo: replyTo, // Add reply information
       timestamp: now,
       delivered: true,
       deliveredAt: now,
@@ -997,6 +1199,7 @@ export default function GroupChatInterface({
     setNewMessage("");
     setAttachments([]);
     setShowAttachments(false);
+    setReplyingToMessage(null); // Clear reply after sending
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -1019,7 +1222,7 @@ export default function GroupChatInterface({
       .catch(console.error);
   };
 
-  // Updated handleSendWithAttachments with slow mode
+  // Updated handleSendWithAttachments with reply and slow mode
   const handleSendWithAttachments = async () => {
     if (
       (!newMessage.trim() && attachments.length === 0) ||
@@ -1055,6 +1258,21 @@ export default function GroupChatInterface({
     const now = new Date().toISOString();
     const originalMessage = newMessage.trim();
 
+    // Prepare reply data if replying to a message
+    let replyTo = null;
+    if (replyingToMessage && !replyingToMessage.deleted) {
+      const replyContent = getMessageContent(replyingToMessage);
+      replyTo = {
+        messageId: `${replyingToMessage.timestamp}-${replyingToMessage.senderId}`,
+        timestamp: replyingToMessage.timestamp,
+        senderId: replyingToMessage.senderId,
+        senderName: replyingToMessage.senderId === currentUserId ? 'You' : getMemberName(replyingToMessage.senderId),
+        content: replyContent,
+        hasAttachments: replyingToMessage.attachments && replyingToMessage.attachments.length > 0,
+        attachmentType: replyingToMessage.attachments?.[0]?.type
+      };
+    }
+
     let encryptedContent = null;
     let contentForDB = originalMessage;
 
@@ -1080,6 +1298,7 @@ export default function GroupChatInterface({
       content: contentForDB,
       encryptedContent: encryptedContent,
       attachments: allUploadedAttachments,
+      replyTo: replyTo, // Add reply information
       timestamp: now,
       delivered: false,
       read: false,
@@ -1107,6 +1326,7 @@ export default function GroupChatInterface({
     });
     setAttachments([]);
     setShowAttachments(false);
+    setReplyingToMessage(null); // Clear reply after sending
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -1579,6 +1799,33 @@ export default function GroupChatInterface({
     }
   };
 
+  // Render reply preview in a message
+  const renderReplyPreview = (replyTo) => {
+    if (!replyTo) return null;
+
+    return (
+      <div 
+        className="mb-2 p-2 bg-gray-50 dark:bg-[#1a1a1a] rounded border-l-4 border-green-500 cursor-pointer hover:bg-gray-100 dark:hover:bg-[#222222] transition-colors"
+        onClick={() => handleReplyClick(replyTo)}
+      >
+        <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <CornerDownRight size={12} />
+          <span>Replying to {replyTo.senderName}</span>
+        </div>
+        <div className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2">
+          {replyTo.hasAttachments ? (
+            <span className="flex items-center gap-1">
+              {replyTo.attachmentType === 'image' ? <ImageIcon size={12} /> : <Video size={12} />}
+              {replyTo.attachmentType === 'image' ? 'Photo' : 'Video'}
+            </span>
+          ) : (
+            replyTo.content || ''
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const groupedMessages = messages.reduce((groups, message) => {
     const date = formatDate(message.timestamp);
     if (!groups[date]) {
@@ -1611,11 +1858,17 @@ export default function GroupChatInterface({
       { threshold: 500 },
     );
 
+    // Check if this message is the current search result
+    const isCurrentSearchResult = searchResults[currentSearchIndex]?.messageId === `${message.timestamp}-${message.senderId}`;
+
     return (
       <div
+        ref={el => messageRefs.current.set(`${message.timestamp}-${message.senderId}`, el)}
         {...longPressEvent}
         onContextMenu={(e) => handleMessageRightClick(e, message)}
-        className="relative group"
+        className={`relative group transition-all z-10 duration-300 ${
+          isCurrentSearchResult ? ' ring-green-400 dark:ring-green-500 rounded-3xl ' : ''
+        }`}
       >
         {children}
       </div>
@@ -1632,7 +1885,7 @@ export default function GroupChatInterface({
     return message.content || "";
   };
 
-  const renderMessageWithMentions = (content) => {
+  const renderMessageWithMentions = (content, highlight) => {
     if (!content) return null;
 
     const parts = parseMessageContent(content);
@@ -1655,9 +1908,65 @@ export default function GroupChatInterface({
           </span>
         );
       }
+      
+      // Apply highlighting to text parts
+      if (highlight && part.content) {
+        return (
+          <span key={index}>
+            {highlightText(part.content, highlight)}
+          </span>
+        );
+      }
+      
       return <span key={index}>{part.content}</span>;
     });
   };
+
+  const dropdownItems = [
+    {
+      id: 'encryption',
+      label: 'Encryption Info',
+      icon: ShieldCheck,
+      onClick: () => {
+        setShowDropdown(false);
+        setShowGroupEncryptionModal(true);
+      },
+      className: 'text-green-600 dark:text-green-400'
+    },
+    {
+      id: 'group-settings',
+      label: 'Group Settings',
+      icon: Settings2,
+      onClick: () => {
+        setShowDropdown(false);
+        fetchGroupData();
+        setShowGroupInfo(true);
+      }
+    },
+    {
+      id: 'slow-mode',
+      label: slowModeSettings.enabled ? `Slow Mode (${slowModeSettings.cooldown}s)` : 'Slow Mode',
+      icon: Snowflake,
+      onClick: () => {
+        setShowDropdown(false);
+        fetchGroupData();
+        setShowSlowModeModal(true);
+      },
+      className: slowModeSettings.enabled ? 'text-blue-600 dark:text-blue-400' : ''
+    },
+    {
+      id: 'search',
+      label: 'Search Messages',
+      icon: Search,
+      onClick: () => {
+        setShowDropdown(false);
+        setShowSearch(true);
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+        }, 100);
+      }
+    }
+  ];
 
   return (
     <>
@@ -1702,10 +2011,10 @@ export default function GroupChatInterface({
             </div>
 
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-[#202124] dark:text-white truncate flex items-center gap-2">
+              <h3 className=" text-[#202124] dark:text-white truncate flex items-center gap-2">
                 {groupData.groupName || groupData.name}
                 {isCurrentUserAdmin && (
-                  <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 px-2 py-0.5 rounded-full">
+                  <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full">
                     Admin
                   </span>
                 )}
@@ -1731,54 +2040,58 @@ export default function GroupChatInterface({
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Slow Mode Button */}
+
+          {/* Three Dots Dropdown */}
+          <div className="relative" ref={dropdownRef}>
             <button
-              onClick={() => {
-                fetchGroupData();
-                setShowSlowModeModal(true);
-              }}
-              className={`p-2 rounded-full transition-colors relative ${
-                slowModeSettings.enabled 
-                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
-                  : 'hover:bg-gray-100 dark:hover:bg-[#101010] text-[#5f6368] dark:text-gray-400'
-              }`}
-              title={slowModeSettings.enabled ? `Slow mode (${slowModeSettings.cooldown}s cooldown)` : "Slow mode off"}
-            >
-              <Snowflake size={18} />
-              {slowModeSettings.enabled && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full"></span>
-              )}
-            </button>
-            
-            <button
-              onClick={() => {
-                fetchGroupData();
-                setShowGroupInfo(true);
-              }}
+              onClick={() => setShowDropdown(!showDropdown)}
               className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
-              title="Group info"
             >
-              <Info size={18} className="text-[#5f6368] dark:text-gray-400" />
+              <MoreVertical size={20} className="text-[#5f6368] dark:text-gray-400" />
             </button>
-            <button
-              onClick={() => setShowGroupEncryptionModal(true)}
-              className="p-2 bg-green-100 dark:bg-green-900/30 rounded-full transition-colors group relative"
-              title="Group is encrypted"
-            >
-              <ShieldCheck size={18} className="text-green-600 dark:text-green-400" />
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors"
-            >
-              <X size={18} className="text-red-600 dark:text-red-400" />
-            </button>
+
+            {showDropdown && (
+              <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl shadow-lg z-50 py-2">
+                {dropdownItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={item.onClick}
+                    className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-100 dark:hover:bg-[#101010] transition-colors ${item.className || 'text-[#202124] dark:text-white'}`}
+                  >
+                    <item.icon size={18} />
+                    <span className="text-sm">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+
+          <button
+            onClick={onClose}
+            className="p-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors ml-2"
+          >
+            <X size={18} className="text-red-600 dark:text-red-400" />
+          </button>
         </div>
+
+        {/* Search Bar */}
+        {showSearch && (
+          <MessageSearch
+            ref={searchInputRef}
+            searchQuery={searchQuery}
+            onSearch={handleSearch}
+            onNext={handleNextSearch}
+            onPrevious={handlePreviousSearch}
+            onClose={handleCloseSearch}
+            resultsCount={searchResults.length}
+            currentIndex={currentSearchIndex}
+            isSearching={isSearching}
+          />
+        )}
 
         {/* Messages Area */}
         <div
+          ref={messagesContainerRef}
           className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8F9FA] dark:bg-[#000000] transition-colors duration-300"
           style={{ scrollBehavior: "smooth" }}
         >
@@ -1844,11 +2157,14 @@ export default function GroupChatInterface({
                               <span className="text-xs text-[#5f6368] dark:text-gray-400">
                                 {msg.senderName || getMemberName(msg.senderId)}
                                 {groupData.members?.find(m => m.userId === msg.senderId)?.role === 'admin' && (
-                                  <span className="ml-1 text-yellow-600 dark:text-yellow-400">(Admin)</span>
+                                  <span className="ml-1 text-green-600 dark:text-green-400">(Admin)</span>
                                 )}
                               </span>
                             </div>
                           )}
+                          
+                          {/* Reply preview if this message is a reply */}
+                          {msg.replyTo && renderReplyPreview(msg.replyTo)}
                           
                           {/* Media attachments */}
                           {msg.attachments && msg.attachments.length > 0 && !msg.deleted && (
@@ -1909,7 +2225,7 @@ export default function GroupChatInterface({
                             </div>
                           )}
                           
-                          {/* Text content */}
+                          {/* Text content with highlighting */}
                           {hasTextContent && (
                             <div
                               className={`rounded-2xl p-3 ${
@@ -1924,7 +2240,7 @@ export default function GroupChatInterface({
                                 {msg.deleted ? (
                                   msg.content
                                 ) : (
-                                  renderMessageWithMentions(messageContent)
+                                  renderMessageWithMentions(messageContent, highlightedText)
                                 )}
                                 {msg.edited && !msg.deleted && (
                                   <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">(edited)</span>
@@ -1960,6 +2276,28 @@ export default function GroupChatInterface({
                             </div>
                           )}
                         </div>
+                        
+                        {/* Reply button - on the left for own messages */}
+                        {!msg.deleted && isOwn && (
+                          <button
+                            onClick={() => handleReplyToMessage(msg)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 mr-2 flex-shrink-0 self-center order-1"
+                            title="Reply to this message"
+                          >
+                            <Reply size={14} className="text-[#5f6368] dark:text-gray-400" />
+                          </button>
+                        )}
+                        
+                        {/* Reply button - on the right for others' messages */}
+                        {!msg.deleted && !isOwn && (
+                          <button
+                            onClick={() => handleReplyToMessage(msg)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 ml-2 flex-shrink-0 self-center order-3"
+                            title="Reply to this message"
+                          >
+                            <Reply size={14} className="text-[#5f6368] dark:text-gray-400" />
+                          </button>
+                        )}
                       </div>
                     </MessageWrapper>
                   );
@@ -1978,6 +2316,17 @@ export default function GroupChatInterface({
           onClearAll={handleClearAllAttachments}
           onPreview={handlePreviewPreSend}
         />
+
+        {/* Reply Preview Bar */}
+        {replyingToMessage && !replyingToMessage.deleted && (
+          <ReplyPreview
+            message={replyingToMessage}
+            friendName={getMemberName(replyingToMessage.senderId)}
+            currentUserId={currentUserId}
+            onCancel={handleCancelReply}
+            getMessageContent={getMessageContent}
+          />
+        )}
 
         {/* Edit Message Bar */}
         {editingMessage && (
@@ -2028,16 +2377,6 @@ export default function GroupChatInterface({
               </span>
             </div>
           )}
-
-          {/* Slow mode cooldown indicator for non-admins */}
-          {/* {cooldownActive && !canSendInSlowMode() && !isCurrentUserAdmin && (
-            <div className="absolute -top-8 left-0 right-0 text-center">
-              <span className="text-xs flex items-center justify-center gap-1 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/30 px-3 py-2 rounded-full">
-                <Clock size={12} />
-                Slow mode active. Please wait {timeRemaining}s before sending another message
-              </span>
-            </div>
-          )} */}
 
           {showMentions && (
             <div className="absolute bottom-full left-0 mb-2 w-64 z-50 mention-suggestions">
@@ -2294,6 +2633,10 @@ export default function GroupChatInterface({
             setMessageInfoData(selectedMessage);
             setShowMessageInfo(true);
           }}
+          onReply={() => {
+            handleReplyToMessage(selectedMessage);
+            closeContextMenu();
+          }}
           isOwnMessage={selectedMessage.senderId === currentUserId}
         />
       )}
@@ -2353,6 +2696,55 @@ export default function GroupChatInterface({
         currentSettings={slowModeSettings}
         isAdmin={isCurrentUserAdmin}
       />
+
+      {/* Add this CSS to your global styles or component */}
+      <style jsx>{`
+        .line-clamp-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        
+        mark {
+          background-color: #fbbf24;
+          color: inherit;
+          padding: 0 2px;
+          border-radius: 2px;
+        }
+        
+        .dark mark {
+          background-color: rgba(245, 158, 11, 0.5);
+        }
+        
+        .highlight-message {
+          animation: highlight-pulse 2s ease-in-out;
+        }
+        
+        .highlight-reply-message {
+          animation: highlight-reply-pulse 2s ease-in-out;
+        }
+        
+        @keyframes highlight-pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.7;
+            background-color: rgba(245, 158, 11, 0.1);
+          }
+        }
+        
+        @keyframes highlight-reply-pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.7;
+            background-color: rgba(59, 130, 246, 0.1);
+          }
+        }
+      `}</style>
     </>
   );
 }

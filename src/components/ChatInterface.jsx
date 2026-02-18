@@ -21,6 +21,13 @@ import {
   ShieldCheck,
   ShieldAlert,
   Sparkles,
+  MoreVertical,
+  Search,
+  ArrowUp,
+  ArrowDown,
+  XCircle,
+  Reply,
+  CornerDownRight,
 } from "lucide-react";
 import { BeanHead } from "beanheads";
 import EmojiPicker from 'emoji-picker-react';
@@ -33,6 +40,8 @@ import UserInfoModal from "./UserInfoModal";
 import encryptionService from "@/utils/encryptionService";
 import EncryptionVerificationModal from "./EncryptionVerificationModal";
 import AIEnhancementModal from "./AIEnhancementModal";
+import MessageSearch from "./MessageSearch";
+import ReplyPreview from "./ReplyPreview"; // We'll create this component
 
 export default function ChatInterface({ friend, currentUserId, currentUserAvatar, onClose, onMessageUpdate }) {
   const [messages, setMessages] = useState([]);
@@ -48,6 +57,17 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const [roomJoined, setRoomJoined] = useState(false);
   const [friendshipStatus, setFriendshipStatus] = useState(null);
   const [showUserInfo, setShowUserInfo] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
+  const [isSearching, setIsSearching] = useState(false);
+  const [highlightedText, setHighlightedText] = useState("");
+  
+  // Reply feature states
+  const [replyToMessage, setReplyToMessage] = useState(null);
+  const [replyingToMessage, setReplyingToMessage] = useState(null);
   
   // AI Enhancement states
   const [showAIEnhancement, setShowAIEnhancement] = useState(false);
@@ -83,16 +103,35 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const [editText, setEditText] = useState("");
   
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const emojiPickerRef = useRef(null);
   const attachmentPickerRef = useRef(null);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const messageRefs = useRef(new Map());
+  const replyMessageRefs = useRef(new Map());
   
   const { socket, isConnected } = useSocket();
   const roomId = [currentUserId, friend.userId].sort().join('-');
 
   const canSendMessages = !blockStatus.iBlockedThem && !blockStatus.theyBlockedMe;
+
+  // Click outside handler for dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   // Initialize encryption
   useEffect(() => {
@@ -273,6 +312,34 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     setShowMessageInfo(true);
   };
 
+  // Reply feature functions
+  const handleReplyToMessage = (message) => {
+    setReplyingToMessage(message);
+    // Focus on input
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
+
+  const handleCancelReply = () => {
+    setReplyingToMessage(null);
+  };
+
+  const handleReplyClick = (replyTo) => {
+    // Scroll to the original message
+    const messageId = `${replyTo.timestamp}-${replyTo.senderId}`;
+    scrollToMessage(messageId);
+    
+    // Highlight the message briefly
+    const messageElement = messageRefs.current.get(messageId);
+    if (messageElement) {
+      messageElement.classList.add("highlight-reply-message");
+      setTimeout(() => {
+        messageElement.classList.remove("highlight-reply-message");
+      }, 2000);
+    }
+  };
+
   const renderAvatar = (userAvatar, name, size = "w-8 h-8") => {
     if (!userAvatar) {
       return (
@@ -312,6 +379,19 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const scrollToMessage = (messageId) => {
+    const messageElement = messageRefs.current.get(messageId);
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      
+      // Add a temporary highlight effect to the message container
+      messageElement.classList.add("highlight-message");
+      setTimeout(() => {
+        messageElement.classList.remove("highlight-message");
+      }, 2000);
+    }
   };
 
   useEffect(() => {
@@ -600,6 +680,112 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     }
   };
 
+  // Function to highlight text in content
+  const highlightText = (content, highlight) => {
+    if (!highlight.trim() || !content) {
+      return content;
+    }
+
+    const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const parts = content.split(regex);
+
+    return parts.map((part, index) => {
+      if (regex.test(part)) {
+        return (
+          <mark
+            key={index}
+            className="bg-green-300 dark:bg-green-600 text-inherit px-0.5 rounded"
+          >
+            {part}
+          </mark>
+        );
+      }
+      return part;
+    });
+  };
+
+  // Search functionality
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    setHighlightedText(query);
+    setIsSearching(true);
+
+    if (!query.trim()) {
+      setSearchResults([]);
+      setCurrentSearchIndex(-1);
+      setIsSearching(false);
+      return;
+    }
+
+    const results = [];
+    const searchLower = query.toLowerCase();
+
+    messages.forEach((msg) => {
+      const content = getMessageContent(msg);
+      if (content && content.toLowerCase().includes(searchLower)) {
+        // Find all occurrences of the search term
+        const indices = [];
+        let startPos = 0;
+        let index;
+        const contentLower = content.toLowerCase();
+        
+        while ((index = contentLower.indexOf(searchLower, startPos)) > -1) {
+          indices.push(index);
+          startPos = index + searchLower.length;
+        }
+
+        results.push({
+          messageId: `${msg.timestamp}-${msg.senderId}`,
+          message: msg,
+          content: content,
+          timestamp: msg.timestamp,
+          senderId: msg.senderId,
+          matchIndices: indices,
+          matchCount: indices.length
+        });
+      }
+    });
+
+    // Sort results by timestamp (oldest first for better navigation)
+    results.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    
+    setSearchResults(results);
+    setCurrentSearchIndex(results.length > 0 ? 0 : -1);
+
+    if (results.length > 0) {
+      scrollToMessage(results[0].messageId);
+    }
+
+    setIsSearching(false);
+  };
+
+  const handleNextSearch = () => {
+    if (searchResults.length === 0) return;
+    const nextIndex = (currentSearchIndex + 1) % searchResults.length;
+    setCurrentSearchIndex(nextIndex);
+    scrollToMessage(searchResults[nextIndex].messageId);
+  };
+
+  const handlePreviousSearch = () => {
+    if (searchResults.length === 0) return;
+    const prevIndex = currentSearchIndex - 1;
+    if (prevIndex < 0) {
+      setCurrentSearchIndex(searchResults.length - 1);
+      scrollToMessage(searchResults[searchResults.length - 1].messageId);
+    } else {
+      setCurrentSearchIndex(prevIndex);
+      scrollToMessage(searchResults[prevIndex].messageId);
+    }
+  };
+
+  const handleCloseSearch = () => {
+    setShowSearch(false);
+    setSearchQuery("");
+    setHighlightedText("");
+    setSearchResults([]);
+    setCurrentSearchIndex(-1);
+  };
+
   const handleSendMessage = async () => {
     if (!canSendMessages) {
       alert(blockStatus.iBlockedThem 
@@ -624,6 +810,21 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         console.error('❌ Encryption failed:', error);
       }
     }
+
+    // Prepare reply data if replying to a message
+    let replyTo = null;
+    if (replyingToMessage && !replyingToMessage.deleted) {
+      const replyContent = getMessageContent(replyingToMessage);
+      replyTo = {
+        messageId: `${replyingToMessage.timestamp}-${replyingToMessage.senderId}`,
+        timestamp: replyingToMessage.timestamp,
+        senderId: replyingToMessage.senderId,
+        senderName: replyingToMessage.senderId === currentUserId ? 'You' : friend.userName,
+        content: replyContent,
+        hasAttachments: replyingToMessage.attachments && replyingToMessage.attachments.length > 0,
+        attachmentType: replyingToMessage.attachments?.[0]?.type
+      };
+    }
     
     const messageData = {
       roomId,
@@ -636,6 +837,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         type: att.type,
         name: att.name,
       })),
+      replyTo: replyTo, // Add reply information
       timestamp: now,
       delivered: true,
       deliveredAt: now,
@@ -654,6 +856,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     setNewMessage("");
     setAttachments([]);
     setShowAttachments(false);
+    setReplyingToMessage(null); // Clear reply after sending
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -709,6 +912,21 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         console.error('❌ Encryption failed:', error);
       }
     }
+
+    // Prepare reply data if replying to a message
+    let replyTo = null;
+    if (replyingToMessage && !replyingToMessage.deleted) {
+      const replyContent = getMessageContent(replyingToMessage);
+      replyTo = {
+        messageId: `${replyingToMessage.timestamp}-${replyingToMessage.senderId}`,
+        timestamp: replyingToMessage.timestamp,
+        senderId: replyingToMessage.senderId,
+        senderName: replyingToMessage.senderId === currentUserId ? 'You' : friend.userName,
+        content: replyContent,
+        hasAttachments: replyingToMessage.attachments && replyingToMessage.attachments.length > 0,
+        attachmentType: replyingToMessage.attachments?.[0]?.type
+      };
+    }
     
     const messageData = {
       roomId,
@@ -717,6 +935,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       content: contentForDB,
       encryptedContent: encryptedContent,
       attachments: allUploadedAttachments,
+      replyTo: replyTo, // Add reply information
       timestamp: now,
       delivered: true,
       deliveredAt: now,
@@ -741,6 +960,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     });
     setAttachments([]);
     setShowAttachments(false);
+    setReplyingToMessage(null); // Clear reply after sending
 
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -1137,23 +1357,78 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     }
   };
 
-  const MessageWrapper = ({ message, children, isOwn }) => {
-    const longPressEvent = useLongPress(
-      (e) => handleMessageLongPress(e, message),
-      null,
-      { threshold: 500 }
-    );
+  // Render reply preview in a message
+  const renderReplyPreview = (replyTo) => {
+    if (!replyTo) return null;
 
     return (
-      <div
-        {...longPressEvent}
-        onContextMenu={(e) => handleMessageRightClick(e, message)}
-        className="relative group"
+      <div 
+        className="mb-2 p-2 bg-gray-50 dark:bg-[#1a1a1a] rounded border-l-4 border-green-500 cursor-pointer hover:bg-gray-100 dark:hover:bg-[#222222] transition-colors"
+        onClick={() => handleReplyClick(replyTo)}
       >
-        {children}
+        <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <CornerDownRight size={12} />
+          <span>Replying to {replyTo.senderName}</span>
+        </div>
+        <div className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2">
+          {replyTo.hasAttachments ? (
+            <span className="flex items-center gap-1">
+              {replyTo.attachmentType === 'image' ? <ImageIcon size={12} /> : <Video size={12} />}
+              {replyTo.attachmentType === 'image' ? 'Photo' : 'Video'}
+            </span>
+          ) : (
+            replyTo.content || ''
+          )}
+        </div>
       </div>
     );
   };
+
+  const MessageWrapper = ({ message, children, isOwn }) => {
+  const longPressEvent = useLongPress(
+    (e) => handleMessageLongPress(e, message),
+    null,
+    { threshold: 500 }
+  );
+
+  // Check if this message is the current search result
+  const isCurrentSearchResult = searchResults[currentSearchIndex]?.messageId === `${message.timestamp}-${message.senderId}`;
+
+  return (
+    <div
+      ref={el => messageRefs.current.set(`${message.timestamp}-${message.senderId}`, el)}
+      {...longPressEvent}
+      onContextMenu={(e) => handleMessageRightClick(e, message)}
+      className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group transition-all duration-300 ${
+        isCurrentSearchResult ? ' ring-yellow-400 dark:ring-yellow-500 rounded-lg' : ''
+      }`}
+    >
+      {/* Reply button positioned next to message - on the left for sender messages */}
+      {!message.deleted && isOwn && (
+        <button
+          onClick={() => handleReplyToMessage(message)}
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 mr-2 flex-shrink-0 self-center"
+          title="Reply to this message"
+        >
+          <Reply size={14} className="text-[#5f6368] dark:text-gray-400" />
+        </button>
+      )}
+      
+      {children}
+      
+      {/* Reply button positioned next to message - on the right for receiver messages */}
+      {!message.deleted && !isOwn && (
+        <button
+          onClick={() => handleReplyToMessage(message)}
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 ml-2 flex-shrink-0 self-center"
+          title="Reply to this message"
+        >
+          <Reply size={14} className="text-[#5f6368] dark:text-gray-400" />
+        </button>
+      )}
+    </div>
+  );
+};
 
   const getBlockMessage = () => {
     if (blockStatus.iBlockedThem) {
@@ -1176,9 +1451,47 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     return message.content || '';
   };
 
+  const dropdownItems = [
+    {
+      id: 'encryption',
+      label: isVerified ? 'Encryption Verified' : 'Encryption Info',
+      icon: isVerified ? ShieldCheck : (isEncrypted ? ShieldAlert : Shield),
+      onClick: () => {
+        setShowDropdown(false);
+        setShowEncryptionModal(true);
+      },
+      className: isVerified 
+        ? 'text-green-600 dark:text-green-400' 
+        : isEncrypted 
+          ? 'text-yellow-600 dark:text-yellow-400'
+          : 'text-gray-600 dark:text-gray-400'
+    },
+    {
+      id: 'user-info',
+      label: 'User Info',
+      icon: Info,
+      onClick: () => {
+        setShowDropdown(false);
+        setShowUserInfo(true);
+      }
+    },
+    {
+      id: 'search',
+      label: 'Search Messages',
+      icon: Search,
+      onClick: () => {
+        setShowDropdown(false);
+        setShowSearch(true);
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+        }, 100);
+      }
+    }
+  ];
+
   return (
   <>
-    <div className="h-full flex flex-col bg-white border-none dark:bg-[#0c0c0c] rounded-3xl border  dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300">
+    <div className="h-full flex flex-col bg-white border-none dark:bg-[#0c0c0c] rounded-3xl border dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300">
       {/* Chat Header */}
       <div className="p-4 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between bg-white dark:bg-[#0c0c0c]">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -1217,28 +1530,31 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button
-            onClick={() => setShowUserInfo(true)}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
-            title="User info"
-          >
-            <Info size={18} className="text-[#5f6368] dark:text-gray-400" />
-          </button>
-          <button
-            onClick={() => setShowEncryptionModal(true)}
-            className="p-2 bg-green-50 dark:bg-green-900/30 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-full transition-colors group relative"
-            title={isVerified ? "Verified encryption" : "Tap to verify encryption"}
-          >
-            {isEncrypted ? (
-              isVerified ? (
-                <ShieldCheck size={18} className="text-green-600 dark:text-green-400" />
-              ) : (
-                <ShieldAlert size={18} className="text-yellow-600 dark:text-yellow-400" />
-              )
-            ) : (
-              <Shield size={18} className="text-gray-400 dark:text-gray-500" />
+          {/* Three Dots Dropdown */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+            >
+              <MoreVertical size={20} className="text-[#5f6368] dark:text-gray-400" />
+            </button>
+
+            {showDropdown && (
+              <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl shadow-lg z-50 py-2">
+                {dropdownItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={item.onClick}
+                    className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-100 dark:hover:bg-[#101010] transition-colors ${item.className || 'text-[#202124] dark:text-white'}`}
+                  >
+                    <item.icon size={18} />
+                    <span className="text-sm">{item.label}</span>
+                  </button>
+                ))}
+              </div>
             )}
-          </button>
+          </div>
+          
           <button 
             onClick={onClose}
             className="p-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors"
@@ -1258,8 +1574,27 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         </div>
       )}
 
+      {/* Search Bar */}
+      {showSearch && (
+        <MessageSearch
+          ref={searchInputRef}
+          searchQuery={searchQuery}
+          onSearch={handleSearch}
+          onNext={handleNextSearch}
+          onPrevious={handlePreviousSearch}
+          onClose={handleCloseSearch}
+          resultsCount={searchResults.length}
+          currentIndex={currentSearchIndex}
+          isSearching={isSearching}
+        />
+      )}
+
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8F9FA] dark:bg-[#000000] transition-colors duration-300" style={{scrollBehavior: 'smooth'}}>
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8F9FA] dark:bg-[#000000] transition-colors duration-300"
+        style={{scrollBehavior: 'smooth'}}
+      >
         {loading ? (
           <div className="flex justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#34A853]"></div>
@@ -1299,15 +1634,17 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                 return (
                   <MessageWrapper key={`${msg.timestamp}-${index}`} message={msg} isOwn={isOwn}>
                     <div
-                      className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2 transition-all duration-200 ease-out`}
+                      className={`max-w-[70%] transition-all duration-200 ease-out mb-2`}
                     >
-                      <div className={`max-w-[70%] ${isOwn ? 'order-2' : 'order-1'}`}>
                         {!isOwn && showAvatar && (
                           <div className="flex items-center gap-2 mb-1 ml-1">
                             {renderAvatar(friend.avatar, friend.userName, "w-6 h-6")}
                             <span className="text-xs text-[#5f6368] dark:text-gray-400">{friend.userName}</span>
                           </div>
                         )}
+                        
+                        {/* Reply preview if this message is a reply */}
+                        {msg.replyTo && renderReplyPreview(msg.replyTo)}
                         
                         {/* Media attachments */}
                         {msg.attachments && msg.attachments.length > 0 && !msg.deleted && (
@@ -1368,7 +1705,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                           </div>
                         )}
                         
-                        {/* Text content - only show if there's actual text */}
+                        {/* Text content with highlighting */}
                         {hasTextContent && (
                           <div
                             className={`rounded-2xl p-3 ${
@@ -1376,14 +1713,14 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                                 ? 'bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400'
                                 : isOwn
                                 ? 'bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none'
-                                : 'bg-white dark:bg-[#101010]  border-[#dadce0] dark:text-white dark:border-[#232529] rounded-tl-none'
+                                : 'bg-white dark:bg-[#101010] border-[#dadce0] dark:text-white dark:border-[#232529] rounded-tl-none'
                             }`}
                           >
                             <p className="text-sm whitespace-pre-wrap break-words">
                               {msg.deleted ? (
                                 msg.content
                               ) : (
-                                messageContent
+                                highlightedText ? highlightText(messageContent, highlightedText) : messageContent
                               )}
                               {msg.edited && !msg.deleted && (
                                 <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">(edited)</span>
@@ -1418,9 +1755,8 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                             ))}
                           </div>
                         )}
-                      </div>
                     </div>
-                  </MessageWrapper>
+                    </MessageWrapper>
                 );
               })}
             </div>
@@ -1449,6 +1785,17 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         onClearAll={handleClearAllAttachments}
         onPreview={handlePreviewPreSend}
       />
+
+      {/* Reply Preview Bar */}
+      {replyingToMessage && !replyingToMessage.deleted && (
+        <ReplyPreview
+          message={replyingToMessage}
+          friendName={friend.userName}
+          currentUserId={currentUserId}
+          onCancel={handleCancelReply}
+          getMessageContent={getMessageContent}
+        />
+      )}
 
       {/* Edit Message Bar */}
       {editingMessage && (
@@ -1695,6 +2042,10 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         onReact={(emoji) => handleReactToMessage(selectedMessage, emoji)}
         onCopy={handleCopyMessage}
         onMessageInfo={() => handleMessageInfo(selectedMessage)}
+        onReply={() => {
+          handleReplyToMessage(selectedMessage);
+          closeContextMenu();
+        }}
         isOwnMessage={selectedMessage.senderId === currentUserId}
       />
     )}
@@ -1752,6 +2103,56 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       isVerified={isVerified}
       onVerificationChange={handleVerificationChange}
     />
+
+    {/* Add CSS styles for highlighting */}
+    <style jsx>{`
+      mark {
+        background-color: #fbbf24;
+        color: inherit;
+        padding: 0 2px;
+        border-radius: 2px;
+      }
+      
+      .dark mark {
+        background-color: rgba(245, 158, 11, 0.5);
+      }
+      
+      .highlight-message {
+        animation: highlight-pulse 2s ease-in-out;
+      }
+      
+      .highlight-reply-message {
+        animation: highlight-reply-pulse 2s ease-in-out;
+      }
+      
+      @keyframes highlight-pulse {
+        0%, 100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.7;
+          background-color: rgba(245, 158, 11, 0.1);
+        }
+      }
+      
+      @keyframes highlight-reply-pulse {
+        0%, 100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.7;
+          background-color: rgba(59, 130, 246, 0.1);
+        }
+      }
+      
+      .line-clamp-2 {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+    `}</style>
   </>
 );
 }
+

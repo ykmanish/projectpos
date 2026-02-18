@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import { X, Clock, Zap, Shield, AlertCircle } from 'lucide-react';
+import CustomDropdown from './CustomDropdown';
 
 export default function SlowModeModal({ 
   isOpen, 
@@ -18,14 +19,14 @@ export default function SlowModeModal({
   if (!isOpen) return null;
 
   const cooldownOptions = [
-    { value: 5, label: '5 seconds' },
-    { value: 10, label: '10 seconds' },
-    { value: 15, label: '15 seconds' },
-    { value: 30, label: '30 seconds' },
-    { value: 60, label: '1 minute' },
-    { value: 120, label: '2 minutes' },
-    { value: 300, label: '5 minutes' },
-    { value: 600, label: '10 minutes' },
+    { value: 5, label: '5 seconds', description: 'Short cooldown for active chats' },
+    { value: 10, label: '10 seconds', description: 'Moderate message frequency' },
+    { value: 15, label: '15 seconds', description: 'Balanced message pacing' },
+    { value: 30, label: '30 seconds', description: 'Standard slow mode' },
+    { value: 60, label: '1 minute', description: 'One message per minute' },
+    { value: 120, label: '2 minutes', description: 'Extended cooldown' },
+    { value: 300, label: '5 minutes', description: 'Very limited messaging' },
+    { value: 600, label: '10 minutes', description: 'Maximum restriction' },
   ];
 
   const handleSave = async () => {
@@ -40,10 +41,16 @@ export default function SlowModeModal({
     }
   };
 
+  // Get the selected cooldown label for preview
+  const getSelectedCooldownLabel = () => {
+    const option = cooldownOptions.find(opt => opt.value === cooldown);
+    return option?.label || `${cooldown} seconds`;
+  };
+
   if (!isAdmin) {
     return (
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl max-w-md w-full  border-[#f1f3f4] dark:border-[#232529] shadow-xl overflow-hidden">
+        <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl max-w-md w-full border-[#f1f3f4] dark:border-[#232529] shadow-xl overflow-hidden">
           <div className="p-6 border-b border-[#f1f3f4] dark:border-[#232529] flex items-center justify-between">
             <h3 className="text-xl font-semibold text-[#202124] dark:text-white flex items-center gap-2">
               <Shield size={20} className="text-red-500" />
@@ -98,7 +105,7 @@ export default function SlowModeModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl max-w-xl w-full  border-[#f1f3f4] dark:border-[#232529] shadow-xl overflow-hidden">
+      <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl max-w-xl w-full border-[#f1f3f4] dark:border-[#232529] shadow-xl overflow-hidden">
         {/* Header */}
         <div className="p-6 border-b border-[#f1f3f4] dark:border-[#232529] flex items-center justify-between">
           <h3 className="text-xl font-semibold text-[#202124] dark:text-white flex items-center gap-2">
@@ -150,23 +157,28 @@ export default function SlowModeModal({
             </button>
           </div>
 
-          {/* Cooldown Selector */}
+          {/* Cooldown Selector - Using CustomDropdown */}
           {enabled && (
             <div className="space-y-2">
               <label className="block text-sm font-medium text-[#202124] dark:text-white">
                 Cooldown Time
               </label>
-              <select
+              <CustomDropdown
+                options={cooldownOptions}
                 value={cooldown}
-                onChange={(e) => setCooldown(Number(e.target.value))}
-                className="w-full px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none"
-              >
-                {cooldownOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                onChange={setCooldown}
+                placeholder="Select cooldown time"
+                icon={Clock}
+                searchable={true}
+                renderOption={(option) => (
+                  <div className="flex flex-col">
+                    <span className="font-medium">{option.label}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {option.description}
+                    </span>
+                  </div>
+                )}
+              />
               <p className="text-xs text-[#5f6368] dark:text-gray-400 mt-1">
                 Members will need to wait this long between messages
               </p>
@@ -193,7 +205,7 @@ export default function SlowModeModal({
               </div>
               <div className="flex items-center gap-2 mt-3 text-xs text-[#5f6368] dark:text-gray-400">
                 <Clock size={12} />
-                <span>Next message allowed in {cooldown} seconds</span>
+                <span>Next message allowed in {getSelectedCooldownLabel()}</span>
               </div>
             </div>
           )}

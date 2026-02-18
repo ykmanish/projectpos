@@ -222,7 +222,7 @@ export default function MessageInfoModal({
               <div className="space-y-4">
                 {/* Read By with individual timestamps */}
                 {readByMembers.length > 0 && (
-                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-2xl p-4">
+                  <div className="bg-blue-50 dark:bg-blue-900/30  border-blue-200 dark:border-blue-800 rounded-2xl p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <CheckCheck size={16} className="text-blue-600 dark:text-blue-400" />
                       <p className="text-sm font-medium text-blue-900 dark:text-blue-300">
@@ -255,7 +255,7 @@ export default function MessageInfoModal({
 
                 {/* Not Read By */}
                 {notReadByMembers.length > 0 && (
-                  <div className="bg-gray-50 dark:bg-[#101010] border border-gray-200 dark:border-[#232529] rounded-xl p-4">
+                  <div className="bg-gray-50 dark:bg-[#101010]  border-gray-200 dark:border-[#232529] rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <Check size={16} className="text-gray-600 dark:text-gray-400" />
                       <p className="text-sm font-medium text-gray-900 dark:text-white">
@@ -303,14 +303,14 @@ export default function MessageInfoModal({
           </div>
 
           {/* Footer */}
-          <div className="p-4 border-t border-[#f1f3f4] dark:border-[#181A1E] flex justify-end sticky bottom-0 bg-white dark:bg-[#0c0c0c]">
+          {/* <div className="p-4 border-t border-[#f1f3f4] dark:border-[#181A1E] flex justify-end sticky bottom-0 bg-white dark:bg-[#0c0c0c]">
             <button
               onClick={onClose}
               className="px-6 py-2 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] transition-colors"
             >
               Close
             </button>
-          </div>
+          </div> */}
         </div>
       </div>
     </>

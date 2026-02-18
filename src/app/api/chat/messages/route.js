@@ -1,4 +1,4 @@
-// app/api/chat/messages/route.js
+// app/api/chat/messages/route.js (Updated with replyTo field)
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 
@@ -237,14 +237,15 @@ export async function POST(request) {
       roomId, 
       senderId, 
       receiverId, 
-      content,  // This will be encrypted content
-      encryptedContent, // Encrypted message object
+      content,
+      encryptedContent,
       attachments, 
       timestamp, 
       isGroupMessage,
       senderName,
       delivered,
-      deliveredAt
+      deliveredAt,
+      replyTo // New field for reply feature
     } = body;
 
     if (!roomId || !senderId || !receiverId) {
@@ -265,9 +266,10 @@ export async function POST(request) {
       roomId,
       senderId,
       receiverId,
-      content: content || '', // Keep for preview (encrypted)
-      encryptedContent: encryptedContent || null, // Full encrypted data
+      content: content || '',
+      encryptedContent: encryptedContent || null,
       attachments: attachments || [],
+      replyTo: replyTo || null, // Store reply information
       timestamp: timestamp || now,
       delivered: delivered !== undefined ? delivered : true,
       deliveredAt: deliveredAt || now,
@@ -277,7 +279,7 @@ export async function POST(request) {
       edited: false,
       deleted: false,
       isGroupMessage: isGroupMessage || false,
-      isEncrypted: true, // Flag indicating message is encrypted
+      isEncrypted: !!encryptedContent,
       senderName: senderName || undefined,
       createdAt: new Date()
     };
@@ -287,8 +289,9 @@ export async function POST(request) {
     console.log('🔐 Encrypted message saved to DB:', {
       roomId,
       senderId,
+      hasReply: !!replyTo,
       isGroupMessage,
-      isEncrypted: true
+      isEncrypted: !!encryptedContent
     });
 
     return NextResponse.json({

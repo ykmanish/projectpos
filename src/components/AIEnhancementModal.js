@@ -143,7 +143,7 @@ export default function AIEnhancementModal({
               <label className="text-xs font-medium text-[#5f6368] dark:text-gray-400 mb-2 block">
                 Original Message
               </label>
-              <div className="p-4 bg-gray-50 dark:bg-[#101010] rounded-2xl border border-[#dadce0] dark:border-[#232529]">
+              <div className="p-4 bg-gray-50 dark:bg-[#101010] rounded-2xl  border-[#dadce0] dark:border-[#232529]">
                 <p className="text-[#202124] dark:text-white whitespace-pre-wrap break-words">
                   {originalMessage}
                 </p>

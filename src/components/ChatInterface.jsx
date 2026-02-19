@@ -28,6 +28,9 @@ import {
   XCircle,
   Reply,
   CornerDownRight,
+  Trash2,
+  Eraser,
+  AlertTriangle
 } from "lucide-react";
 import { BeanHead } from "beanheads";
 import EmojiPicker from 'emoji-picker-react';
@@ -43,6 +46,7 @@ import AIEnhancementModal from "./AIEnhancementModal";
 import MessageSearch from "./MessageSearch";
 import ReplyPreview from "./ReplyPreview";
 import GIFPicker from "./GIFPicker";
+import ConfirmationModal from "./ConfirmationModal";
 
 export default function ChatInterface({ friend, currentUserId, currentUserAvatar, onClose, onMessageUpdate }) {
   const [messages, setMessages] = useState([]);
@@ -66,6 +70,12 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
   const [isSearching, setIsSearching] = useState(false);
   const [highlightedText, setHighlightedText] = useState("");
+  
+  // Confirmation modals
+  const [showDeleteChatConfirm, setShowDeleteChatConfirm] = useState(false);
+  const [showClearChatConfirm, setShowClearChatConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   
   // Reply feature states
   const [replyToMessage, setReplyToMessage] = useState(null);
@@ -379,6 +389,92 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       setTimeout(() => {
         messageElement.classList.remove("highlight-reply-message");
       }, 2000);
+    }
+  };
+
+  // Handle Delete Chat
+  const handleDeleteChat = async () => {
+    setIsDeleting(true);
+    try {
+      const response = await fetch('/api/chat/delete-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId,
+          userId: currentUserId,
+          friendId: friend.userId
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('✅ Chat deleted successfully');
+        // Notify parent component to refresh the chat list
+        if (onMessageUpdate) {
+          onMessageUpdate({ 
+            type: 'chat-deleted', 
+            roomId,
+            friendId: friend.userId 
+          });
+        }
+        // Close the chat interface
+        onClose();
+      } else {
+        console.error('❌ Failed to delete chat:', data.error);
+        alert('Failed to delete chat. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+      alert('An error occurred while deleting the chat.');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteChatConfirm(false);
+      setShowDropdown(false);
+    }
+  };
+
+  // Handle Clear Chat
+  const handleClearChat = async () => {
+    setIsClearing(true);
+    try {
+      const response = await fetch('/api/chat/clear-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId,
+          userId: currentUserId
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        console.log('✅ Chat cleared successfully');
+        // Clear messages from state
+        setMessages([]);
+        // Clear decrypted messages
+        setDecryptedMessages(new Map());
+        // Clear attachments
+        setAllAttachments([]);
+        // Notify parent component
+        if (onMessageUpdate) {
+          onMessageUpdate({ 
+            type: 'chat-cleared', 
+            roomId 
+          });
+        }
+      } else {
+        console.error('❌ Failed to clear chat:', data.error);
+        alert('Failed to clear chat. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error clearing chat:', error);
+      alert('An error occurred while clearing the chat.');
+    } finally {
+      setIsClearing(false);
+      setShowClearChatConfirm(false);
+      setShowDropdown(false);
     }
   };
 
@@ -1510,6 +1606,34 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     setSelectedMessage(message);
   };
 
+  // GIF playback control - play 3 times max, restart on hover
+  const handleGifHoverStart = (e) => {
+    const img = e.currentTarget;
+    const playCount = parseInt(img.dataset.playCount || '0');
+    const isPaused = img.dataset.isPaused === 'true';
+    
+    if (playCount < 3 || !isPaused) {
+      img.dataset.playCount = (playCount + 1).toString();
+      img.dataset.isPaused = 'false';
+      
+      // Restart GIF by changing src (forces 1 full loop)
+      const src = img.src;
+      img.src = '';
+      img.src = src;
+      
+      // Pause after ~3 seconds (adjust based on your GIFs)
+      setTimeout(() => {
+        if (parseInt(img.dataset.playCount || '0') >= 3) {
+          img.dataset.isPaused = 'true';
+        }
+      }, 3000);
+    }
+  };
+
+  const handleGifHoverEnd = () => {
+    // Optional: pause immediately on mouse leave if needed
+  };
+
   const closeContextMenu = () => {
     setContextMenu(null);
     setSelectedMessage(null);
@@ -1713,6 +1837,26 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           searchInputRef.current?.focus();
         }, 100);
       }
+    },
+    {
+      id: 'clear-chat',
+      label: 'Clear Chat',
+      icon: Eraser,
+      onClick: () => {
+        setShowDropdown(false);
+        setShowClearChatConfirm(true);
+      },
+      className: 'text-orange-600 dark:text-orange-400'
+    },
+    {
+      id: 'delete-chat',
+      label: 'Delete Chat',
+      icon: Trash2,
+      onClick: () => {
+        setShowDropdown(false);
+        setShowDeleteChatConfirm(true);
+      },
+      className: 'text-red-600 dark:text-red-400'
     }
   ];
 
@@ -1862,98 +2006,109 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                       <div
                         className={`max-w-[70%] transition-all duration-200 ease-out mb-2`}
                       >
-                          {!isOwn && showAvatar && (
+                          {/* {!isOwn && showAvatar && (
                             <div className="flex items-center gap-2 mb-1 ml-1">
                               {renderAvatar(friend.avatar, friend.userName, "w-6 h-6")}
                               <span className="text-xs text-[#5f6368] dark:text-gray-400">{friend.userName}</span>
                             </div>
-                          )}
+                          )} */}
                           
                           {/* Reply preview if this message is a reply */}
                           {msg.replyTo && renderReplyPreview(msg.replyTo)}
                           
                           {/* Media attachments - including GIFs */}
-                          {msg.attachments && msg.attachments.length > 0 && !msg.deleted && (
-                            <div className={`space-y-2 ${hasTextContent ? 'mb-2' : ''}`}>
-                              {msg.attachments.map((att, idx) => {
-                                const globalIndex = allAttachments.findIndex(
-                                  a => a.url === att.url && a.messageId === msg.timestamp
-                                );
-                                
-                                return (
-                                  <div key={idx} className="relative group">
-                                    {att.type === 'image' ? (
-                                      <div className="relative">
-                                        <img
-                                          src={att.url}
-                                          alt="Attachment"
-                                          className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                          onClick={() => handleAttachmentClick(att, globalIndex)}
-                                        />
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                                          <button
-                                            onClick={() => handleAttachmentClick(att, globalIndex)}
-                                            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                                          >
-                                            <Maximize2 size={20} />
-                                          </button>
-                                        </div>
-                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
-                                          {formatTime(msg.timestamp)}
-                                          <span className="ml-1">{renderMessageStatus(msg)}</span>
-                                        </div>
-                                      </div>
-                                    ) : att.type === 'video' ? (
-                                      <div className="relative">
-                                        <video
-                                          src={att.url}
-                                          className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer"
-                                          onClick={() => handleAttachmentClick(att, globalIndex)}
-                                        />
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                                          <button
-                                            onClick={() => handleAttachmentClick(att, globalIndex)}
-                                            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                                          >
-                                            <Maximize2 size={20} />
-                                          </button>
-                                        </div>
-                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
-                                          <span>{formatTime(msg.timestamp)}</span>
-                                          {renderMessageStatus(msg)}
-                                        </div>
-                                      </div>
-                                    ) : att.type === 'gif' ? (
-                                      <div className="relative">
-                                        <img
-                                          src={att.url}
-                                          alt={att.name || 'GIF'}
-                                          className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                          onClick={() => handleAttachmentClick(att, globalIndex)}
-                                          loading="lazy"
-                                        />
-                                        <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
-                                          GIF
-                                        </div>
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                                          <button
-                                            onClick={() => handleAttachmentClick(att, globalIndex)}
-                                            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                                          >
-                                            <Maximize2 size={20} />
-                                          </button>
-                                        </div>
-                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
-                                          <span>{formatTime(msg.timestamp)}</span>
-                                          {renderMessageStatus(msg)}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
+                         {msg.attachments && msg.attachments.length > 0 && !msg.deleted && (
+  <div className={`space-y-2 ${hasTextContent ? 'mb-2' : ''}`}>
+    {msg.attachments.map((att, idx) => {
+      const globalIndex = allAttachments.findIndex(
+        a => a.url === att.url && a.messageId === msg.timestamp
+      );
+      
+      return (
+        <div key={idx} className="relative group">
+          {att.type === 'image' ? (
+            <div className="relative">
+              <img
+                src={att.url}
+                alt="Attachment"
+                className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => handleAttachmentClick(att, globalIndex)}
+              />
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                <button
+                  onClick={() => handleAttachmentClick(att, globalIndex)}
+                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                >
+                  <Maximize2 size={20} />
+                </button>
+              </div>
+              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                {formatTime(msg.timestamp)}
+                <span className="ml-1">{renderMessageStatus(msg)}</span>
+              </div>
+            </div>
+          ) : att.type === 'video' ? (
+            <div className="relative">
+              <video
+                src={att.url}
+                className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer"
+                onClick={() => handleAttachmentClick(att, globalIndex)}
+              />
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                <button
+                  onClick={() => handleAttachmentClick(att, globalIndex)}
+                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                >
+                  <Maximize2 size={20} />
+                </button>
+              </div>
+              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
+                <span>{formatTime(msg.timestamp)}</span>
+                {renderMessageStatus(msg)}
+              </div>
+            </div>
+         ) : att.type === 'gif' ? (
+  <div className="flex flex-col group/gif relative">
+    <div className="relative">
+      <img
+        src={att.url}
+        alt={att.name || 'GIF'}
+        className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+        onClick={() => handleAttachmentClick(att, globalIndex)}
+        loading="lazy"
+        // GIF playback control attributes
+        data-play-count="0"
+        data-is-paused="true"
+        onMouseEnter={handleGifHoverStart}
+        onMouseLeave={handleGifHoverEnd}
+      />
+      <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+        GIF
+      </div>
+      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+        <button
+          onClick={() => handleAttachmentClick(att, globalIndex)}
+          className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+        >
+          <Maximize2 size={20} />
+        </button>
+      </div>
+    </div>
+    {/* Time and status below GIF */}
+    <div className="flex items-center justify-end gap-1 mt-1 px-1">
+      <span className="text-[10px] text-gray-500 dark:text-gray-400">
+        {formatTime(msg.timestamp)}
+      </span>
+      {renderMessageStatus(msg)}
+    </div>
+  </div>
+
+          ) : null}
+        </div>
+      );
+    })}
+  </div>
+)}
                           
                           {/* Text content with highlighting */}
                           {hasTextContent && (
@@ -2287,6 +2442,34 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         </div>
       </div>
 
+      {/* Delete Chat Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteChatConfirm}
+        onClose={() => setShowDeleteChatConfirm(false)}
+        onConfirm={handleDeleteChat}
+        title="Delete Chat"
+        message={`Are you sure you want to delete this chat with ${friend.userName}? This will permanently delete all messages and remove the chat from your recent list. This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isProcessing={isDeleting}
+        type="danger"
+        icon={Trash2}
+      />
+
+      {/* Clear Chat Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showClearChatConfirm}
+        onClose={() => setShowClearChatConfirm(false)}
+        onConfirm={handleClearChat}
+        title="Clear Chat"
+        message={`Are you sure you want to clear all messages in this chat with ${friend.userName}? The chat will remain in your recent list, but all messages will be permanently deleted. This action cannot be undone.`}
+        confirmText="Clear"
+        cancelText="Cancel"
+        isProcessing={isClearing}
+        type="warning"
+        icon={Eraser}
+      />
+
       {/* AI Enhancement Modal */}
       <AIEnhancementModal
         isOpen={showAIEnhancement}
@@ -2427,6 +2610,30 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
+          /* GIF playback states */
+img[data-is-paused="true"] {
+  /* Optional: slight grayscale when paused */
+  filter: saturate(0.8);
+  transition: filter 0.3s ease;
+}
+
+img[data-is-paused="false"] {
+  filter: saturate(1);
+}
+
+img[data-play-count="3"]::after {
+  content: '⏸️';
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(0,0,0,0.7);
+  color: white;
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: 8px;
+  font-family: sans-serif;
+}
+
       `}</style>
     </>
   );

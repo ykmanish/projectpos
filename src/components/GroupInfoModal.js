@@ -88,11 +88,17 @@ export default function GroupInfoModal({
   };
 
   const handleToggleSetting = async (setting, value) => {
-    if (!isAdmin) return;
-    setUpdating(true);
-    await onUpdateSettings({ [setting]: value });
-    setUpdating(false);
-  };
+  if (!isAdmin) return;
+  setUpdating(true);
+  
+  // Call the parent's onUpdateSettings
+  await onUpdateSettings({ [setting]: value });
+  
+  // The parent component (GroupChatInterface) should handle updating groupData
+  // through the onGroupUpdate callback
+  
+  setUpdating(false);
+};
 
   const handleMemberAction = async (targetUserId, action) => {
     if (!isAdmin) return;

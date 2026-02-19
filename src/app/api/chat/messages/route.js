@@ -1,4 +1,5 @@
-// app/api/chat/messages/route.js (Updated with replyTo field)
+// app/api/chat/messages/route.js
+
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 

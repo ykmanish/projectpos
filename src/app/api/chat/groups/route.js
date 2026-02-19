@@ -115,7 +115,6 @@ export async function GET(request) {
 }
 
 // POST - Create new group
-// POST - Create new group
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -199,7 +198,11 @@ export async function POST(request) {
       settings: {
         allowMemberInvite: true,
         allowMemberPost: true,
-        onlyAdminsCanMessage: false
+        onlyAdminsCanMessage: false,
+        slowMode: {
+          enabled: false,
+          cooldown: 30
+        }
       },
       lastActivity: new Date().toISOString(),
       totalMessages: 0
@@ -232,7 +235,6 @@ export async function POST(request) {
     );
   }
 }
-
 
 // PATCH - Update group settings
 export async function PATCH(request) {
@@ -289,6 +291,9 @@ export async function PATCH(request) {
     if (updates.onlyAdminsCanMessage !== undefined) {
       allowedUpdates['settings.onlyAdminsCanMessage'] = updates.onlyAdminsCanMessage;
     }
+    if (updates.slowMode !== undefined) {
+      allowedUpdates['settings.slowMode'] = updates.slowMode;
+    }
 
     allowedUpdates.updatedAt = new Date().toISOString();
 
@@ -300,6 +305,33 @@ export async function PATCH(request) {
     const updatedGroup = await groups.findOne({ groupId });
 
     console.log('✅ Group updated successfully:', groupId);
+
+    // Emit socket event for real-time update (if socket.io is available)
+    try {
+      const { getIO } = require('@/lib/socket');
+      const io = getIO();
+      if (io) {
+        // Emit to all members in the group
+        io.to(groupId).emit('group-settings-updated', {
+          groupId,
+          updates: {
+            ...(updates.name && { name: updates.name }),
+            ...(updates.description && { description: updates.description }),
+            ...(updates.avatar && { avatar: updates.avatar }),
+            ...(updates.allowMemberInvite !== undefined && { allowMemberInvite: updates.allowMemberInvite }),
+            ...(updates.allowMemberPost !== undefined && { allowMemberPost: updates.allowMemberPost }),
+            ...(updates.onlyAdminsCanMessage !== undefined && { onlyAdminsCanMessage: updates.onlyAdminsCanMessage }),
+            ...(updates.slowMode !== undefined && { slowMode: updates.slowMode })
+          },
+          updatedBy: userId,
+          timestamp: new Date().toISOString()
+        });
+        console.log('📡 Emitted group-settings-updated event to room:', groupId);
+      }
+    } catch (socketError) {
+      console.log('Socket.io not available or error emitting:', socketError);
+      // Don't fail the request if socket emission fails
+    }
 
     return NextResponse.json({
       success: true,
@@ -361,6 +393,21 @@ export async function DELETE(request) {
       await groups.deleteOne({ groupId });
       console.log('✅ Group deleted:', groupId);
 
+      // Emit socket event for group deletion
+      try {
+        const { getIO } = require('@/lib/socket');
+        const io = getIO();
+        if (io) {
+          io.to(groupId).emit('group-deleted', {
+            groupId,
+            deletedBy: userId,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } catch (socketError) {
+        console.log('Socket.io not available or error emitting:', socketError);
+      }
+
       return NextResponse.json({
         success: true,
         message: 'Group deleted successfully'
@@ -371,6 +418,22 @@ export async function DELETE(request) {
       if (updatedMembers.length === 0) {
         await groups.deleteOne({ groupId });
         console.log('✅ Group deleted (last member left):', groupId);
+        
+        // Emit socket event for group deletion
+        try {
+          const { getIO } = require('@/lib/socket');
+          const io = getIO();
+          if (io) {
+            io.to(groupId).emit('group-deleted', {
+              groupId,
+              deletedBy: userId,
+              timestamp: new Date().toISOString()
+            });
+          }
+        } catch (socketError) {
+          console.log('Socket.io not available or error emitting:', socketError);
+        }
+
         return NextResponse.json({
           success: true,
           message: 'Left group successfully (group deleted)'
@@ -392,6 +455,22 @@ export async function DELETE(request) {
       );
 
       console.log('✅ User left group:', userId, groupId);
+
+      // Emit socket event for member left
+      try {
+        const { getIO } = require('@/lib/socket');
+        const io = getIO();
+        if (io) {
+          io.to(groupId).emit('member-left', {
+            groupId,
+            userId,
+            userName: member.userName,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } catch (socketError) {
+        console.log('Socket.io not available or error emitting:', socketError);
+      }
 
       return NextResponse.json({
         success: true,

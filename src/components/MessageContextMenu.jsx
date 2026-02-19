@@ -156,7 +156,7 @@ export default function MessageContextMenu({
         {/* Confirmation Menu */}
         <div
           ref={menuRef}
-          className="fixed z-50 bg-white dark:bg-[#0c0c0c] rounded-2xl shadow-2xl border border-[#dadce0] dark:border-[#232529] py-2 min-w-[220px] max-w-[90vw] animate-in fade-in zoom-in-95 duration-100"
+          className="fixed z-50 bg-white dark:bg-[#0c0c0c] rounded-2xl   border-[#dadce0] dark:border-[#232529] py-2 min-w-[220px] max-w-[90vw] animate-in fade-in zoom-in-95 duration-100"
           style={getMenuStyle()}
         >
           <div className="px-4 py-3 border-b border-[#f1f3f4] dark:border-[#232529]">
@@ -199,7 +199,7 @@ export default function MessageContextMenu({
       {/* Context Menu */}
       <div
         ref={menuRef}
-        className="fixed z-50 bg-white dark:bg-[#0c0c0c] rounded-2xl shadow-2xl border border-[#dadce0] dark:border-[#232529] py-2 min-w-[220px] max-w-[90vw] animate-in fade-in zoom-in-95 duration-100"
+        className="fixed z-50 bg-white dark:bg-[#0c0c0c] rounded-2xl -2xl  border-[#dadce0] dark:border-[#232529] py-2 min-w-[220px] max-w-[90vw] animate-in fade-in zoom-in-95 duration-100"
         style={getMenuStyle()}
       >
         {/* Emoji Reactions */}

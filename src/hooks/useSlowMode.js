@@ -16,7 +16,7 @@ export function useSlowMode(initialSettings = { enabled: false, cooldown: 30 }, 
         lastMessageTimeRef.current = parseInt(savedTime);
         
         // Check if cooldown should still be active
-        if (slowMode.enabled) {
+        if (slowMode.enabled && !isAdmin) {
           const now = Date.now();
           const timeSinceLastMessage = (now - lastMessageTimeRef.current) / 1000;
           
@@ -27,18 +27,24 @@ export function useSlowMode(initialSettings = { enabled: false, cooldown: 30 }, 
             localStorage.removeItem(`slowMode_lastMessage_${userId}`);
             lastMessageTimeRef.current = null;
           }
+        } else {
+          // If slow mode is disabled or user is admin, clear the cooldown
+          localStorage.removeItem(`slowMode_lastMessage_${userId}`);
+          lastMessageTimeRef.current = null;
         }
       }
     }
-  }, [userId, slowMode.enabled, slowMode.cooldown]);
+  }, [userId, slowMode.enabled, slowMode.cooldown, isAdmin]);
 
   // Check if user can send a message based on slow mode
   const canSendMessage = useCallback(() => {
     // Admins bypass slow mode completely
     if (isAdmin) return true;
     
+    // If slow mode is disabled, always allow
     if (!slowMode.enabled) return true;
     
+    // If no message has been sent yet, allow
     if (!lastMessageTimeRef.current) return true;
     
     const now = Date.now();
@@ -66,10 +72,11 @@ export function useSlowMode(initialSettings = { enabled: false, cooldown: 30 }, 
       lastMessageTimeRef.current = now;
       localStorage.setItem(`slowMode_lastMessage_${userId}`, now.toString());
       setCooldownActive(true);
+      setTimeRemaining(slowMode.cooldown);
     }
-  }, [slowMode.enabled, isAdmin, userId]);
+  }, [slowMode.enabled, slowMode.cooldown, isAdmin, userId]);
 
-  // Reset cooldown (useful when slow mode is disabled)
+  // Reset cooldown (useful when slow mode is disabled or settings change)
   const resetCooldown = useCallback(() => {
     if (userId) {
       localStorage.removeItem(`slowMode_lastMessage_${userId}`);
@@ -77,18 +84,49 @@ export function useSlowMode(initialSettings = { enabled: false, cooldown: 30 }, 
     lastMessageTimeRef.current = null;
     setCooldownActive(false);
     setTimeRemaining(0);
+    
+    // Clear any running timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
   }, [userId]);
 
-  // Update settings
+  // Update settings - this will be called when slow mode changes via socket
   const updateSlowMode = useCallback((settings) => {
+    console.log('🔄 Updating slow mode settings:', settings);
     setSlowMode(settings);
+    
+    // If slow mode is disabled, reset cooldown
     if (!settings.enabled) {
       resetCooldown();
+    } else {
+      // If slow mode is enabled, check if we need to recalculate cooldown
+      if (lastMessageTimeRef.current) {
+        const now = Date.now();
+        const timeSinceLastMessage = (now - lastMessageTimeRef.current) / 1000;
+        
+        if (timeSinceLastMessage >= settings.cooldown) {
+          // Cooldown has expired with new settings
+          resetCooldown();
+        } else {
+          // Cooldown is still active, update remaining time
+          setCooldownActive(true);
+          setTimeRemaining(Math.ceil(settings.cooldown - timeSinceLastMessage));
+        }
+      }
     }
   }, [resetCooldown]);
 
   // Timer effect for cooldown countdown
   useEffect(() => {
+    // Clear any existing timer when dependencies change
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    // Only run timer if conditions are met
     if (slowMode.enabled && lastMessageTimeRef.current && !isAdmin) {
       const updateTimer = () => {
         const remaining = getTimeRemaining();
@@ -99,6 +137,7 @@ export function useSlowMode(initialSettings = { enabled: false, cooldown: 30 }, 
           if (userId) {
             localStorage.removeItem(`slowMode_lastMessage_${userId}`);
           }
+          lastMessageTimeRef.current = null;
           if (timerRef.current) {
             clearInterval(timerRef.current);
             timerRef.current = null;
@@ -110,7 +149,7 @@ export function useSlowMode(initialSettings = { enabled: false, cooldown: 30 }, 
       updateTimer();
 
       // Set up interval if cooldown is active
-      if (cooldownActive) {
+      if (cooldownActive && getTimeRemaining() > 0) {
         timerRef.current = setInterval(updateTimer, 1000);
       }
     }
@@ -121,7 +160,21 @@ export function useSlowMode(initialSettings = { enabled: false, cooldown: 30 }, 
         timerRef.current = null;
       }
     };
-  }, [slowMode.enabled, cooldownActive, getTimeRemaining, isAdmin, userId]);
+  }, [slowMode.enabled, cooldownActive, getTimeRemaining, isAdmin, userId, slowMode.cooldown]);
+
+  // Effect to handle slow mode being disabled remotely
+  useEffect(() => {
+    if (!slowMode.enabled) {
+      resetCooldown();
+    }
+  }, [slowMode.enabled, resetCooldown]);
+
+  // Effect to handle cooldown state changes
+  useEffect(() => {
+    if (cooldownActive) {
+      setTimeRemaining(getTimeRemaining());
+    }
+  }, [cooldownActive, getTimeRemaining]);
 
   return {
     slowMode,

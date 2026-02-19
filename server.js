@@ -1,5 +1,3 @@
-// server.js
-
 const { createServer } = require('node:http');
 const next = require('next');
 const { Server } = require('socket.io');
@@ -165,7 +163,7 @@ app.prepare().then(() => {
       });
     });
 
-    // NEW: Handle member joining group
+    // Handle member joining group
     socket.on('member-joined', (data) => {
       console.log('👋 MEMBER JOINED GROUP');
       console.log('Room:', data.roomId);
@@ -194,6 +192,31 @@ app.prepare().then(() => {
       });
 
       console.log(`✅ Member join notification broadcast to room ${data.roomId}`);
+    });
+
+    // NEW: Handle group settings updates
+    socket.on('group-settings-updated', (data) => {
+      console.log('⚙️ Group settings updated:', data);
+      console.log('Room:', data.roomId);
+      console.log('Settings:', data.settings);
+      console.log('Updated by:', data.updatedBy);
+      
+      // Broadcast to all members in the group except the sender
+      socket.to(data.roomId).emit('group-settings-updated', {
+        roomId: data.roomId,
+        settings: data.settings,
+        updatedBy: data.updatedBy,
+        timestamp: data.timestamp
+      });
+      
+      // Also send to the sender to confirm (optional)
+      socket.emit('group-settings-updated-confirmed', {
+        roomId: data.roomId,
+        settings: data.settings,
+        timestamp: data.timestamp
+      });
+      
+      console.log(`✅ Group settings update broadcast to room ${data.roomId}`);
     });
 
     socket.on('send-message', (message) => {

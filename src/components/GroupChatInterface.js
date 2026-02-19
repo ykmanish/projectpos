@@ -9,6 +9,7 @@ import {
   X,
   Send,
   ShieldCheck,
+    Calendar,
   Paperclip,
   Shield,
   Image as ImageIcon,
@@ -329,22 +330,23 @@ export default function GroupChatInterface({
   };
 
   // Updated canSendMessage function with admin bypass
-  const canSendMessage = useCallback(() => {
-    // Check if user is admin - admins bypass all restrictions
-    if (isCurrentUserAdmin) return true;
-    
-    // Check admin message permission first (only if not admin)
-    if (groupData.settings?.onlyAdminsCanMessage) {
-      return false;
-    }
-    
-    // Then check slow mode
-    if (!canSendInSlowMode()) {
-      return false;
-    }
-    
-    return true;
-  }, [groupData.settings?.onlyAdminsCanMessage, isCurrentUserAdmin, canSendInSlowMode]);
+  // Updated canSendMessage function with admin bypass
+const canSendMessage = useCallback(() => {
+  // Check if user is admin - admins bypass all restrictions
+  if (isCurrentUserAdmin) return true;
+  
+  // Check admin message permission first (only if not admin)
+  if (groupData.settings?.onlyAdminsCanMessage) {
+    return false;
+  }
+  
+  // Then check slow mode
+  if (groupData.settings?.slowMode?.enabled && !canSendInSlowMode()) {
+    return false;
+  }
+  
+  return true;
+}, [groupData.settings?.onlyAdminsCanMessage, groupData.settings?.slowMode?.enabled, isCurrentUserAdmin, canSendInSlowMode]);
 
   const getMemberName = (userId) => {
     const member = groupData.members?.find((m) => m.userId === userId);
@@ -509,6 +511,47 @@ export default function GroupChatInterface({
       }
     };
 
+   const onGroupSettingsUpdated = (data) => {
+  console.log("⚙️ Group settings updated via socket:", data);
+  if (data.roomId === roomId) {
+    // Update group data with new settings
+    setGroupData(prev => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        ...data.settings
+      }
+    }));
+    
+    // If slow mode settings changed, update them
+    if (data.settings.slowMode) {
+      setSlowModeSettings(data.settings.slowMode);
+      updateLocalSlowMode(data.settings.slowMode);
+      
+      // Show a small notification (optional)
+      const isEnabled = data.settings.slowMode.enabled;
+      const cooldown = data.settings.slowMode.cooldown;
+      const message = isEnabled 
+        ? `⏱️ Slow mode enabled (${cooldown}s cooldown)` 
+        : "⏱️ Slow mode disabled";
+      
+      console.log(message);
+      
+      // You can add a toast notification here if you have one
+    }
+    
+    // Show a small notification for admin-only messaging
+    if (data.settings.onlyAdminsCanMessage !== undefined) {
+      const isEnabled = data.settings.onlyAdminsCanMessage;
+      const message = isEnabled 
+        ? "🔒 Admin-only messaging has been enabled" 
+        : "🔓 Admin-only messaging has been disabled";
+      
+      console.log(message);
+    }
+  }
+};
+
     const onMessage = (message) => {
       console.log("📩 Group message received:", message);
       if (message.roomId === roomId) {
@@ -584,52 +627,52 @@ export default function GroupChatInterface({
       }
     };
 
-const onMessageDeleted = (data) => {
-  console.log("🗑️ Message deleted:", data);
-  if (data.roomId === roomId) {
-    if (data.deleteForEveryone) {
-      const deletedContent = data.deletedByAdmin 
-        ? `This message was deleted by admin (${data.deletedByName})`
-        : "This message was deleted";
-        
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.timestamp === data.timestamp && msg.senderId === data.senderId
-            ? {
-                ...msg,
-                deleted: true,
-                deletedBy: data.deletedBy,
-                deletedByAdmin: data.deletedByAdmin,
-                deletedByName: data.deletedByName,
-                content: deletedContent,
-                attachments: [],
-              }
-            : msg
-        )
-      );
-      setDecryptedMessages((prev) => {
-        const newMap = new Map(prev);
-        newMap.delete(data.timestamp);
-        return newMap;
-      });
-    } else {
-      setMessages((prev) =>
-        prev.filter(
-          (msg) =>
-            !(
-              msg.timestamp === data.timestamp &&
-              msg.senderId === data.senderId
+    const onMessageDeleted = (data) => {
+      console.log("🗑️ Message deleted:", data);
+      if (data.roomId === roomId) {
+        if (data.deleteForEveryone) {
+          const deletedContent = data.deletedByAdmin 
+            ? `This message was deleted by admin (${data.deletedByName})`
+            : "This message was deleted";
+            
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.timestamp === data.timestamp && msg.senderId === data.senderId
+                ? {
+                    ...msg,
+                    deleted: true,
+                    deletedBy: data.deletedBy,
+                    deletedByAdmin: data.deletedByAdmin,
+                    deletedByName: data.deletedByName,
+                    content: deletedContent,
+                    attachments: [],
+                  }
+                : msg
+            )
+          );
+          setDecryptedMessages((prev) => {
+            const newMap = new Map(prev);
+            newMap.delete(data.timestamp);
+            return newMap;
+          });
+        } else {
+          setMessages((prev) =>
+            prev.filter(
+              (msg) =>
+                !(
+                  msg.timestamp === data.timestamp &&
+                  msg.senderId === data.senderId
+                ),
             ),
-        ),
-      );
-      setDecryptedMessages((prev) => {
-        const newMap = new Map(prev);
-        newMap.delete(data.timestamp);
-        return newMap;
-      });
-    }
-  }
-};
+          );
+          setDecryptedMessages((prev) => {
+            const newMap = new Map(prev);
+            newMap.delete(data.timestamp);
+            return newMap;
+          });
+        }
+      }
+    };
 
     const onMessageReaction = (data) => {
       console.log("😊 Message reaction:", data);
@@ -748,6 +791,7 @@ const onMessageDeleted = (data) => {
 
     socket.on("joined-room", onJoinedRoom);
     socket.on("member-joined", onMemberJoined);
+    socket.on("group-settings-updated", onGroupSettingsUpdated);
     socket.on("receive-message", onMessage);
     socket.on("message-updated", onMessageUpdated);
     socket.on("message-deleted", onMessageDeleted);
@@ -767,6 +811,7 @@ const onMessageDeleted = (data) => {
       console.log("🧹 Cleaning up group chat listeners");
       socket.off("joined-room", onJoinedRoom);
       socket.off("member-joined", onMemberJoined);
+      socket.off("group-settings-updated", onGroupSettingsUpdated);
       socket.off("receive-message", onMessage);
       socket.off("message-updated", onMessageUpdated);
       socket.off("message-deleted", onMessageDeleted);
@@ -831,40 +876,40 @@ const onMessageDeleted = (data) => {
     [encryptionReady, groupKey, currentUserId, roomId],
   );
 
-const fetchMessages = async () => {
-  try {
-    const userJoinTime = groupData.members?.find(
-      (m) => m.userId === currentUserId,
-    )?.joinedAt;
-    let url = `/api/chat/messages?roomId=${roomId}&userId=${currentUserId}`;
+  const fetchMessages = async () => {
+    try {
+      const userJoinTime = groupData.members?.find(
+        (m) => m.userId === currentUserId,
+      )?.joinedAt;
+      let url = `/api/chat/messages?roomId=${roomId}&userId=${currentUserId}`;
 
-    // Only fetch messages after user joined
-    if (userJoinTime) {
-      url += `&after=${userJoinTime}`;
-      console.log(`🔍 Fetching messages after: ${userJoinTime}`);
-    }
+      // Only fetch messages after user joined
+      if (userJoinTime) {
+        url += `&after=${userJoinTime}`;
+        console.log(`🔍 Fetching messages after: ${userJoinTime}`);
+      }
 
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.success) {
-      // Process messages to ensure admin deletion info is preserved
-      const processedMessages = data.messages.map(msg => {
-        // If message is deleted by admin, ensure the content shows admin deletion
-        if (msg.deleted && msg.deletedByAdmin) {
-          msg.content = `This message was deleted by admin (${msg.deletedByName || 'Admin'})`;
-        }
-        return msg;
-      });
-      
-      setMessages(processedMessages);
-      console.log(`✅ Loaded ${processedMessages.length} messages`);
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success) {
+        // Process messages to ensure admin deletion info is preserved
+        const processedMessages = data.messages.map(msg => {
+          // If message is deleted by admin, ensure the content shows admin deletion
+          if (msg.deleted && msg.deletedByAdmin) {
+            msg.content = `This message was deleted by admin (${msg.deletedByName || 'Admin'})`;
+          }
+          return msg;
+        });
+        
+        setMessages(processedMessages);
+        console.log(`✅ Loaded ${processedMessages.length} messages`);
+      }
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error("Error fetching messages:", error);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const fetchGroupData = async () => {
     try {
@@ -1544,93 +1589,93 @@ const fetchMessages = async () => {
   };
 
   // Updated handleDeleteMessage for admin functionality
- const handleDeleteMessage = async (message, forEveryone = false, isAdminDelete = false) => {
-  const adminName = isCurrentUserAdmin ? getMemberName(currentUserId) : null;
-  
-  if (forEveryone) {
-    socket.emit("delete-message", {
-      roomId,
-      timestamp: message.timestamp,
-      senderId: message.senderId,
-      deleteForEveryone: true,
-      isGroupMessage: true,
-      deletedBy: currentUserId,
-      deletedByAdmin: isAdminDelete || isCurrentUserAdmin,
-      deletedByName: adminName
-    });
-
-    try {
-      const response = await fetch("/api/chat/messages/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          roomId,
-          timestamp: message.timestamp,
-          senderId: message.senderId,
-          deleteForEveryone: true,
-          isGroupMessage: true,
-          deletedBy: currentUserId,
-          deletedByAdmin: isAdminDelete || isCurrentUserAdmin,
-          deletedByName: adminName
-        }),
+  const handleDeleteMessage = async (message, forEveryone = false, isAdminDelete = false) => {
+    const adminName = isCurrentUserAdmin ? getMemberName(currentUserId) : null;
+    
+    if (forEveryone) {
+      socket.emit("delete-message", {
+        roomId,
+        timestamp: message.timestamp,
+        senderId: message.senderId,
+        deleteForEveryone: true,
+        isGroupMessage: true,
+        deletedBy: currentUserId,
+        deletedByAdmin: isAdminDelete || isCurrentUserAdmin,
+        deletedByName: adminName
       });
 
-      const data = await response.json();
-      
-      // Immediately update local state with the admin deletion info
-      if (data.success) {
-        const deletedContent = (isAdminDelete || isCurrentUserAdmin) 
-          ? `This message was deleted by admin (${adminName})`
-          : "This message was deleted";
-          
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.timestamp === message.timestamp && msg.senderId === message.senderId
-              ? {
-                  ...msg,
-                  deleted: true,
-                  deletedBy: currentUserId,
-                  deletedByAdmin: isAdminDelete || isCurrentUserAdmin,
-                  deletedByName: adminName,
-                  content: deletedContent,
-                  attachments: [],
-                }
-              : msg
-          )
-        );
+      try {
+        const response = await fetch("/api/chat/messages/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomId,
+            timestamp: message.timestamp,
+            senderId: message.senderId,
+            deleteForEveryone: true,
+            isGroupMessage: true,
+            deletedBy: currentUserId,
+            deletedByAdmin: isAdminDelete || isCurrentUserAdmin,
+            deletedByName: adminName
+          }),
+        });
+
+        const data = await response.json();
+        
+        // Immediately update local state with the admin deletion info
+        if (data.success) {
+          const deletedContent = (isAdminDelete || isCurrentUserAdmin) 
+            ? `This message was deleted by admin (${adminName})`
+            : "This message was deleted";
+            
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.timestamp === message.timestamp && msg.senderId === message.senderId
+                ? {
+                    ...msg,
+                    deleted: true,
+                    deletedBy: currentUserId,
+                    deletedByAdmin: isAdminDelete || isCurrentUserAdmin,
+                    deletedByName: adminName,
+                    content: deletedContent,
+                    attachments: [],
+                  }
+                : msg
+            )
+          );
+        }
+      } catch (error) {
+        console.error("Error deleting message for everyone:", error);
       }
-    } catch (error) {
-      console.error("Error deleting message for everyone:", error);
-    }
-  } else {
-    setMessages((prev) =>
-      prev.filter(
-        (msg) =>
-          !(
-            msg.timestamp === message.timestamp &&
-            msg.senderId === message.senderId
-          ),
-      ),
-    );
+    } else {
+      setMessages((prev) =>
+        prev.filter(
+          (msg) =>
+            !(
+              msg.timestamp === message.timestamp &&
+              msg.senderId === message.senderId
+            ),
+        ),
+      );
 
-    try {
-      await fetch("/api/chat/messages/delete-for-me", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: currentUserId,
-          messageId: `${message.roomId}-${message.timestamp}-${message.senderId}`,
-          roomId: message.roomId,
-          timestamp: message.timestamp,
-          senderId: message.senderId,
-          isGroupMessage: true,
-        }),
-      });
-    } catch (error) {
-      console.error("Error deleting message for me:", error);
+      try {
+        await fetch("/api/chat/messages/delete-for-me", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: currentUserId,
+            messageId: `${message.roomId}-${message.timestamp}-${message.senderId}`,
+            roomId: message.roomId,
+            timestamp: message.timestamp,
+            senderId: message.senderId,
+            isGroupMessage: true,
+          }),
+        });
+      } catch (error) {
+        console.error("Error deleting message for me:", error);
+      }
     }
-  }
-};
+  };
 
   const handleReactToMessage = async (message, emoji) => {
     const updatedReactions = message.reactions || [];
@@ -1853,8 +1898,21 @@ const fetchMessages = async () => {
         }),
       });
       const data = await res.json();
+      
       if (data.success) {
+        // Update local state immediately
         setGroupData(data.group);
+        
+        // Emit socket event to notify all group members about settings change
+        if (socket && isConnected) {
+          socket.emit("group-settings-updated", {
+            roomId: roomId,
+            settings: updates,
+            updatedBy: currentUserId,
+            timestamp: new Date().toISOString()
+          });
+        }
+        
         if (onGroupUpdate) {
           onGroupUpdate(data.group);
         }
@@ -1942,49 +2000,60 @@ const fetchMessages = async () => {
   };
 
   // Handle slow mode save
-  const handleSaveSlowMode = async (settings) => {
-    try {
-      const res = await fetch("/api/chat/groups/slow-mode", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          groupId: group.groupId,
-          userId: currentUserId,
-          settings
-        }),
-      });
+  // Handle slow mode save
+const handleSaveSlowMode = async (settings) => {
+  try {
+    const res = await fetch("/api/chat/groups/slow-mode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        groupId: group.groupId,
+        userId: currentUserId,
+        settings
+      }),
+    });
+    
+    const data = await res.json();
+    
+    if (data.success) {
+      setSlowModeSettings(settings);
+      updateLocalSlowMode(settings);
       
-      const data = await res.json();
+      // Update group data with new settings
+      setGroupData(prev => ({
+        ...prev,
+        settings: {
+          ...prev.settings,
+          slowMode: settings
+        }
+      }));
       
-      if (data.success) {
-        setSlowModeSettings(settings);
-        updateLocalSlowMode(settings);
-        
-        // Update group data with new settings
-        setGroupData(prev => ({
-          ...prev,
+      // Emit socket event to notify all group members about slow mode change
+      if (socket && isConnected) {
+        socket.emit("group-settings-updated", {
+          roomId: roomId,
+          settings: { slowMode: settings },
+          updatedBy: currentUserId,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      if (onGroupUpdate) {
+        onGroupUpdate({
+          ...groupData,
           settings: {
-            ...prev.settings,
+            ...groupData.settings,
             slowMode: settings
           }
-        }));
-        
-        if (onGroupUpdate) {
-          onGroupUpdate({
-            ...groupData,
-            settings: {
-              ...groupData.settings,
-              slowMode: settings
-            }
-          });
-        }
-        
-        setShowSlowModeModal(false);
+        });
       }
-    } catch (error) {
-      console.error("Error saving slow mode settings:", error);
+      
+      setShowSlowModeModal(false);
     }
-  };
+  } catch (error) {
+    console.error("Error saving slow mode settings:", error);
+  }
+};
 
   // Render reply preview in a message
   const renderReplyPreview = (replyTo) => {
@@ -2071,18 +2140,18 @@ const fetchMessages = async () => {
     );
   };
 
-const getMessageContent = (message) => {
-  if (message.deleted) {
-    if (message.deletedByAdmin) {
-      return `This message was deleted by admin (${message.deletedByName || 'Admin'})`;
+  const getMessageContent = (message) => {
+    if (message.deleted) {
+      if (message.deletedByAdmin) {
+        return `This message was deleted by admin (${message.deletedByName || 'Admin'})`;
+      }
+      return message.content || "This message was deleted";
     }
-    return message.content || "This message was deleted";
-  }
-  if (message.encryptedContent) {
-    return decryptedMessages.get(message.timestamp) || message.content || "";
-  }
-  return message.content || "";
-};
+    if (message.encryptedContent) {
+      return decryptedMessages.get(message.timestamp) || message.content || "";
+    }
+    return message.content || "";
+  };
 
   const renderMessageWithMentions = (content, highlight) => {
     if (!content) return null;
@@ -2252,7 +2321,7 @@ const getMessageContent = (message) => {
             </button>
 
             {showDropdown && (
-              <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl shadow-lg z-50 py-2">
+              <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl -lg z-50 py-2">
                 {dropdownItems.map((item) => (
                   <button
                     key={item.id}
@@ -2310,21 +2379,134 @@ const getMessageContent = (message) => {
           ))}
 
           {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#34A853]"></div>
+  <div className="flex justify-center py-8">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#34A853]"></div>
+  </div>
+) : messages.length === 0 ? (
+  <div className="flex items-center justify-center ">
+    <div className="bg-white dark:bg-[#0c0c0c] rounded-[35px]  border-[#f1f3f4] dark:border-[#232529] -lg p-8 max-w-md w-full mx-4">
+      {/* Group Avatar */}
+      <div className="flex justify-center mb-4">
+        <div className="w-20 h-20 rounded-full overflow-hidden bg-zinc-100 flex items-center justify-center text-white font-bold text-3xl -lg">
+          {(() => {
+            let groupAvatar = null;
+            if (groupData.avatar) {
+              try {
+                groupAvatar =
+                  typeof groupData.avatar === "string"
+                    ? JSON.parse(groupData.avatar)
+                    : groupData.avatar;
+              } catch (e) {
+                console.error("Failed to parse group avatar", e);
+              }
+            }
+
+            if (groupAvatar?.beanConfig) {
+              return <BeanHead {...groupAvatar.beanConfig} />;
+            } else {
+              const groupName =
+                groupData.groupName || groupData.name || "Group";
+              return groupName
+                .split(" ")
+                .map((w) => w[0])
+                .join("")
+                .toUpperCase()
+                .slice(0, 2);
+            }
+          })()}
+        </div>
+      </div>
+
+      {/* Group Name */}
+      <h2 className="text-2xl small font-semibold text-center text-[#000000] dark:text-white mb-2">
+        {groupData.groupName || groupData.name}
+      </h2>
+
+      {/* {isCurrentUserAdmin && (
+        <div className="flex justify-center mb-4">
+          <span className="inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded-full text-sm">
+            <Shield size={14} />
+            You are an admin
+          </span>
+        </div>
+      )} */}
+
+      {/* Group Info */}
+      <div className="space-y-3  mb-6">
+        <div className="flex justify-center">
+          <div className="flex items-center justify-center gap-2 w-fit text-[#5f6368] dark:text-gray-400 bg-gray-50 dark:bg-[#101010] p-3 rounded-xl">
+          {/* <Users size={18} className="flex-shrink-0" /> */}
+          <span className="text-sm">
+           <span className="font-medium text-[#202124] dark:text-white">{groupData.members?.length || 0}</span> members
+           
+          </span>
+        </div>
+        </div>
+        
+
+        {/* Created By */}
+        {groupData.createdBy && (
+          <div className="flex justify-center">
+            <div className="flex items-center justify-center gap-2 text-[#5f6368] dark:text-gray-400 bg-gray-50 w-fit dark:bg-[#101010] p-3 rounded-xl">
+            <div className="flex-shrink-0">
+             
             </div>
-          ) : messages.length === 0 ? (
-            <div className="text-center py-12">
-              <MessageCircle
-                size={48}
-                className="mx-auto text-[#dadce0] dark:text-[#232529] mb-3"
-              />
-              <p className="text-[#5f6368] dark:text-gray-400">No messages yet</p>
-              <p className="text-sm text-[#5f6368] dark:text-gray-500 mt-1">
-                Be the first to send a message!
-              </p>
-            </div>
-          ) : (
+            <span className="text-sm flex items-center gap-2">
+              Created by{' '}
+              <span className="font-medium flex items-center  text-[#202124] dark:text-white">
+                {getMemberName(groupData.createdBy)}
+                {groupData.members?.find(m => m.userId === groupData.createdBy)?.role === 'admin' && (
+                  <Shield size={12} className="inline ml-1 text-green-600 dark:text-green-400" />
+                )}
+              </span>
+            </span>
+          </div>
+          </div>
+          
+        )}
+
+        {/* Created At */}
+        {groupData.createdAt && (
+          <div className="flex items-center -mt-4 justify-center gap-2 text-[#5f6368] dark:text-gray-400 -50 p-3 rounded-xl">
+            {/* <Calendar size={18} className="flex-shrink-0" /> */}
+            <span className="text-sm flex items-center gap-2">
+              Created on{' '}
+              <span className="font-medium text-[#202124] dark:text-white">
+                {new Date(groupData.createdAt).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </span>
+            </span>
+          </div>
+        )}
+
+        {/* Group Settings Summary */}
+        {groupData.settings && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {groupData.settings.onlyAdminsCanMessage && (
+              <span className="inline-flex items-center gap-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-full">
+                <Lock size={12} />
+                Only admins can message
+              </span>
+            )}
+            {groupData.settings.slowMode?.enabled && (
+              <span className="inline-flex items-center gap-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-1 rounded-full">
+                <Snowflake size={12} />
+                Slow mode ({groupData.settings.slowMode.cooldown}s)
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Message Icon and Text */}
+      
+    </div>
+  </div>
+) : (
+
             Object.entries(groupedMessages).map(([date, dateMessages]) => (
               <div key={date}>
                 <div className="flex justify-center mb-4">
@@ -2373,131 +2555,135 @@ const getMessageContent = (message) => {
                           {msg.replyTo && renderReplyPreview(msg.replyTo)}
                           
                           {/* Media attachments */}
-                          {msg.attachments && msg.attachments.length > 0 && !msg.deleted && (
-                            <div className={`space-y-2 ${hasTextContent ? 'mb-2' : ''}`}>
-                              {msg.attachments.map((att, idx) => {
-                                const globalIndex = allAttachments.findIndex(
-                                  a => a.url === att.url && a.messageId === msg.timestamp
-                                );
-                                
-                                return (
-                                  <div key={idx} className="relative group">
-                                    {att.type === 'image' ? (
-                                      <div className="relative">
-                                        <img
-                                          src={att.url}
-                                          alt="Attachment"
-                                          className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                          onClick={() => handleAttachmentClick(att, globalIndex)}
-                                        />
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                                          <button
-                                            onClick={() => handleAttachmentClick(att, globalIndex)}
-                                            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                                          >
-                                            <Maximize2 size={20} />
-                                          </button>
-                                        </div>
-                                        {/* Time overlay for images */}
-                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
-                                          {formatTime(msg.timestamp)}
-                                        </div>
-                                      </div>
-                                    ) : att.type === 'video' ? (
-                                      <div className="relative">
-                                        <video
-                                          src={att.url}
-                                          className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer"
-                                          onClick={() => handleAttachmentClick(att, globalIndex)}
-                                        />
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                                          <button
-                                            onClick={() => handleAttachmentClick(att, globalIndex)}
-                                            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                                          >
-                                            <Maximize2 size={20} />
-                                          </button>
-                                        </div>
-                                        {/* Time overlay for videos */}
-                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
-                                          <span>{formatTime(msg.timestamp)}</span>
-                                          {renderMessageStatus(msg)}
-                                        </div>
-                                      </div>
-                                    ) : att.type === 'gif' ? (
-                                      <div className="relative">
-                                        <img
-                                          src={att.url}
-                                          alt={att.name || 'GIF'}
-                                          className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                          onClick={() => handleAttachmentClick(att, globalIndex)}
-                                          loading="lazy"
-                                        />
-                                        <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
-                                          GIF
-                                        </div>
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                                          <button
-                                            onClick={() => handleAttachmentClick(att, globalIndex)}
-                                            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                                          >
-                                            <Maximize2 size={20} />
-                                          </button>
-                                        </div>
-                                        {/* Time overlay for GIFs */}
-                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
-                                          <span>{formatTime(msg.timestamp)}</span>
-                                          {renderMessageStatus(msg)}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                          
-                          {/* Text content with highlighting */}
-                         {hasTextContent && (
-  <div
-    className={`rounded-2xl p-3 ${
-      msg.deleted 
-        ? msg.deletedByAdmin
-          ? 'bg-zinc-100 dark:bg-zinc-500/20 italic text-zinc-700 dark:text-zinc-400  border-amber-200 dark:border-amber-800'
-          : 'bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400'
-        : isOwn
-        ? 'bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none'
-        : 'bg-white dark:bg-[#101010] dark:text-white border-[#dadce0] dark:border-[#232529] rounded-tl-none'
-    }`}
-  >
-    <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
-      {msg.deleted ? (
-        msg.deletedByAdmin ? (
-          <span>
-            This message was deleted by admin 
-            <span className="font-semibold ml-1">
-              ({msg.deletedByName || 'Admin'})
-            </span>
-          </span>
-        ) : (
-          msg.content || "This message was deleted"
-        )
-      ) : (
-        renderMessageWithMentions(messageContent, highlightedText)
-      )}
-      {msg.edited && !msg.deleted && (
-        <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">(edited)</span>
-      )}
-    </p>
-    {/* Time and status inside text bubble */}
-    <div className="flex items-center justify-end gap-1 mt-1">
-      <p className={`text-[10px] ${isOwn ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
-        {formatTime(msg.timestamp)}
-      </p>
-      {renderMessageStatus(msg)}
-    </div>
+{msg.attachments && msg.attachments.length > 0 && !msg.deleted && (
+  <div className={`space-y-2 ${hasTextContent ? 'mb-2' : ''}`}>
+    {msg.attachments.map((att, idx) => {
+      const globalIndex = allAttachments.findIndex(
+        a => a.url === att.url && a.messageId === msg.timestamp
+      );
+      
+      return (
+        <div key={idx} className="relative group">
+          {att.type === 'image' ? (
+            <div className="relative">
+              <img
+                src={att.url}
+                alt="Attachment"
+                className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => handleAttachmentClick(att, globalIndex)}
+              />
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                <button
+                  onClick={() => handleAttachmentClick(att, globalIndex)}
+                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                >
+                  <Maximize2 size={20} />
+                </button>
+              </div>
+              {/* Time overlay for images */}
+              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                {formatTime(msg.timestamp)}
+              </div>
+            </div>
+          ) : att.type === 'video' ? (
+            <div className="relative">
+              <video
+                src={att.url}
+                className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer"
+                onClick={() => handleAttachmentClick(att, globalIndex)}
+              />
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                <button
+                  onClick={() => handleAttachmentClick(att, globalIndex)}
+                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                >
+                  <Maximize2 size={20} />
+                </button>
+              </div>
+              {/* Time overlay for videos */}
+              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
+                <span>{formatTime(msg.timestamp)}</span>
+                {renderMessageStatus(msg)}
+              </div>
+            </div>
+          ) : att.type === 'gif' ? (
+            <div className="flex flex-col">
+              <div className="relative">
+                <img
+                  src={att.url}
+                  alt={att.name || 'GIF'}
+                  className="max-w-full rounded-2xl max-h-64 object-cover   transition-opacity"
+                  // onClick={() => handleAttachmentClick(att, globalIndex)}
+                  loading="lazy"
+                />
+                <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                  GIF
+                </div>
+                {/* <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                  <button
+                    onClick={() => handleAttachmentClick(att, globalIndex)}
+                    className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                  >
+                    <Maximize2 size={20} />
+                  </button>
+                </div> */}
+              </div>
+              {/* Time and status below GIF */}
+              <div className="flex items-center justify-end gap-1 mt-1 px-1">
+                <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                  {formatTime(msg.timestamp)}
+                </span>
+                {renderMessageStatus(msg)}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      );
+    })}
   </div>
 )}
+                          
+                          {/* Text content with highlighting */}
+                          {hasTextContent && (
+                            <div
+                              className={`rounded-2xl p-3 ${
+                                msg.deleted 
+                                  ? msg.deletedByAdmin
+                                    ? 'bg-zinc-100 dark:bg-zinc-500/20 italic text-zinc-700 dark:text-zinc-400  border-amber-200 dark:border-amber-800'
+                                    : 'bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400'
+                                  : isOwn
+                                  ? 'bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none'
+                                  : 'bg-white dark:bg-[#101010] dark:text-white border-[#dadce0] dark:border-[#232529] rounded-tl-none'
+                              }`}
+                            >
+                              <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                                {msg.deleted ? (
+                                  msg.deletedByAdmin ? (
+                                    <span>
+                                      This message was deleted by admin 
+                                      <span className="font-semibold ml-1">
+                                        ({msg.deletedByName || 'Admin'})
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    msg.content || "This message was deleted"
+                                  )
+                                ) : (
+                                  renderMessageWithMentions(messageContent, highlightedText)
+                                )}
+                                {msg.edited && !msg.deleted && (
+                                  <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">(edited)</span>
+                                )}
+                              </p>
+                              {/* Time and status inside text bubble */}
+                              <div className="flex items-center justify-end gap-1 mt-1">
+                                <p className={`text-[10px] ${isOwn ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                                  {formatTime(msg.timestamp)}
+                                </p>
+                                {renderMessageStatus(msg)}
+                              </div>
+                            </div>
+                          )}
                           
                           {/* Reactions */}
                           {msg.reactions && msg.reactions.length > 0 && (
@@ -2524,7 +2710,7 @@ const getMessageContent = (message) => {
                         {!msg.deleted && isOwn && (
                           <button
                             onClick={() => handleReplyToMessage(msg)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 mr-2 flex-shrink-0 self-center order-1"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full -lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 mr-2 flex-shrink-0 self-center order-1"
                             title="Reply to this message"
                           >
                             <Reply size={14} className="text-[#5f6368] dark:text-gray-400" />
@@ -2535,7 +2721,7 @@ const getMessageContent = (message) => {
                         {!msg.deleted && !isOwn && (
                           <button
                             onClick={() => handleReplyToMessage(msg)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 ml-2 flex-shrink-0 self-center order-3"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full -lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 ml-2 flex-shrink-0 self-center order-3"
                             title="Reply to this message"
                           >
                             <Reply size={14} className="text-[#5f6368] dark:text-gray-400" />
@@ -2612,11 +2798,13 @@ const getMessageContent = (message) => {
         <div className="p-4 border-t border-[#f1f3f4] dark:border-[#181A1E] bg-white dark:bg-[#0c0c0c] relative">
           {!canSendMessage() && !isCurrentUserAdmin && (
             <div className="absolute -top-8 left-0 right-0 text-center">
-              <span className="text-xs flex items-center justify-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-2">
+              <span className="text-xs flex items-center justify-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-2 rounded-t-lg">
                 <Lock size={12} className="inline mr-1" />
-                {slowModeSettings.enabled && !canSendInSlowMode()
-                  ? `Slow mode active. Please wait ${timeRemaining}s`
-                  : "Only admins can send messages in this group"}
+                {groupData.settings?.onlyAdminsCanMessage
+                  ? "🔒 Only admins can send messages in this group"
+                  : slowModeSettings.enabled && !canSendInSlowMode()
+                    ? `Slow mode active. Please wait ${timeRemaining}s`
+                    : "You cannot send messages at this time"}
               </span>
             </div>
           )}
@@ -2666,7 +2854,7 @@ const getMessageContent = (message) => {
               </button>
 
               {showAttachments && (
-                <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px] shadow-lg">
+                <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px] -lg">
                   <div className="space-y-2">
                     <button
                       onClick={() => fileInputRef.current?.click()}
@@ -2812,10 +3000,12 @@ const getMessageContent = (message) => {
                     ? "Joining chat..."
                     : !canSendMessage()
                       ? isCurrentUserAdmin
-                        ? "You are an admin (bypassing slow mode)"
-                        : slowModeSettings.enabled && !canSendInSlowMode()
-                          ? `Slow mode active (${timeRemaining}s)`
-                          : "Only admins can send messages"
+                        ? "You are an admin (bypassing restrictions)"
+                        : groupData.settings?.onlyAdminsCanMessage
+                          ? "🔒 Only admins can send messages"
+                          : slowModeSettings.enabled && !canSendInSlowMode()
+                            ? `Slow mode active (${timeRemaining}s)`
+                            : "You cannot send messages"
                       : isCurrentUserAdmin
                         ? "Type a message as admin... (Use @ to mention, ✨ for AI, 📷 for GIF)"
                         : "Type a message... (Use @ to mention, ✨ for AI, 📷 for GIF)"

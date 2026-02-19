@@ -12,6 +12,16 @@ export default function AttachmentPreviewModal({ isOpen, onClose, attachment, on
   // Get the correct URL (preview for local files, url for server files)
   const attachmentUrl = attachment.preview || attachment.url;
 
+  // Determine the type
+  const getAttachmentType = () => {
+    if (attachment.type === 'gif' || (attachment.name && attachment.name.toLowerCase().endsWith('.gif'))) {
+      return 'gif';
+    }
+    return attachment.type;
+  };
+
+  const attachmentType = getAttachmentType();
+
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen();
@@ -57,6 +67,20 @@ export default function AttachmentPreviewModal({ isOpen, onClose, attachment, on
     }
   };
 
+  // Get display title
+  const getDisplayTitle = () => {
+    switch (attachmentType) {
+      case 'gif':
+        return 'GIF Preview';
+      case 'image':
+        return 'Image Preview';
+      case 'video':
+        return 'Video Preview';
+      default:
+        return 'Preview';
+    }
+  };
+
   return (
     <>
       <div 
@@ -78,7 +102,7 @@ export default function AttachmentPreviewModal({ isOpen, onClose, attachment, on
                 <X size={20} />
               </button>
               <span className="text-white font-medium drop-shadow-md">
-                {attachment.type === 'image' ? 'Image' : 'Video'} Preview
+                {getDisplayTitle()}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -119,7 +143,14 @@ export default function AttachmentPreviewModal({ isOpen, onClose, attachment, on
 
           {/* Content */}
           <div className="flex-1 flex items-center justify-center p-8">
-            {attachment.type === 'image' ? (
+            {attachmentType === 'gif' ? (
+              <img
+                src={attachmentUrl}
+                alt={attachment.name || 'GIF'}
+                className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl dark:shadow-black/50"
+                loading="lazy"
+              />
+            ) : attachmentType === 'image' ? (
               <img
                 src={attachmentUrl}
                 alt={attachment.name || 'Preview'}
@@ -144,7 +175,7 @@ export default function AttachmentPreviewModal({ isOpen, onClose, attachment, on
           {/* Footer */}
           <div className="absolute bottom-0 left-0 right-0 z-10 p-4 bg-gradient-to-t from-black/80 via-black/50 to-transparent dark:from-black/90 dark:via-black/60">
             <p className="text-white text-sm truncate drop-shadow-md">
-              {attachment.name || `${attachment.type} attachment`}
+              {attachment.name || `${attachmentType} attachment`}
             </p>
             {attachment.preview && (
               <p className="text-white/70 dark:text-white/60 text-xs mt-1 drop-shadow-md">

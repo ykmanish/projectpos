@@ -1,3 +1,5 @@
+// server.js
+
 const { createServer } = require('node:http');
 const next = require('next');
 const { Server } = require('socket.io');
@@ -23,23 +25,79 @@ app.prepare().then(() => {
     pingInterval: 25000,
   });
 
-  const onlineUsers = new Map();
-  const userRooms = new Map();
-  const userSockets = new Map();
-  const groupMembers = new Map();
+  const onlineUsers = new Map(); // userId -> { socketId, lastSeen }
+  const userRooms = new Map(); // socketId -> { userId, roomId }
+  const userSockets = new Map(); // userId -> socketId
+  const groupMembers = new Map(); // roomId -> Set of userIds
+  const undeliveredMessages = new Map(); // userId -> array of messages (for DMs)
+  const undeliveredGroupMessages = new Map(); // roomId -> Map of userId -> array of messages
+  const pendingDeliveries = new Map(); // userId -> Set of roomIds with undelivered messages
 
   io.on('connection', (socket) => {
     console.log('✅ New client connected:', socket.id);
-    console.log('📊 Total connected clients:', io.sockets.sockets.size);
 
     socket.on('user-online', ({ userId }) => {
       console.log(`👤 User ${userId} is now online`);
+      
+      const wasOnline = onlineUsers.has(userId);
+      const previousSocketId = userSockets.get(userId);
+      
       onlineUsers.set(userId, { 
         socketId: socket.id, 
         lastSeen: new Date().toISOString() 
       });
       userSockets.set(userId, socket.id);
       
+      // If this user is coming online, deliver all pending messages
+      if (!wasOnline) {
+        console.log(`📦 Checking for undelivered messages for user ${userId}`);
+        
+        // Check for undelivered group messages
+        if (undeliveredGroupMessages.size > 0) {
+          // Find all groups this user is in with undelivered messages
+          for (const [roomId, userMessages] of undeliveredGroupMessages.entries()) {
+            if (userMessages.has(userId)) {
+              const messages = userMessages.get(userId);
+              console.log(`📦 Found ${messages.length} undelivered group messages for user ${userId} in room ${roomId}`);
+              
+              // Deliver each message
+              messages.forEach(msg => {
+                const deliveredAt = new Date().toISOString();
+                const deliveredMessage = {
+                  ...msg,
+                  delivered: true,
+                  deliveredAt: deliveredAt
+                };
+                
+                // Send to the user
+                socket.emit('receive-message', deliveredMessage);
+              });
+              
+              // Clear delivered messages for this user in this group
+              userMessages.delete(userId);
+              if (userMessages.size === 0) {
+                undeliveredGroupMessages.delete(roomId);
+              }
+            }
+          }
+        }
+        
+        // Notify all rooms that user came online (to update message statuses)
+        const userRoomsList = Array.from(userRooms.values())
+          .filter(room => room.userId === userId)
+          .map(room => room.roomId);
+        
+        userRoomsList.forEach(roomId => {
+          io.to(roomId).emit('user-came-online', {
+            userId: userId,
+            roomId: roomId,
+            online: true,
+            timestamp: new Date().toISOString()
+          });
+        });
+      }
+      
+      // Broadcast status change
       io.emit('user-status-change', { 
         userId, 
         online: true,
@@ -68,27 +126,51 @@ app.prepare().then(() => {
         lastSeen: new Date().toISOString() 
       });
       
+      // Notify room that user joined
       socket.to(roomId).emit('user-online', { userId, online: true });
+      
+      // Check for undelivered group messages for this user in this room
+      if (undeliveredGroupMessages.has(roomId)) {
+        const userMessages = undeliveredGroupMessages.get(roomId);
+        if (userMessages.has(userId)) {
+          const messages = userMessages.get(userId);
+          console.log(`📦 Delivering ${messages.length} group messages to user ${userId} in room ${roomId}`);
+          
+          messages.forEach(msg => {
+            const deliveredAt = new Date().toISOString();
+            const deliveredMessage = {
+              ...msg,
+              delivered: true,
+              deliveredAt: deliveredAt
+            };
+            
+            socket.emit('receive-message', deliveredMessage);
+          });
+          
+          // Clear delivered messages
+          userMessages.delete(userId);
+          if (userMessages.size === 0) {
+            undeliveredGroupMessages.delete(roomId);
+          }
+        }
+      }
+      
       socket.emit('joined-room', { roomId, success: true });
       
-      socket.to(roomId).emit('message-delivered', {
+      // Trigger delivery status update for pending messages
+      socket.to(roomId).emit('check-undelivered-messages', {
         roomId,
         userId,
-        deliveredAt: new Date().toISOString()
+        timestamp: new Date().toISOString()
       });
-      
-      console.log(`✅ User ${userId} successfully joined room ${roomId}`);
     });
 
     // NEW: Handle member joining group
     socket.on('member-joined', (data) => {
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('👋 MEMBER JOINED GROUP');
       console.log('Room:', data.roomId);
       console.log('User ID:', data.userId);
       console.log('User Name:', data.userName);
-      console.log('Timestamp:', data.timestamp);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       // Update group members in memory
       const currentMembers = groupMembers.get(data.roomId) || new Set();
@@ -105,7 +187,7 @@ app.prepare().then(() => {
         roomId: data.roomId
       });
 
-      // Also send to the new member themselves (to confirm joining)
+      // Also send to the new member themselves
       socket.emit('member-joined-confirmed', {
         roomId: data.roomId,
         timestamp: data.timestamp
@@ -115,23 +197,29 @@ app.prepare().then(() => {
     });
 
     socket.on('send-message', (message) => {
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('📨 MESSAGE RECEIVED ON SERVER');
-      console.log('From:', message.senderId);
-      console.log('To:', message.receiverId);
-      console.log('Room:', message.roomId);
-      console.log('Is Group:', message.isGroupMessage);
-      console.log('Has Encryption:', !!message.encryptedContent);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`From: ${message.senderId}, Room: ${message.roomId}, Is Group: ${message.isGroupMessage}`);
       
-      if (onlineUsers.has(message.senderId)) {
-        onlineUsers.get(message.senderId).lastSeen = new Date().toISOString();
-      }
-      
-      const deliveredAt = message.deliveredAt || new Date().toISOString();
+      const deliveredAt = new Date().toISOString();
       
       if (message.isGroupMessage) {
-        console.log('📤 Broadcasting group message to room:', message.roomId);
+        // Group message handling
+        const members = groupMembers.get(message.roomId) || new Set();
+        const onlineMembers = new Set();
+        const offlineMembers = new Set();
+        
+        // Separate online and offline members
+        members.forEach(memberId => {
+          if (memberId !== message.senderId) {
+            if (onlineUsers.has(memberId)) {
+              onlineMembers.add(memberId);
+            } else {
+              offlineMembers.add(memberId);
+            }
+          }
+        });
+        
+        console.log(`📊 Group members: ${onlineMembers.size} online, ${offlineMembers.size} offline`);
         
         const messageWithDelivery = {
           ...message,
@@ -139,68 +227,157 @@ app.prepare().then(() => {
           deliveredAt: deliveredAt
         };
         
-        // Get all members of the group
-        const members = groupMembers.get(message.roomId);
-        if (members) {
-          console.log(`📤 Sending to ${members.size} group members`);
+        // Send to online members immediately
+        onlineMembers.forEach(memberId => {
+          const memberSocketId = userSockets.get(memberId);
+          if (memberSocketId) {
+            console.log(`  📤 Sending to online member ${memberId}`);
+            io.to(memberSocketId).emit('receive-message', messageWithDelivery);
+          }
+        });
+        
+        // Store for offline members
+        if (offlineMembers.size > 0) {
+          console.log(`📦 Storing message for ${offlineMembers.size} offline members`);
           
-          // Send to all members in the room
-          io.to(message.roomId).emit('receive-message', messageWithDelivery);
-          
-          // Also send individually to ensure delivery
-          members.forEach(memberId => {
-            const memberSocketId = userSockets.get(memberId);
-            if (memberSocketId && memberId !== message.senderId) {
-              console.log(`  ↳ Sending to member ${memberId}`);
-              io.to(memberSocketId).emit('receive-message', messageWithDelivery);
+          offlineMembers.forEach(memberId => {
+            if (!undeliveredGroupMessages.has(message.roomId)) {
+              undeliveredGroupMessages.set(message.roomId, new Map());
             }
+            
+            const roomMessages = undeliveredGroupMessages.get(message.roomId);
+            if (!roomMessages.has(memberId)) {
+              roomMessages.set(memberId, []);
+            }
+            
+            roomMessages.get(memberId).push(messageWithDelivery);
           });
-        } else {
-          // If no members list, just broadcast to room
-          io.to(message.roomId).emit('receive-message', messageWithDelivery);
         }
         
-        // Send delivery confirmation
-        const deliveredData = {
-          roomId: message.roomId,
-          timestamp: message.timestamp,
-          senderId: message.senderId,
-          deliveredAt: deliveredAt,
-          isGroupMessage: true
-        };
-        
-        io.to(message.roomId).emit('message-delivered', deliveredData);
-        
-        console.log('✅ Group message broadcast complete');
-      } else {
-        // Direct message handling
-        const messageWithDelivery = {
-          ...message,
-          delivered: true,
-          deliveredAt: deliveredAt
-        };
-        
-        console.log('📤 Broadcasting direct message');
-        
-        // Send to the room
+        // Send to the room for sender's UI
         io.to(message.roomId).emit('receive-message', messageWithDelivery);
         
-        // Send individually to receiver
-        const receiverSocketId = userSockets.get(message.receiverId);
-        if (receiverSocketId) {
-          console.log(`📤 Sending directly to receiver socket: ${receiverSocketId}`);
-          io.to(receiverSocketId).emit('receive-message', messageWithDelivery);
+        // Send delivery confirmation to sender
+        const senderSocketId = userSockets.get(message.senderId);
+        if (senderSocketId) {
+          io.to(senderSocketId).emit('message-delivered', {
+            roomId: message.roomId,
+            timestamp: message.timestamp,
+            senderId: message.senderId,
+            deliveredAt: deliveredAt,
+            delivered: true,
+            isGroupMessage: true,
+            deliveredTo: Array.from(onlineMembers)
+          });
         }
         
-        // Send delivery confirmation
-        const deliveredData = {
-          roomId: message.roomId,
-          timestamp: message.timestamp,
-          deliveredAt: deliveredAt
-        };
-        io.to(message.roomId).emit('message-delivered', deliveredData);
+        console.log('✅ Group message processed');
+      } else {
+        // Direct message handling (existing code)
+        const receiverOnline = onlineUsers.has(message.receiverId);
         
-        console.log('✅ Direct message broadcast complete');
+        const messageWithDelivery = {
+          ...message,
+          delivered: receiverOnline,
+          deliveredAt: receiverOnline ? deliveredAt : null,
+          read: false
+        };
+        
+        const receiverSocketId = userSockets.get(message.receiverId);
+        
+        if (receiverSocketId && receiverOnline) {
+          console.log(`📤 Sending message to online user: ${message.receiverId}`);
+          io.to(receiverSocketId).emit('receive-message', messageWithDelivery);
+          
+          const senderSocketId = userSockets.get(message.senderId);
+          if (senderSocketId) {
+            io.to(senderSocketId).emit('message-delivered', {
+              roomId: message.roomId,
+              timestamp: message.timestamp,
+              senderId: message.senderId,
+              deliveredAt: deliveredAt,
+              delivered: true
+            });
+          }
+        } else {
+          console.log(`📦 Storing message for offline user: ${message.receiverId}`);
+          if (!undeliveredMessages.has(message.receiverId)) {
+            undeliveredMessages.set(message.receiverId, []);
+          }
+          undeliveredMessages.get(message.receiverId).push(messageWithDelivery);
+          
+          io.to(message.roomId).emit('receive-message', messageWithDelivery);
+        }
+      }
+    });
+
+    socket.on('mark-as-read', (data) => {
+      console.log('✓✓ Marking messages as read:', data);
+      const readData = {
+        ...data,
+        readAt: new Date().toISOString()
+      };
+      
+      // Broadcast to all in room that messages were read
+      io.to(data.roomId).emit('message-read', readData);
+      
+      if (data.isGroupMessage) {
+        // For group messages, notify the sender specifically
+        const members = groupMembers.get(data.roomId);
+        if (members) {
+          members.forEach(memberId => {
+            if (memberId !== data.userId) {
+              const memberSocketId = userSockets.get(memberId);
+              if (memberSocketId) {
+                io.to(memberSocketId).emit('message-read', readData);
+              }
+            }
+          });
+        }
+      } else {
+        // For direct messages
+        const [userId1, userId2] = data.roomId.split('-');
+        const senderId = userId1 === data.userId ? userId2 : userId1;
+        const senderSocketId = userSockets.get(senderId);
+        
+        if (senderSocketId) {
+          io.to(senderSocketId).emit('message-read', readData);
+        }
+      }
+    });
+
+    socket.on('get-undelivered-status', ({ roomId, userId, isGroupMessage }) => {
+      if (isGroupMessage) {
+        if (undeliveredGroupMessages.has(roomId)) {
+          const userMessages = undeliveredGroupMessages.get(roomId);
+          if (userMessages.has(userId)) {
+            const messages = userMessages.get(userId);
+            socket.emit('undelivered-messages-status', {
+              roomId,
+              count: messages.length,
+              messages: messages.map(m => ({
+                timestamp: m.timestamp,
+                senderId: m.senderId
+              }))
+            });
+          }
+        }
+      } else {
+        if (undeliveredMessages.has(userId)) {
+          const messages = undeliveredMessages.get(userId);
+          const roomMessages = messages.filter(msg => msg.roomId === roomId);
+          
+          if (roomMessages.length > 0) {
+            socket.emit('undelivered-messages-status', {
+              roomId,
+              count: roomMessages.length,
+              messages: roomMessages.map(m => ({
+                timestamp: m.timestamp,
+                senderId: m.senderId
+              }))
+            });
+          }
+        }
       }
     });
 
@@ -213,24 +390,6 @@ app.prepare().then(() => {
       };
       
       io.to(data.roomId).emit('message-updated', updatedData);
-      
-      if (data.isGroupMessage) {
-        const members = groupMembers.get(data.roomId);
-        if (members) {
-          members.forEach(memberId => {
-            const memberSocketId = userSockets.get(memberId);
-            if (memberSocketId) {
-              io.to(memberSocketId).emit('message-updated', updatedData);
-            }
-          });
-        }
-      } else {
-        const [userId1, userId2] = data.roomId.split('-');
-        const socket1 = userSockets.get(userId1);
-        const socket2 = userSockets.get(userId2);
-        if (socket1) io.to(socket1).emit('message-updated', updatedData);
-        if (socket2) io.to(socket2).emit('message-updated', updatedData);
-      }
     });
 
     socket.on('delete-message', (data) => {
@@ -242,80 +401,11 @@ app.prepare().then(() => {
       };
       
       io.to(data.roomId).emit('message-deleted', deletedMessageData);
-      
-      if (data.isGroupMessage) {
-        const members = groupMembers.get(data.roomId);
-        if (members) {
-          members.forEach(memberId => {
-            const memberSocketId = userSockets.get(memberId);
-            if (memberSocketId) {
-              io.to(memberSocketId).emit('message-deleted', deletedMessageData);
-            }
-          });
-        }
-      } else {
-        const [userId1, userId2] = data.roomId.split('-');
-        const socket1 = userSockets.get(userId1);
-        const socket2 = userSockets.get(userId2);
-        if (socket1) io.to(socket1).emit('message-deleted', deletedMessageData);
-        if (socket2) io.to(socket2).emit('message-deleted', deletedMessageData);
-      }
     });
 
     socket.on('react-to-message', (data) => {
       console.log('😊 React to message:', data);
-      
       io.to(data.roomId).emit('message-reaction', data);
-      
-      if (data.isGroupMessage) {
-        const members = groupMembers.get(data.roomId);
-        if (members) {
-          members.forEach(memberId => {
-            const memberSocketId = userSockets.get(memberId);
-            if (memberSocketId) {
-              io.to(memberSocketId).emit('message-reaction', data);
-            }
-          });
-        }
-      } else {
-        const [userId1, userId2] = data.roomId.split('-');
-        const socket1 = userSockets.get(userId1);
-        const socket2 = userSockets.get(userId2);
-        if (socket1) io.to(socket1).emit('message-reaction', data);
-        if (socket2) io.to(socket2).emit('message-reaction', data);
-      }
-    });
-
-    socket.on('mark-as-read', (data) => {
-      console.log('✓✓ Marking messages as read:', data);
-      const readData = {
-        ...data,
-        readAt: new Date().toISOString()
-      };
-      
-      if (data.isGroupMessage) {
-        io.to(data.roomId).emit('message-read', readData);
-        
-        const members = groupMembers.get(data.roomId);
-        if (members) {
-          members.forEach(memberId => {
-            const memberSocketId = userSockets.get(memberId);
-            if (memberSocketId) {
-              io.to(memberSocketId).emit('message-read', readData);
-            }
-          });
-        }
-        
-        console.log(`✓✓ Group message read by ${data.userId} in room ${data.roomId}`);
-      } else {
-        socket.to(data.roomId).emit('message-read', readData);
-        
-        const [userId1, userId2] = data.roomId.split('-');
-        const socket1 = userSockets.get(userId1);
-        const socket2 = userSockets.get(userId2);
-        if (socket1) io.to(socket1).emit('message-read', readData);
-        if (socket2) io.to(socket2).emit('message-read', readData);
-      }
     });
 
     socket.on('typing', ({ roomId, userId, isTyping }) => {
@@ -340,14 +430,6 @@ app.prepare().then(() => {
     socket.on('leave-chat', ({ roomId, userId }) => {
       console.log(`User ${userId} leaving room ${roomId}`);
       socket.leave(roomId);
-      
-      // Remove from group members if it's a group
-      const members = groupMembers.get(roomId);
-      if (members) {
-        members.delete(userId);
-        groupMembers.set(roomId, members);
-      }
-      
       userRooms.delete(socket.id);
     });
 
@@ -362,6 +444,7 @@ app.prepare().then(() => {
         onlineUsers.delete(userId);
         userSockets.delete(userId);
         
+        // Notify room that user went offline
         socket.to(roomId).emit('user-online', { userId, online: false, lastSeen });
         io.emit('user-status-change', { userId, online: false, lastSeen });
         socket.to(roomId).emit('user-typing', { userId, isTyping: false });
@@ -378,6 +461,5 @@ app.prepare().then(() => {
     })
     .listen(port, () => {
       console.log(`> Ready on http://${hostname}:${port}`);
-      console.log('> Socket.io server is running');
     });
 });

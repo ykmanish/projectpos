@@ -1,6 +1,8 @@
+// context/SocketContext.js
+
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import io from 'socket.io-client';
 import { useUser } from './UserContext';
 
@@ -9,6 +11,7 @@ const SocketContext = createContext();
 export function SocketProvider({ children }) {
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState(new Map());
   const { userId } = useUser();
 
   useEffect(() => {
@@ -19,7 +22,6 @@ export function SocketProvider({ children }) {
 
     console.log('🔌 Initializing socket connection for user:', userId);
 
-    // Create socket instance
     const socketIo = io('http://localhost:3000', {
       transports: ['websocket', 'polling'],
       reconnection: true,
@@ -32,9 +34,6 @@ export function SocketProvider({ children }) {
     socketIo.on('connect', () => {
       console.log('✅ Socket connected successfully with ID:', socketIo.id);
       setIsConnected(true);
-      
-      // Register user as online
-      console.log('👤 Registering user as online:', userId);
       socketIo.emit('user-online', { userId });
     });
 
@@ -51,29 +50,50 @@ export function SocketProvider({ children }) {
     socketIo.on('reconnect', (attemptNumber) => {
       console.log('✅ Socket reconnected after', attemptNumber, 'attempts');
       setIsConnected(true);
-      // Re-register as online after reconnect
-      console.log('👤 Re-registering user as online:', userId);
       socketIo.emit('user-online', { userId });
     });
 
-    socketIo.on('reconnect_attempt', (attemptNumber) => {
-      console.log('🔄 Reconnection attempt:', attemptNumber);
+    // Listen for user coming online
+    socketIo.on('user-came-online', (data) => {
+      console.log('👤 User came online:', data);
+      setOnlineUsers(prev => {
+        const newMap = new Map(prev);
+        newMap.set(data.userId, {
+          online: true,
+          lastSeen: data.timestamp
+        });
+        return newMap;
+      });
     });
 
-    socketIo.on('reconnect_error', (error) => {
-      console.error('❌ Reconnection error:', error.message);
+    socketIo.on('user-status-change', (data) => {
+      console.log('🔄 User status changed:', data);
+      setOnlineUsers(prev => {
+        const newMap = new Map(prev);
+        newMap.set(data.userId, {
+          online: data.online,
+          lastSeen: data.lastSeen
+        });
+        return newMap;
+      });
     });
 
-    socketIo.on('reconnect_failed', () => {
-      console.error('❌ Reconnection failed after max attempts');
+    socketIo.on('user-online', (data) => {
+      console.log('👤 User online status:', data);
+      setOnlineUsers(prev => {
+        const newMap = new Map(prev);
+        newMap.set(data.userId, {
+          online: data.online,
+          lastSeen: data.lastSeen
+        });
+        return newMap;
+      });
     });
 
-    // Global listener for debugging (remove in production)
-    // socketIo.onAny((eventName, ...args) => {
-    //   console.log('📡 Socket event received:', eventName, args);
-    // });
+    socketIo.on('undelivered-messages-status', (data) => {
+      console.log('📦 Undelivered messages status:', data);
+    });
 
-    // Set socket to state
     setSocket(socketIo);
 
     return () => {
@@ -84,8 +104,24 @@ export function SocketProvider({ children }) {
     };
   }, [userId]);
 
+  const getUserOnlineStatus = useCallback((targetUserId) => {
+    return onlineUsers.get(targetUserId) || { online: false, lastSeen: null };
+  }, [onlineUsers]);
+
+  const checkUndeliveredMessages = useCallback((roomId, targetUserId) => {
+    if (socket && isConnected) {
+      socket.emit('get-undelivered-status', { roomId, userId: targetUserId });
+    }
+  }, [socket, isConnected]);
+
   return (
-    <SocketContext.Provider value={{ socket, isConnected }}>
+    <SocketContext.Provider value={{ 
+      socket, 
+      isConnected,
+      onlineUsers,
+      getUserOnlineStatus,
+      checkUndeliveredMessages
+    }}>
       {children}
     </SocketContext.Provider>
   );

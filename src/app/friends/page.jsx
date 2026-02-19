@@ -1,4 +1,4 @@
-// app/friends/page.js
+// app/friends/page.js (updated version)
 
 "use client";
 
@@ -19,7 +19,8 @@ import {
   CirclePlus,
   Lock,
   Ban,
-  AtSign
+  AtSign,
+  Plus
 } from "lucide-react";
 import { BeanHead } from 'beanheads';
 
@@ -31,6 +32,7 @@ import UserInfoModal from "@/components/UserInfoModal";
 import CreateGroupModal from "@/components/CreateGroupModal";
 import JoinGroupModal from "@/components/JoinGroupModal";
 import BlockedUsersModal from "@/components/BlockedUsersModal";
+import ContactsModal from "@/components/ContactsModal"; // Import the new modal
 
 export default function FriendsPage() {
   const router = useRouter();
@@ -40,7 +42,7 @@ export default function FriendsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
-  const [friends, setFriends] = useState([]);
+  const [chats, setChats] = useState([]); // Renamed from friends to chats
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [friendRequests, setFriendRequests] = useState([]);
@@ -59,6 +61,7 @@ export default function FriendsPage() {
 
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showJoinGroup, setShowJoinGroup] = useState(false);
+  const [showContactsModal, setShowContactsModal] = useState(false); // New state for contacts modal
 
   const [lastMessages, setLastMessages] = useState({});
   const [unreadCounts, setUnreadCounts] = useState({});
@@ -77,7 +80,7 @@ export default function FriendsPage() {
 
   useEffect(() => {
     if (userId) {
-      fetchFriends();
+      fetchChats(); // Renamed from fetchFriends
       fetchGroups();
       fetchFriendRequests();
       fetchLastMessages();
@@ -105,7 +108,7 @@ export default function FriendsPage() {
     return textStr.replace(/@\[([^\]]+)\]\([^)]+\)/g, '@$1');
   };
 
-  // Function to decrypt message preview - FIXED to handle own messages better
+  // Function to decrypt message preview
   const decryptMessagePreview = async (message, key) => {
     if (!message) return;
     
@@ -252,7 +255,7 @@ export default function FriendsPage() {
     }
   };
 
-  // Get message preview with mention handling - FIXED
+  // Get message preview with mention handling
   const getMessagePreview = (message, key) => {
     console.log(`🔍 Getting preview for ${key}:`, {
       messageExists: !!message,
@@ -284,7 +287,7 @@ export default function FriendsPage() {
       }
     }
     
-    // CRITICAL FIX: For messages from current user, always use plain content
+    // For messages from current user, always use plain content
     if (message.senderId === userId) {
       console.log(`👤 Message from me for ${key}, using plain content:`, message.content);
       if (message.content && message.content.trim().length > 0) {
@@ -315,7 +318,7 @@ export default function FriendsPage() {
     // If we have encrypted content, show "New message" while waiting for decryption
     if (message.encryptedContent) {
       console.log(`🔐 Encrypted message waiting for decryption for ${key}`);
-      return 'Message sent by you';
+      return 'New message';
     }
     
     console.log(`❌ No preview found for ${key}, returning 'No messages yet'`);
@@ -394,204 +397,62 @@ export default function FriendsPage() {
     decryptGroupMessages();
   }, [groupLastMessages, userId]);
 
-  const fetchBlockedUsers = async () => {
-    try {
-      const res = await fetch(`/api/friends/blocked?userId=${userId}`);
-      const data = await res.json();
-      if (data.success) {
-        setBlockedUsers(data.blocked || []);
-        setBlockedCount(data.blocked.length);
-      }
-    } catch (error) {
-      console.error('Error fetching blocked users:', error);
-    }
-  };
-
-  const handleBlock = (blockedUserId) => {
-    console.log('🚫 Blocking user:', blockedUserId);
+  // Updated fetchChats function to get only users with existing chats
+ // Updated fetchChats function with sorting by most recent message
+const fetchChats = async () => {
+  setLoading(true);
+  try {
+    // First get all friends
+    const friendsRes = await fetch(`/api/friends?userId=${userId}`);
+    const friendsData = await friendsRes.json();
     
-    setFriends(prevFriends => {
-      const updated = prevFriends.map(friend => 
-        friend.userId === blockedUserId 
-          ? { ...friend, isBlocked: true } 
-          : friend
-      );
-      console.log('📋 Updated friends list:', updated);
-      return updated;
-    });
-    
-    setBlockedCount(prev => prev + 1);
-    fetchBlockedUsers();
-    
-    if (selectedChat?.userId === blockedUserId) {
-      setSelectedChat(null);
-      setMobileView('list');
-    }
-  };
-
-  const handleUnblock = (unblockedUserId) => {
-    console.log('✅ Unblocking user:', unblockedUserId);
-    
-    setFriends(prevFriends => {
-      const updated = prevFriends.map(friend => 
-        friend.userId === unblockedUserId 
-          ? { ...friend, isBlocked: false } 
-          : friend
-      );
-      console.log('📋 Updated friends list after unblock:', updated);
-      return updated;
-    });
-    
-    setBlockedCount(prev => Math.max(0, prev - 1));
-    fetchBlockedUsers();
-  };
-
-  const handleIncomingMessage = useCallback((message) => {
-    console.log('🔔 NEW MESSAGE RECEIVED IN FRIENDS PAGE:', message);
-    
-    if (message.isGroupMessage) {
-      if (message.roomId) {
-        console.log('📥 Updating group last message for:', message.roomId);
-        setGroupLastMessages(prev => ({
-          ...prev,
-          [message.roomId]: message
-        }));
-        
-        // Decrypt the message preview
-        if (message.encryptedContent) {
-          decryptMessagePreview(message, message.roomId);
-        }
-        
-        const isCurrentGroup = selectedGroup?.groupId === message.roomId;
-        const isSentByMe = message.senderId === userId;
-        
-        if (!isSentByMe && !isCurrentGroup) {
-          console.log('➕ Incrementing unread count for group:', message.roomId);
-          setGroupUnreadCounts(prev => ({
-            ...prev,
-            [message.roomId]: (prev[message.roomId] || 0) + 1
-          }));
-        }
-      }
-    } else if (message.senderId === userId || message.receiverId === userId) {
-      console.log('📥 Updating direct message for:', message.roomId);
-      setLastMessages(prev => ({
-        ...prev,
-        [message.roomId]: message
-      }));
+    if (friendsData.success) {
+      const allFriends = friendsData.friends || [];
       
-      // Decrypt the message preview
-      if (message.encryptedContent) {
-        decryptMessagePreview(message, message.roomId);
-      }
+      // Get all chat rooms where there are messages
+      const messagesRes = await fetch(`/api/chat/messages?action=last-messages&userId=${userId}`);
+      const messagesData = await messagesRes.json();
       
-      if (message.receiverId === userId) {
-        const senderIdFromMessage = message.senderId;
-        const isCurrentlyInThisChat = selectedChat?.userId === senderIdFromMessage;
+      if (messagesData.success) {
+        // Create a map of roomId to last message timestamp
+        const lastMessageTimes = {};
+        messagesData.lastMessages.forEach(item => {
+          if (item.lastMessage?.timestamp) {
+            lastMessageTimes[item._id] = item.lastMessage.timestamp;
+          }
+        });
         
-        if (!isCurrentlyInThisChat) {
-          console.log('➕ Incrementing unread count for direct chat:', message.roomId);
-          setUnreadCounts(prev => ({
-            ...prev,
-            [message.roomId]: (prev[message.roomId] || 0) + 1
-          }));
-        }
-      }
-    }
-  }, [userId, selectedChat, selectedGroup]);
-
-  const handleMessageRead = useCallback((data) => {
-    console.log('✓✓ Message read event received:', data);
-    if (data.roomId) {
-      if (data.isGroupMessage) {
-        if (data.userId === userId) {
-          console.log('🔄 Clearing group unread count for:', data.roomId);
-          setGroupUnreadCounts(prev => ({
-            ...prev,
-            [data.roomId]: 0
-          }));
-        }
-      } else {
-        if (data.userId === userId) {
-          console.log('🔄 Clearing direct message unread count for:', data.roomId);
-          setUnreadCounts(prev => ({
-            ...prev,
-            [data.roomId]: 0
-          }));
-        }
-      }
-    }
-  }, [userId]);
-
-  const handleMessageDelivered = useCallback((data) => {
-    console.log('✓ Message delivered event:', data);
-    if (data.roomId) {
-      if (data.isGroupMessage) {
-        setGroupLastMessages(prev => {
-          const lastMsg = prev[data.roomId];
-          if (lastMsg && lastMsg.timestamp === data.timestamp) {
+        // Filter friends to only those with existing chats and add timestamp
+        const friendsWithChats = allFriends
+          .filter(friend => {
+            const roomId = [userId, friend.userId].sort().join('-');
+            return lastMessageTimes[roomId];
+          })
+          .map(friend => {
+            const roomId = [userId, friend.userId].sort().join('-');
             return {
-              ...prev,
-              [data.roomId]: {
-                ...lastMsg,
-                delivered: true,
-                deliveredAt: data.deliveredAt
-              }
+              ...friend,
+              lastMessageTime: lastMessageTimes[roomId]
             };
-          }
-          return prev;
+          });
+        
+        // Sort by most recent message timestamp (descending)
+        friendsWithChats.sort((a, b) => {
+          return new Date(b.lastMessageTime) - new Date(a.lastMessageTime);
         });
+        
+        console.log('👥 Friends with chats (sorted):', friendsWithChats);
+        setChats(friendsWithChats);
       } else {
-        setLastMessages(prev => {
-          const lastMsg = prev[data.roomId];
-          if (lastMsg && lastMsg.timestamp === data.timestamp) {
-            return {
-              ...prev,
-              [data.roomId]: {
-                ...lastMsg,
-                delivered: true,
-                deliveredAt: data.deliveredAt
-              }
-            };
-          }
-          return prev;
-        });
+        setChats([]);
       }
     }
-  }, []);
-
-  useEffect(() => {
-    if (!socket || !isConnected || !userId) return;
-
-    console.log('🔌 Setting up socket listeners in FriendsPage');
-
-    socket.on('receive-message', handleIncomingMessage);
-    socket.on('message-read', handleMessageRead);
-    socket.on('message-delivered', handleMessageDelivered);
-
-    return () => {
-      console.log('🧹 Cleaning up socket listeners in FriendsPage');
-      socket.off('receive-message', handleIncomingMessage);
-      socket.off('message-read', handleMessageRead);
-      socket.off('message-delivered', handleMessageDelivered);
-    };
-  }, [socket, isConnected, userId, handleIncomingMessage, handleMessageRead, handleMessageDelivered]);
-
-  const fetchFriends = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/friends?userId=${userId}`);
-      const data = await res.json();
-      if (data.success) {
-        console.log('👥 Fetched friends:', data.friends);
-        setFriends(data.friends || []);
-      }
-    } catch (error) {
-      console.error("Error fetching friends:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  } catch (error) {
+    console.error("Error fetching chats:", error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const fetchGroups = async () => {
     try {
@@ -682,6 +543,211 @@ export default function FriendsPage() {
     }
   };
 
+  const fetchBlockedUsers = async () => {
+    try {
+      const res = await fetch(`/api/friends/blocked?userId=${userId}`);
+      const data = await res.json();
+      if (data.success) {
+        setBlockedUsers(data.blocked || []);
+        setBlockedCount(data.blocked.length);
+      }
+    } catch (error) {
+      console.error('Error fetching blocked users:', error);
+    }
+  };
+
+  const handleBlock = (blockedUserId) => {
+    console.log('🚫 Blocking user:', blockedUserId);
+    
+    setChats(prevChats => {
+      const updated = prevChats.map(chat => 
+        chat.userId === blockedUserId 
+          ? { ...chat, isBlocked: true } 
+          : chat
+      );
+      console.log('📋 Updated chats list:', updated);
+      return updated;
+    });
+    
+    setBlockedCount(prev => prev + 1);
+    fetchBlockedUsers();
+    
+    if (selectedChat?.userId === blockedUserId) {
+      setSelectedChat(null);
+      setMobileView('list');
+    }
+  };
+
+  const handleUnblock = (unblockedUserId) => {
+    console.log('✅ Unblocking user:', unblockedUserId);
+    
+    setChats(prevChats => {
+      const updated = prevChats.map(chat => 
+        chat.userId === unblockedUserId 
+          ? { ...chat, isBlocked: false } 
+          : chat
+      );
+      console.log('📋 Updated chats list after unblock:', updated);
+      return updated;
+    });
+    
+    setBlockedCount(prev => Math.max(0, prev - 1));
+    fetchBlockedUsers();
+  };
+
+  const handleIncomingMessage = useCallback((message) => {
+  console.log('🔔 NEW MESSAGE RECEIVED IN FRIENDS PAGE:', message);
+  
+  if (message.isGroupMessage) {
+    if (message.roomId) {
+      console.log('📥 Updating group last message for:', message.roomId);
+      setGroupLastMessages(prev => ({
+        ...prev,
+        [message.roomId]: message
+      }));
+      
+      // Decrypt the message preview
+      if (message.encryptedContent) {
+        decryptMessagePreview(message, message.roomId);
+      }
+      
+      const isCurrentGroup = selectedGroup?.groupId === message.roomId;
+      const isSentByMe = message.senderId === userId;
+      
+      if (!isSentByMe && !isCurrentGroup) {
+        console.log('➕ Incrementing unread count for group:', message.roomId);
+        setGroupUnreadCounts(prev => ({
+          ...prev,
+          [message.roomId]: (prev[message.roomId] || 0) + 1
+        }));
+      }
+    }
+  } else if (message.senderId === userId || message.receiverId === userId) {
+    console.log('📥 Updating direct message for:', message.roomId);
+    setLastMessages(prev => ({
+      ...prev,
+      [message.roomId]: message
+    }));
+    
+    // Decrypt the message preview
+    if (message.encryptedContent) {
+      decryptMessagePreview(message, message.roomId);
+    }
+    
+    // Update chat list with new timestamp and re-sort
+    setChats(prevChats => {
+      // Determine which friend this message is for
+      const friendId = message.senderId === userId ? message.receiverId : message.senderId;
+      
+      // Update the friend's lastMessageTime
+      const updatedChats = prevChats.map(chat => {
+        if (chat.userId === friendId) {
+          return {
+            ...chat,
+            lastMessageTime: message.timestamp
+          };
+        }
+        return chat;
+      });
+      
+      // Re-sort by most recent message (descending)
+      return updatedChats.sort((a, b) => {
+        return new Date(b.lastMessageTime) - new Date(a.lastMessageTime);
+      });
+    });
+    
+    if (message.receiverId === userId) {
+      const senderIdFromMessage = message.senderId;
+      const isCurrentlyInThisChat = selectedChat?.userId === senderIdFromMessage;
+      
+      if (!isCurrentlyInThisChat) {
+        console.log('➕ Incrementing unread count for direct chat:', message.roomId);
+        setUnreadCounts(prev => ({
+          ...prev,
+          [message.roomId]: (prev[message.roomId] || 0) + 1
+        }));
+      }
+    }
+  }
+}, [userId, selectedChat, selectedGroup]);
+
+  const handleMessageRead = useCallback((data) => {
+    console.log('✓✓ Message read event received:', data);
+    if (data.roomId) {
+      if (data.isGroupMessage) {
+        if (data.userId === userId) {
+          console.log('🔄 Clearing group unread count for:', data.roomId);
+          setGroupUnreadCounts(prev => ({
+            ...prev,
+            [data.roomId]: 0
+          }));
+        }
+      } else {
+        if (data.userId === userId) {
+          console.log('🔄 Clearing direct message unread count for:', data.roomId);
+          setUnreadCounts(prev => ({
+            ...prev,
+            [data.roomId]: 0
+          }));
+        }
+      }
+    }
+  }, [userId]);
+
+  const handleMessageDelivered = useCallback((data) => {
+    console.log('✓ Message delivered event:', data);
+    if (data.roomId) {
+      if (data.isGroupMessage) {
+        setGroupLastMessages(prev => {
+          const lastMsg = prev[data.roomId];
+          if (lastMsg && lastMsg.timestamp === data.timestamp) {
+            return {
+              ...prev,
+              [data.roomId]: {
+                ...lastMsg,
+                delivered: true,
+                deliveredAt: data.deliveredAt
+              }
+            };
+          }
+          return prev;
+        });
+      } else {
+        setLastMessages(prev => {
+          const lastMsg = prev[data.roomId];
+          if (lastMsg && lastMsg.timestamp === data.timestamp) {
+            return {
+              ...prev,
+              [data.roomId]: {
+                ...lastMsg,
+                delivered: true,
+                deliveredAt: data.deliveredAt
+              }
+            };
+          }
+          return prev;
+        });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!socket || !isConnected || !userId) return;
+
+    console.log('🔌 Setting up socket listeners in FriendsPage');
+
+    socket.on('receive-message', handleIncomingMessage);
+    socket.on('message-read', handleMessageRead);
+    socket.on('message-delivered', handleMessageDelivered);
+
+    return () => {
+      console.log('🧹 Cleaning up socket listeners in FriendsPage');
+      socket.off('receive-message', handleIncomingMessage);
+      socket.off('message-read', handleMessageRead);
+      socket.off('message-delivered', handleMessageDelivered);
+    };
+  }, [socket, isConnected, userId, handleIncomingMessage, handleMessageRead, handleMessageDelivered]);
+
   const searchUsers = async (query) => {
     if (!query.trim()) {
       setSearchResults([]);
@@ -769,22 +835,25 @@ export default function FriendsPage() {
   };
 
   const acceptFriendRequest = async (requestId) => {
-    try {
-      const res = await fetch("/api/friends/request/accept", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, requestId }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setFriendRequests((prev) => prev.filter((r) => r._id !== requestId));
-        setUnreadRequests((prev) => prev - 1);
-        fetchFriends();
-      }
-    } catch (error) {
-      console.error("Error accepting friend request:", error);
+  try {
+    const res = await fetch("/api/friends/request/accept", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, requestId }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setFriendRequests((prev) => prev.filter((r) => r._id !== requestId));
+      setUnreadRequests((prev) => prev - 1);
+      
+      // After accepting a friend request, fetch chats again to update the list
+      // But only add them if they have messages
+      fetchChats();
     }
-  };
+  } catch (error) {
+    console.error("Error accepting friend request:", error);
+  }
+};
 
   const rejectFriendRequest = async (requestId) => {
     try {
@@ -811,20 +880,20 @@ export default function FriendsPage() {
     }
   };
 
-  const handleChatSelect = (friend) => {
-    const isCurrentUserBlocked = friend.isBlockedByThem || false;
-    const isOtherUserBlocked = friend.isBlocked || false;
+  const handleChatSelect = (chat) => {
+    const isCurrentUserBlocked = chat.isBlockedByThem || false;
+    const isOtherUserBlocked = chat.isBlocked || false;
     
     if (isCurrentUserBlocked) {
       alert("You cannot chat with this user because they have blocked you.");
       return;
     }
     
-    setSelectedChat(friend);
+    setSelectedChat(chat);
     setSelectedGroup(null);
     setMobileView('chat');
     
-    const roomId = getRoomId(friend.userId);
+    const roomId = getRoomId(chat.userId);
     console.log('💬 Opening chat for room:', roomId);
     
     setUnreadCounts(prev => ({
@@ -853,56 +922,78 @@ export default function FriendsPage() {
   };
 
   const handleMessageUpdate = useCallback((data) => {
-    console.log('📤 Message update from ChatInterface:', data);
-    
-    if (data.markAsRead && data.roomId) {
-      if (data.isGroup) {
-        console.log('🔄 Clearing group unread from message update:', data.roomId);
-        setGroupUnreadCounts(prev => ({
+  console.log('📤 Message update from ChatInterface:', data);
+  
+  if (data.markAsRead && data.roomId) {
+    if (data.isGroup) {
+      console.log('🔄 Clearing group unread from message update:', data.roomId);
+      setGroupUnreadCounts(prev => ({
+        ...prev,
+        [data.roomId]: 0
+      }));
+    } else {
+      console.log('🔄 Clearing direct unread from message update:', data.roomId);
+      setUnreadCounts(prev => ({
+        ...prev,
+        [data.roomId]: 0
+      }));
+    }
+  } else {
+    if (data.isGroupMessage) {
+      console.log('📤 Updating group last message after send:', data.roomId);
+      setGroupLastMessages(prev => ({
+        ...prev,
+        [data.roomId]: data
+      }));
+      
+      // Store the plain text for preview immediately
+      if (data.content) {
+        const cleanText = removeMentionFormatting(data.content);
+        setDecryptedPreviews(prev => ({
           ...prev,
-          [data.roomId]: 0
-        }));
-      } else {
-        console.log('🔄 Clearing direct unread from message update:', data.roomId);
-        setUnreadCounts(prev => ({
-          ...prev,
-          [data.roomId]: 0
+          [data.roomId]: cleanText
         }));
       }
     } else {
-      if (data.isGroupMessage) {
-        console.log('📤 Updating group last message after send:', data.roomId);
-        setGroupLastMessages(prev => ({
+      console.log('📤 Updating direct last message after send:', data.roomId);
+      setLastMessages(prev => ({
+        ...prev,
+        [data.roomId]: data
+      }));
+      
+      // Store the plain text for preview immediately
+      if (data.content) {
+        const cleanText = removeMentionFormatting(data.content);
+        setDecryptedPreviews(prev => ({
           ...prev,
-          [data.roomId]: data
+          [data.roomId]: cleanText
         }));
-        
-        // Store the plain text for preview immediately
-        if (data.content) {
-          const cleanText = removeMentionFormatting(data.content);
-          setDecryptedPreviews(prev => ({
-            ...prev,
-            [data.roomId]: cleanText
-          }));
-        }
-      } else {
-        console.log('📤 Updating direct last message after send:', data.roomId);
-        setLastMessages(prev => ({
-          ...prev,
-          [data.roomId]: data
-        }));
-        
-        // Store the plain text for preview immediately
-        if (data.content) {
-          const cleanText = removeMentionFormatting(data.content);
-          setDecryptedPreviews(prev => ({
-            ...prev,
-            [data.roomId]: cleanText
-          }));
-        }
       }
+      
+      // Update chat list with new timestamp and re-sort
+      setChats(prevChats => {
+        // Find the friend in the current list
+        const friendId = data.senderId === userId ? data.receiverId : data.senderId;
+        
+        // Update the friend's lastMessageTime
+        const updatedChats = prevChats.map(chat => {
+          if (chat.userId === friendId) {
+            return {
+              ...chat,
+              lastMessageTime: data.timestamp
+            };
+          }
+          return chat;
+        });
+        
+        // Re-sort by most recent message
+        return updatedChats.sort((a, b) => {
+          return new Date(b.lastMessageTime) - new Date(a.lastMessageTime);
+        });
+      });
     }
-  }, []);
+  }
+}, [userId]);
 
   const handleCreateGroup = async (groupData) => {
     try {
@@ -970,9 +1061,42 @@ export default function FriendsPage() {
       alert('You have blocked this user. Unblock them to send messages.');
       return;
     }
-    handleChatSelect(user);
+    
+    // Convert user to chat format
+    const chatUser = {
+      userId: user.userId,
+      userName: user.userName,
+      username: user.username,
+      avatar: user.avatar,
+      isBlocked: user.isBlocked || false
+    };
+    
+    handleChatSelect(chatUser);
   };
 
+  const handleSelectContact = (contact) => {
+  // Create a chat object from the contact
+  const newChat = {
+    userId: contact.userId,
+    userName: contact.userName,
+    username: contact.username,
+    avatar: contact.avatar,
+    isBlocked: false,
+    lastMessageTime: new Date().toISOString() // Set current time for new chat
+  };
+  
+  // Add to chats list if not already there (at the top)
+  setChats(prev => {
+    const exists = prev.some(chat => chat.userId === contact.userId);
+    if (!exists) {
+      return [newChat, ...prev]; // Add new chat at the beginning
+    }
+    return prev;
+  });
+  
+  // Open the chat
+  handleChatSelect(newChat);
+};
   const getRoomId = (friendUserId) => {
     return [userId, friendUserId].sort().join('-');
   };
@@ -1015,9 +1139,9 @@ export default function FriendsPage() {
   return (
     <main className="flex-1 p-4 md:p-8 bg-[#EEF1F0] dark:bg-[#000000] overflow-y-auto min-h-screen transition-colors duration-300">
       <div className="h-full flex flex-col lg:flex-row gap-6">
-        {/* Left Panel - Friends & Groups List */}
+        {/* Left Panel - Chats & Groups List */}
         <div className={`lg:w-96 flex-shrink-0 ${mobileView === 'chat' ? 'hidden lg:block' : 'block'}`}>
-          <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl  border-[#dadce0] dark:border-[#181A1E] overflow-hidden h-full flex flex-col transition-colors duration-300">
+          <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl border-[#dadce0] dark:border-[#181A1E] overflow-hidden h-full flex flex-col transition-colors duration-300">
             {/* Header */}
             <div className="p-6 border-b border-[#f1f3f4] dark:border-[#181A1E]">
               <div className="flex items-center justify-between mb-4">
@@ -1080,7 +1204,7 @@ export default function FriendsPage() {
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="Search friends or users..."
+                  placeholder="Search messages or users..."
                   value={searchQuery}
                   onChange={handleSearchChange}
                   className="w-full px-4 py-4 pl-10 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#000000] dark:text-white rounded-2xl focus:ring focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none text-sm"
@@ -1143,7 +1267,7 @@ export default function FriendsPage() {
               </div>
             )}
 
-            {/* Groups & Friends Lists */}
+            {/* Groups & Chats Lists */}
             {!searchQuery && (
               <div className="flex-1 overflow-y-auto p-4">
                 {/* Groups Section */}
@@ -1262,37 +1386,47 @@ export default function FriendsPage() {
                   )}
                 </div>
 
-                {/* Friends Section */}
+                {/* Chats Section - Only shows users with existing conversations */}
                 <div>
-                  <h2 className="text-sm font-semibold text-[#202124] dark:text-white mb-3 flex items-center justify-between">
-                    <span>Direct Messages ({friends.length})</span>
-                  </h2>
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-semibold text-[#202124] dark:text-white">
+                      Direct Messages ({chats.length})
+                    </h2>
+                    <button
+                      onClick={() => setShowContactsModal(true)}
+                      className="p-2 flex gap-1 items-center text-xs bg-green-100 dark:bg-green-900/30 rounded-full text-green-800 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+                      title="Start new chat"
+                    >
+                      <Plus size={16} />
+                      New Chat
+                    </button>
+                  </div>
                   
                   {loading ? (
                     <div className="text-center py-8">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#34A853] mx-auto"></div>
                     </div>
-                  ) : friends.length > 0 ? (
+                  ) : chats.length > 0 ? (
                     <div className="space-y-2">
-                      {friends.map((friend) => {
-                        const roomId = getRoomId(friend.userId);
+                      {chats.map((chat) => {
+                        const roomId = getRoomId(chat.userId);
                         const lastMsg = lastMessages[roomId];
                         const unreadCount = unreadCounts[roomId] || 0;
-                        const isBlocked = friend.isBlocked || false;
+                        const isBlocked = chat.isBlocked || false;
                         
-                        console.log('🔍 Rendering friend:', friend.userName, 'isBlocked:', isBlocked);
+                        console.log('🔍 Rendering chat:', chat.userName, 'isBlocked:', isBlocked);
                         
                         return (
                           <button
-                            key={friend.userId}
-                            onClick={() => handleChatSelect(friend)}
+                            key={chat.userId}
+                            onClick={() => handleChatSelect(chat)}
                             className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-[#101010] rounded-2xl transition-all ${
-                              selectedChat?.userId === friend.userId ? 'bg-green-50 dark:bg-[#181A1E]' : ''
+                              selectedChat?.userId === chat.userId ? 'bg-green-50 dark:bg-[#181A1E]' : ''
                             } ${unreadCount > 0 && !isBlocked ? 'bg-blue-50 dark:bg-[#0c2c1a]' : ''} ${isBlocked ? 'opacity-70' : ''}`}
                           >
                             <div className="relative">
-                              <Avatar userAvatar={friend.avatar} name={friend.userName} size="w-12 h-12" />
-                              {friend.online && !isBlocked && (
+                              <Avatar userAvatar={chat.avatar} name={chat.userName} size="w-12 h-12" />
+                              {chat.online && !isBlocked && (
                                 <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#0c0c0c] rounded-full"></span>
                               )}
                               {isBlocked && (
@@ -1307,7 +1441,7 @@ export default function FriendsPage() {
                                 <p className={`font-medium text-[#202124] dark:text-white text-sm truncate flex items-center gap-1 ${
                                   unreadCount > 0 && !isBlocked ? 'font-semibold' : ''
                                 }`}>
-                                  {friend.userName}
+                                  {chat.userName}
                                   {isBlocked && (
                                     <span className="text-xs text-red-500 ml-1">(Blocked)</span>
                                   )}
@@ -1356,13 +1490,13 @@ export default function FriendsPage() {
                       })}
                     </div>
                   ) : (
-                    <div className="text-center py-12">
+                    <div className="text-center py-12 bg-gray-50 dark:bg-[#101010] rounded-2xl">
                       <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
-                        <Users className="w-8 h-8 text-green-600 dark:text-green-400" />
+                        <MessageCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
                       </div>
-                      <p className="text-[#5f6368] dark:text-gray-400 text-sm">No friends yet</p>
+                      <p className="text-[#5f6368] dark:text-gray-400 text-sm">No chats yet</p>
                       <p className="text-xs text-[#5f6368] dark:text-gray-500 mt-2">
-                        Search for people to connect with!
+                        Click "New Chat" to start messaging your friends!
                       </p>
                     </div>
                   )}
@@ -1392,7 +1526,7 @@ export default function FriendsPage() {
               onGroupUpdate={handleGroupUpdate}
             />
           ) : (
-            <div className="h-full bg-white dark:bg-[#0c0c0c] rounded-3xl  border-[#dadce0] dark:border-[#181A1E] flex items-center justify-center p-8 transition-colors duration-300">
+            <div className="h-full bg-white dark:bg-[#0c0c0c] rounded-3xl border-[#dadce0] dark:border-[#181A1E] flex items-center justify-center p-8 transition-colors duration-300">
               <div className="text-center max-w-md">
                 <div className="w-24 h-24 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-6">
                   <MessageCircle size={48} className="text-green-600 dark:text-green-400" />
@@ -1401,7 +1535,7 @@ export default function FriendsPage() {
                   No Chat Selected
                 </h3>
                 <p className="text-[#5f6368] dark:text-gray-400 text-sm">
-                  Select a friend or group from the list to start chatting.
+                  Select a chat from the list or click "New Chat" to start messaging your friends.
                 </p>
               </div>
             </div>
@@ -1436,7 +1570,7 @@ export default function FriendsPage() {
         isOpen={showCreateGroup}
         onClose={() => setShowCreateGroup(false)}
         userId={userId}
-        friends={friends}
+        friends={chats} // Pass chats instead of all friends
         onCreate={handleCreateGroup}
       />
 
@@ -1446,12 +1580,19 @@ export default function FriendsPage() {
         onJoin={handleJoinGroup}
       />
 
-      {/* Blocked Users Modal */}
       <BlockedUsersModal
         isOpen={showBlockedModal}
         onClose={() => setShowBlockedModal(false)}
         userId={userId}
         onUnblock={handleUnblock}
+      />
+
+      {/* New Contacts Modal */}
+      <ContactsModal
+        isOpen={showContactsModal}
+        onClose={() => setShowContactsModal(false)}
+        onSelectContact={handleSelectContact}
+        userId={userId}
       />
     </main>
   );

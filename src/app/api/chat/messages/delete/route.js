@@ -4,7 +4,16 @@ import clientPromise from '@/lib/mongodb';
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { roomId, timestamp, senderId, deleteForEveryone, isGroupMessage } = body;
+    const { 
+      roomId, 
+      timestamp, 
+      senderId, 
+      deleteForEveryone, 
+      isGroupMessage,
+      deletedBy,
+      deletedByAdmin,
+      deletedByName
+    } = body;
 
     if (!roomId || !timestamp || !senderId) {
       return NextResponse.json(
@@ -18,7 +27,23 @@ export async function POST(request) {
     const messages = db.collection('messages');
 
     if (deleteForEveryone) {
-      // Mark message as deleted for everyone (keep the message but mark it)
+      // Prepare update data
+      const updateData = {
+        deleted: true,
+        deletedAt: new Date().toISOString(),
+        attachments: []
+      };
+
+      // If this is an admin deletion, preserve that info
+      if (deletedByAdmin) {
+        updateData.deletedByAdmin = true;
+        updateData.deletedBy = deletedBy;
+        updateData.deletedByName = deletedByName;
+        updateData.content = `This message was deleted by admin (${deletedByName})`;
+      } else {
+        updateData.content = 'This message was deleted';
+      }
+
       const result = await messages.updateOne(
         {
           roomId: roomId,
@@ -26,20 +51,21 @@ export async function POST(request) {
           senderId: senderId
         },
         {
-          $set: {
-            deleted: true,
-            deletedAt: new Date().toISOString(),
-            content: 'This message was deleted',
-            attachments: []
-          }
+          $set: updateData
         }
       );
 
-      console.log(`🗑️ Marked message as deleted for everyone: ${result.modifiedCount} modified`);
+      console.log(`🗑️ Marked message as deleted for everyone:`, {
+        modifiedCount: result.modifiedCount,
+        isAdminDelete: deletedByAdmin,
+        deletedByName: deletedByName
+      });
 
       return NextResponse.json({
         success: true,
-        modifiedCount: result.modifiedCount
+        modifiedCount: result.modifiedCount,
+        deletedByAdmin,
+        deletedByName
       });
     }
 

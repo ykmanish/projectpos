@@ -10,6 +10,7 @@ import {
   Send,
   ShieldCheck,
   Paperclip,
+  Shield,
   Image as ImageIcon,
   Video,
   Maximize2,
@@ -48,7 +49,8 @@ import SlowModeModal from "./SlowModeModal";
 import SlowModeBadge from "./SlowModeBadge";
 import { useSlowMode } from "@/hooks/useSlowMode";
 import MessageSearch from "./MessageSearch";
-import ReplyPreview from "./ReplyPreview"; // We'll create this component
+import ReplyPreview from "./ReplyPreview";
+import GIFPicker from "./GIFPicker";
 
 export default function GroupChatInterface({
   group,
@@ -64,6 +66,7 @@ export default function GroupChatInterface({
   const [groupTyping, setGroupTyping] = useState([]);
   const [showAttachments, setShowAttachments] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showGIFPicker, setShowGIFPicker] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [roomJoined, setRoomJoined] = useState(false);
@@ -77,6 +80,9 @@ export default function GroupChatInterface({
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
   const [isSearching, setIsSearching] = useState(false);
   const [highlightedText, setHighlightedText] = useState("");
+
+  // Track online members in the group
+  const [onlineMembers, setOnlineMembers] = useState(new Set());
 
   // Reply feature states
   const [replyToMessage, setReplyToMessage] = useState(null);
@@ -144,6 +150,7 @@ export default function GroupChatInterface({
   const typingTimeoutRef = useRef(null);
   const emojiPickerRef = useRef(null);
   const attachmentPickerRef = useRef(null);
+  const gifPickerRef = useRef(null);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -151,7 +158,7 @@ export default function GroupChatInterface({
   const messageRefs = useRef(new Map());
   const replyMessageRefs = useRef(new Map());
 
-  const { socket, isConnected } = useSocket();
+  const { socket, isConnected, getUserOnlineStatus } = useSocket();
   const roomId = group.groupId;
 
   // Initialize encryption
@@ -161,11 +168,34 @@ export default function GroupChatInterface({
     }
   }, [currentUserId, group?.groupId]);
 
+  // Monitor online status of group members
+  useEffect(() => {
+    if (groupData?.members) {
+      const online = new Set();
+      groupData.members.forEach(member => {
+        const status = getUserOnlineStatus(member.userId);
+        if (status.online) {
+          online.add(member.userId);
+        }
+      });
+      setOnlineMembers(online);
+    }
+  }, [groupData?.members, getUserOnlineStatus]);
+
   // Click outside handler for dropdown
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowDropdown(false);
+      }
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
+        setShowEmojiPicker(false);
+      }
+      if (attachmentPickerRef.current && !attachmentPickerRef.current.contains(event.target)) {
+        setShowAttachments(false);
+      }
+      if (gifPickerRef.current && !gifPickerRef.current.contains(event.target)) {
+        setShowGIFPicker(false);
       }
     }
 
@@ -321,6 +351,11 @@ export default function GroupChatInterface({
     return member?.userName || "Unknown";
   };
 
+  const getMemberRole = (userId) => {
+    const member = groupData.members?.find((m) => m.userId === userId);
+    return member?.role || "member";
+  };
+
   const renderAvatar = (userAvatar, name, size = "w-8 h-8") => {
     if (!userAvatar) {
       return (
@@ -394,52 +429,6 @@ export default function GroupChatInterface({
     });
     setAllAttachments(attachments);
   }, [messages]);
-
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (
-        emojiPickerRef.current &&
-        emojiPickerRef.current.contains(event.target)
-      ) {
-        return;
-      }
-
-      if (
-        attachmentPickerRef.current &&
-        attachmentPickerRef.current.contains(event.target)
-      ) {
-        return;
-      }
-
-      const mentionElement = document.querySelector(".mention-suggestions");
-      if (mentionElement && mentionElement.contains(event.target)) {
-        return;
-      }
-
-      if (
-        emojiPickerRef.current &&
-        !emojiPickerRef.current.contains(event.target)
-      ) {
-        setShowEmojiPicker(false);
-      }
-
-      if (
-        attachmentPickerRef.current &&
-        !attachmentPickerRef.current.contains(event.target)
-      ) {
-        setShowAttachments(false);
-      }
-
-      if (mentionElement && !mentionElement.contains(event.target)) {
-        setShowMentions(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
 
   useEffect(() => {
     if (!socket || !isConnected || !currentUserId || !group?.groupId) {
@@ -595,45 +584,52 @@ export default function GroupChatInterface({
       }
     };
 
-    const onMessageDeleted = (data) => {
-      console.log("🗑️ Message deleted:", data);
-      if (data.roomId === roomId) {
-        if (data.deleteForEveryone) {
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.timestamp === data.timestamp && msg.senderId === data.senderId
-                ? {
-                    ...msg,
-                    deleted: true,
-                    content: "This message was deleted",
-                    attachments: [],
-                  }
-                : msg,
+const onMessageDeleted = (data) => {
+  console.log("🗑️ Message deleted:", data);
+  if (data.roomId === roomId) {
+    if (data.deleteForEveryone) {
+      const deletedContent = data.deletedByAdmin 
+        ? `This message was deleted by admin (${data.deletedByName})`
+        : "This message was deleted";
+        
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.timestamp === data.timestamp && msg.senderId === data.senderId
+            ? {
+                ...msg,
+                deleted: true,
+                deletedBy: data.deletedBy,
+                deletedByAdmin: data.deletedByAdmin,
+                deletedByName: data.deletedByName,
+                content: deletedContent,
+                attachments: [],
+              }
+            : msg
+        )
+      );
+      setDecryptedMessages((prev) => {
+        const newMap = new Map(prev);
+        newMap.delete(data.timestamp);
+        return newMap;
+      });
+    } else {
+      setMessages((prev) =>
+        prev.filter(
+          (msg) =>
+            !(
+              msg.timestamp === data.timestamp &&
+              msg.senderId === data.senderId
             ),
-          );
-          setDecryptedMessages((prev) => {
-            const newMap = new Map(prev);
-            newMap.delete(data.timestamp);
-            return newMap;
-          });
-        } else {
-          setMessages((prev) =>
-            prev.filter(
-              (msg) =>
-                !(
-                  msg.timestamp === data.timestamp &&
-                  msg.senderId === data.senderId
-                ),
-            ),
-          );
-          setDecryptedMessages((prev) => {
-            const newMap = new Map(prev);
-            newMap.delete(data.timestamp);
-            return newMap;
-          });
-        }
-      }
-    };
+        ),
+      );
+      setDecryptedMessages((prev) => {
+        const newMap = new Map(prev);
+        newMap.delete(data.timestamp);
+        return newMap;
+      });
+    }
+  }
+};
 
     const onMessageReaction = (data) => {
       console.log("😊 Message reaction:", data);
@@ -668,7 +664,7 @@ export default function GroupChatInterface({
     };
 
     const onMessageDelivered = (data) => {
-      console.log("✓ Group messages delivered:", data);
+      console.log('✓ Group messages delivered:', data);
       if (data.roomId === roomId && data.isGroupMessage) {
         setMessages((prev) =>
           prev.map((msg) => {
@@ -678,6 +674,49 @@ export default function GroupChatInterface({
             return msg;
           }),
         );
+      }
+    };
+
+    const onUserCameOnline = (data) => {
+      console.log('👤 User came online in group:', data);
+      if (data.roomId === roomId) {
+        setOnlineMembers(prev => new Set(prev).add(data.userId));
+        
+        // Update delivery status for messages sent to this user
+        setMessages(prev =>
+          prev.map(msg => {
+            // For messages sent to the group, they're considered delivered when any member is online
+            if (msg.senderId === currentUserId && !msg.delivered) {
+              return { ...msg, delivered: true, deliveredAt: data.timestamp };
+            }
+            return msg;
+          })
+        );
+      }
+    };
+
+    const onUserWentOffline = (data) => {
+      console.log('👤 User went offline:', data);
+      if (data.userId && data.roomId === roomId) {
+        setOnlineMembers(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(data.userId);
+          return newSet;
+        });
+      }
+    };
+
+    const onCheckUndelivered = (data) => {
+      console.log('🔍 Check undelivered messages:', data);
+      if (data.roomId === roomId) {
+        // Request status of undelivered messages
+        if (socket && isConnected) {
+          socket.emit('get-undelivered-status', { 
+            roomId, 
+            userId: currentUserId,
+            isGroupMessage: true 
+          });
+        }
       }
     };
 
@@ -693,6 +732,20 @@ export default function GroupChatInterface({
       }
     };
 
+    const onOnline = ({ userId, online, lastSeen }) => {
+      if (userId) {
+        setOnlineMembers(prev => {
+          if (online) {
+            return new Set(prev).add(userId);
+          } else {
+            const newSet = new Set(prev);
+            newSet.delete(userId);
+            return newSet;
+          }
+        });
+      }
+    };
+
     socket.on("joined-room", onJoinedRoom);
     socket.on("member-joined", onMemberJoined);
     socket.on("receive-message", onMessage);
@@ -701,7 +754,12 @@ export default function GroupChatInterface({
     socket.on("message-reaction", onMessageReaction);
     socket.on("message-read", onMessageRead);
     socket.on("message-delivered", onMessageDelivered);
+    socket.on('user-came-online', onUserCameOnline);
+    socket.on('user-went-offline', onUserWentOffline);
+    socket.on('check-undelivered-messages', onCheckUndelivered);
     socket.on("user-typing", onTyping);
+    socket.on('user-online', onOnline);
+    socket.on('user-status-change', onOnline);
 
     fetchMessages();
 
@@ -715,7 +773,12 @@ export default function GroupChatInterface({
       socket.off("message-reaction", onMessageReaction);
       socket.off("message-read", onMessageRead);
       socket.off("message-delivered", onMessageDelivered);
+      socket.off('user-came-online', onUserCameOnline);
+      socket.off('user-went-offline', onUserWentOffline);
+      socket.off('check-undelivered-messages', onCheckUndelivered);
       socket.off("user-typing", onTyping);
+      socket.off('user-online', onOnline);
+      socket.off('user-status-change', onOnline);
 
       socket.emit("leave-chat", { roomId, userId: currentUserId });
       setRoomJoined(false);
@@ -768,31 +831,40 @@ export default function GroupChatInterface({
     [encryptionReady, groupKey, currentUserId, roomId],
   );
 
-  const fetchMessages = async () => {
-    try {
-      const userJoinTime = groupData.members?.find(
-        (m) => m.userId === currentUserId,
-      )?.joinedAt;
-      let url = `/api/chat/messages?roomId=${roomId}&userId=${currentUserId}`;
+const fetchMessages = async () => {
+  try {
+    const userJoinTime = groupData.members?.find(
+      (m) => m.userId === currentUserId,
+    )?.joinedAt;
+    let url = `/api/chat/messages?roomId=${roomId}&userId=${currentUserId}`;
 
-      // Only fetch messages after user joined
-      if (userJoinTime) {
-        url += `&after=${userJoinTime}`;
-        console.log(`🔍 Fetching messages after: ${userJoinTime}`);
-      }
-
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.success) {
-        setMessages(data.messages);
-        console.log(`✅ Loaded ${data.messages.length} messages`);
-      }
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-    } finally {
-      setLoading(false);
+    // Only fetch messages after user joined
+    if (userJoinTime) {
+      url += `&after=${userJoinTime}`;
+      console.log(`🔍 Fetching messages after: ${userJoinTime}`);
     }
-  };
+
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.success) {
+      // Process messages to ensure admin deletion info is preserved
+      const processedMessages = data.messages.map(msg => {
+        // If message is deleted by admin, ensure the content shows admin deletion
+        if (msg.deleted && msg.deletedByAdmin) {
+          msg.content = `This message was deleted by admin (${msg.deletedByName || 'Admin'})`;
+        }
+        return msg;
+      });
+      
+      setMessages(processedMessages);
+      console.log(`✅ Loaded ${processedMessages.length} messages`);
+    }
+  } catch (error) {
+    console.error("Error fetching messages:", error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const fetchGroupData = async () => {
     try {
@@ -1113,6 +1185,82 @@ export default function GroupChatInterface({
     setCurrentSearchIndex(-1);
   };
 
+  // New function to handle direct GIF send
+  const handleSendGIF = async (gif) => {
+    if (!socket || !isConnected || !roomJoined || !canSendMessage()) return;
+
+    // Register message sent for slow mode (only if not admin)
+    if (!isCurrentUserAdmin) {
+      registerMessageSent();
+    }
+
+    const now = new Date().toISOString();
+
+    // Prepare reply data if replying to a message
+    let replyTo = null;
+    if (replyingToMessage && !replyingToMessage.deleted) {
+      const replyContent = getMessageContent(replyingToMessage);
+      replyTo = {
+        messageId: `${replyingToMessage.timestamp}-${replyingToMessage.senderId}`,
+        timestamp: replyingToMessage.timestamp,
+        senderId: replyingToMessage.senderId,
+        senderName: replyingToMessage.senderId === currentUserId ? 'You' : getMemberName(replyingToMessage.senderId),
+        content: replyContent,
+        hasAttachments: replyingToMessage.attachments && replyingToMessage.attachments.length > 0,
+        attachmentType: replyingToMessage.attachments?.[0]?.type
+      };
+    }
+
+    const messageData = {
+      roomId,
+      senderId: currentUserId,
+      senderName: getMemberName(currentUserId),
+      receiverId: "group",
+      isGroupMessage: true,
+      content: "",
+      attachments: [{
+        url: gif.url,
+        type: 'gif',
+        name: gif.name || 'GIF',
+        gifId: gif.gifId,
+        gifData: gif
+      }],
+      replyTo: replyTo,
+      timestamp: now,
+      delivered: false, // Start as false for offline members
+      deliveredAt: null,
+      read: false,
+      readBy: [currentUserId],
+      reactions: [],
+      isEncrypted: false,
+    };
+
+    // Add message locally
+    setMessages((prev) => [...prev, messageData]);
+
+    // Clear reply after sending
+    setReplyingToMessage(null);
+
+    console.log("📤 Sending GIF message");
+    socket.emit("send-message", messageData);
+
+    // Save to database
+    fetch("/api/chat/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(messageData),
+    })
+      .then(() => {
+        if (onMessageUpdate) {
+          onMessageUpdate(messageData);
+        }
+      })
+      .catch(console.error);
+
+    // Close GIF picker
+    setShowGIFPicker(false);
+  };
+
   // Updated handleSendMessage with reply and slow mode
   const handleSendMessage = async () => {
     if (
@@ -1175,11 +1323,13 @@ export default function GroupChatInterface({
         url: att.url,
         type: att.type,
         name: att.name,
+        gifId: att.gifId,
+        gifData: att.gifData
       })),
-      replyTo: replyTo, // Add reply information
+      replyTo: replyTo,
       timestamp: now,
-      delivered: true,
-      deliveredAt: now,
+      delivered: false, // Start as false for offline members
+      deliveredAt: null,
       read: false,
       readBy: [currentUserId],
       reactions: [],
@@ -1248,6 +1398,8 @@ export default function GroupChatInterface({
         url: att.url,
         type: att.type,
         name: att.name,
+        gifId: att.gifId,
+        gifData: att.gifData
       }));
 
     const allUploadedAttachments = [
@@ -1298,9 +1450,10 @@ export default function GroupChatInterface({
       content: contentForDB,
       encryptedContent: encryptedContent,
       attachments: allUploadedAttachments,
-      replyTo: replyTo, // Add reply information
+      replyTo: replyTo,
       timestamp: now,
-      delivered: false,
+      delivered: false, // Start as false for offline members
+      deliveredAt: null,
       read: false,
       readBy: [currentUserId],
       reactions: [],
@@ -1390,60 +1543,94 @@ export default function GroupChatInterface({
     setEditText("");
   };
 
-  const handleDeleteMessage = async (message, forEveryone = false) => {
-    if (forEveryone) {
-      socket.emit("delete-message", {
-        roomId,
-        timestamp: message.timestamp,
-        senderId: message.senderId,
-        deleteForEveryone: true,
-        isGroupMessage: true,
+  // Updated handleDeleteMessage for admin functionality
+ const handleDeleteMessage = async (message, forEveryone = false, isAdminDelete = false) => {
+  const adminName = isCurrentUserAdmin ? getMemberName(currentUserId) : null;
+  
+  if (forEveryone) {
+    socket.emit("delete-message", {
+      roomId,
+      timestamp: message.timestamp,
+      senderId: message.senderId,
+      deleteForEveryone: true,
+      isGroupMessage: true,
+      deletedBy: currentUserId,
+      deletedByAdmin: isAdminDelete || isCurrentUserAdmin,
+      deletedByName: adminName
+    });
+
+    try {
+      const response = await fetch("/api/chat/messages/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomId,
+          timestamp: message.timestamp,
+          senderId: message.senderId,
+          deleteForEveryone: true,
+          isGroupMessage: true,
+          deletedBy: currentUserId,
+          deletedByAdmin: isAdminDelete || isCurrentUserAdmin,
+          deletedByName: adminName
+        }),
       });
 
-      try {
-        await fetch("/api/chat/messages/delete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            roomId,
-            timestamp: message.timestamp,
-            senderId: message.senderId,
-            deleteForEveryone: true,
-            isGroupMessage: true,
-          }),
-        });
-      } catch (error) {
-        console.error("Error deleting message for everyone:", error);
+      const data = await response.json();
+      
+      // Immediately update local state with the admin deletion info
+      if (data.success) {
+        const deletedContent = (isAdminDelete || isCurrentUserAdmin) 
+          ? `This message was deleted by admin (${adminName})`
+          : "This message was deleted";
+          
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.timestamp === message.timestamp && msg.senderId === message.senderId
+              ? {
+                  ...msg,
+                  deleted: true,
+                  deletedBy: currentUserId,
+                  deletedByAdmin: isAdminDelete || isCurrentUserAdmin,
+                  deletedByName: adminName,
+                  content: deletedContent,
+                  attachments: [],
+                }
+              : msg
+          )
+        );
       }
-    } else {
-      setMessages((prev) =>
-        prev.filter(
-          (msg) =>
-            !(
-              msg.timestamp === message.timestamp &&
-              msg.senderId === message.senderId
-            ),
-        ),
-      );
-
-      try {
-        await fetch("/api/chat/messages/delete-for-me", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userId: currentUserId,
-            messageId: `${message.roomId}-${message.timestamp}-${message.senderId}`,
-            roomId: message.roomId,
-            timestamp: message.timestamp,
-            senderId: message.senderId,
-            isGroupMessage: true,
-          }),
-        });
-      } catch (error) {
-        console.error("Error deleting message for me:", error);
-      }
+    } catch (error) {
+      console.error("Error deleting message for everyone:", error);
     }
-  };
+  } else {
+    setMessages((prev) =>
+      prev.filter(
+        (msg) =>
+          !(
+            msg.timestamp === message.timestamp &&
+            msg.senderId === message.senderId
+          ),
+      ),
+    );
+
+    try {
+      await fetch("/api/chat/messages/delete-for-me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: currentUserId,
+          messageId: `${message.roomId}-${message.timestamp}-${message.senderId}`,
+          roomId: message.roomId,
+          timestamp: message.timestamp,
+          senderId: message.senderId,
+          isGroupMessage: true,
+        }),
+      });
+    } catch (error) {
+      console.error("Error deleting message for me:", error);
+    }
+  }
+};
 
   const handleReactToMessage = async (message, emoji) => {
     const updatedReactions = message.reactions || [];
@@ -1815,8 +2002,11 @@ export default function GroupChatInterface({
         <div className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2">
           {replyTo.hasAttachments ? (
             <span className="flex items-center gap-1">
-              {replyTo.attachmentType === 'image' ? <ImageIcon size={12} /> : <Video size={12} />}
-              {replyTo.attachmentType === 'image' ? 'Photo' : 'Video'}
+              {replyTo.attachmentType === 'image' ? <ImageIcon size={12} /> : 
+               replyTo.attachmentType === 'gif' ? <span className="font-bold">GIF</span> :
+               <Video size={12} />}
+              {replyTo.attachmentType === 'image' ? 'Photo' : 
+               replyTo.attachmentType === 'gif' ? 'GIF' : 'Video'}
             </span>
           ) : (
             replyTo.content || ''
@@ -1835,6 +2025,7 @@ export default function GroupChatInterface({
     return groups;
   }, {});
 
+  // Updated message status rendering for groups
   const renderMessageStatus = (message) => {
     if (message.senderId !== currentUserId) return null;
 
@@ -1842,12 +2033,17 @@ export default function GroupChatInterface({
     const readByCount = message.readBy?.length || 0;
     const otherMembersCount = totalMembers - 1;
 
+    // If message is read by all members
     if (readByCount >= otherMembersCount && otherMembersCount > 0) {
-      return <CheckCheck size={16} className="text-blue-500" />;
-    } else if (message.delivered || readByCount > 0) {
-      return <CheckCheck size={16} className="text-gray-400 dark:text-gray-500" />;
-    } else {
-      return <Check size={16} className="text-gray-400 dark:text-gray-500" />;
+      return <CheckCheck size={16} className="text-blue-500" title="Read by all" />;
+    } 
+    // If message is delivered (at least one online member received it)
+    else if (message.delivered || readByCount > 0) {
+      return <CheckCheck size={16} className="text-gray-400 dark:text-gray-500" title="Delivered" />;
+    } 
+    // Message is sent but not delivered to anyone
+    else {
+      return <Check size={16} className="text-gray-400 dark:text-gray-500" title="Sent" />;
     }
   };
 
@@ -1875,15 +2071,18 @@ export default function GroupChatInterface({
     );
   };
 
-  const getMessageContent = (message) => {
-    if (message.deleted) {
-      return message.content;
+const getMessageContent = (message) => {
+  if (message.deleted) {
+    if (message.deletedByAdmin) {
+      return `This message was deleted by admin (${message.deletedByName || 'Admin'})`;
     }
-    if (message.encryptedContent) {
-      return decryptedMessages.get(message.timestamp) || message.content || "";
-    }
-    return message.content || "";
-  };
+    return message.content || "This message was deleted";
+  }
+  if (message.encryptedContent) {
+    return decryptedMessages.get(message.timestamp) || message.content || "";
+  }
+  return message.content || "";
+};
 
   const renderMessageWithMentions = (content, highlight) => {
     if (!content) return null;
@@ -2026,6 +2225,8 @@ export default function GroupChatInterface({
                 <div className="flex items-center gap-1 text-[#5f6368] dark:text-gray-400">
                   <Users size={12} />
                   <span>{groupData.members?.length || 0} members</span>
+                  <span className="mx-1">•</span>
+                  <span className="text-green-600 dark:text-green-400">{onlineMembers.size} online</span>
                 </div>
                 {groupTyping.length > 0 && (
                   <span className="text-green-600 dark:text-green-400 animate-pulse">
@@ -2120,7 +2321,7 @@ export default function GroupChatInterface({
               />
               <p className="text-[#5f6368] dark:text-gray-400">No messages yet</p>
               <p className="text-sm text-[#5f6368] dark:text-gray-500 mt-1">
-                Be the first to send a message! Use @ to mention someone.
+                Be the first to send a message!
               </p>
             </div>
           ) : (
@@ -2154,10 +2355,15 @@ export default function GroupChatInterface({
                                 getMemberName(msg.senderId),
                                 "w-6 h-6"
                               )}
-                              <span className="text-xs text-[#5f6368] dark:text-gray-400">
+                              <span className="text-xs flex items-center text-[#5f6368] dark:text-gray-400">
                                 {msg.senderName || getMemberName(msg.senderId)}
-                                {groupData.members?.find(m => m.userId === msg.senderId)?.role === 'admin' && (
-                                  <span className="ml-1 text-green-600 dark:text-green-400">(Admin)</span>
+                                {getMemberRole(msg.senderId) === 'admin' && (
+                                  <span className="ml-1 text-green-600 dark:text-green-400">
+                                    <Shield size={10} />
+                                  </span>
+                                )}
+                                {onlineMembers.has(msg.senderId) && (
+                                  <span className="ml-1 text-green-600 dark:text-green-400">●</span>
                                 )}
                               </span>
                             </div>
@@ -2218,6 +2424,32 @@ export default function GroupChatInterface({
                                           {renderMessageStatus(msg)}
                                         </div>
                                       </div>
+                                    ) : att.type === 'gif' ? (
+                                      <div className="relative">
+                                        <img
+                                          src={att.url}
+                                          alt={att.name || 'GIF'}
+                                          className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                          onClick={() => handleAttachmentClick(att, globalIndex)}
+                                          loading="lazy"
+                                        />
+                                        <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                                          GIF
+                                        </div>
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                                          <button
+                                            onClick={() => handleAttachmentClick(att, globalIndex)}
+                                            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                                          >
+                                            <Maximize2 size={20} />
+                                          </button>
+                                        </div>
+                                        {/* Time overlay for GIFs */}
+                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
+                                          <span>{formatTime(msg.timestamp)}</span>
+                                          {renderMessageStatus(msg)}
+                                        </div>
+                                      </div>
                                     ) : null}
                                   </div>
                                 );
@@ -2226,35 +2458,46 @@ export default function GroupChatInterface({
                           )}
                           
                           {/* Text content with highlighting */}
-                          {hasTextContent && (
-                            <div
-                              className={`rounded-2xl p-3 ${
-                                msg.deleted 
-                                  ? 'bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400'
-                                  : isOwn
-                                  ? 'bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none'
-                                  : 'bg-white dark:bg-[#101010] dark:text-white border-[#dadce0] dark:border-[#232529] rounded-tl-none'
-                              }`}
-                            >
-                              <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
-                                {msg.deleted ? (
-                                  msg.content
-                                ) : (
-                                  renderMessageWithMentions(messageContent, highlightedText)
-                                )}
-                                {msg.edited && !msg.deleted && (
-                                  <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">(edited)</span>
-                                )}
-                              </p>
-                              {/* Time and status inside text bubble */}
-                              <div className="flex items-center justify-end gap-1 mt-1">
-                                <p className={`text-[10px] ${isOwn ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                                  {formatTime(msg.timestamp)}
-                                </p>
-                                {renderMessageStatus(msg)}
-                              </div>
-                            </div>
-                          )}
+                         {hasTextContent && (
+  <div
+    className={`rounded-2xl p-3 ${
+      msg.deleted 
+        ? msg.deletedByAdmin
+          ? 'bg-zinc-100 dark:bg-zinc-500/20 italic text-zinc-700 dark:text-zinc-400  border-amber-200 dark:border-amber-800'
+          : 'bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400'
+        : isOwn
+        ? 'bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none'
+        : 'bg-white dark:bg-[#101010] dark:text-white border-[#dadce0] dark:border-[#232529] rounded-tl-none'
+    }`}
+  >
+    <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+      {msg.deleted ? (
+        msg.deletedByAdmin ? (
+          <span>
+            This message was deleted by admin 
+            <span className="font-semibold ml-1">
+              ({msg.deletedByName || 'Admin'})
+            </span>
+          </span>
+        ) : (
+          msg.content || "This message was deleted"
+        )
+      ) : (
+        renderMessageWithMentions(messageContent, highlightedText)
+      )}
+      {msg.edited && !msg.deleted && (
+        <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">(edited)</span>
+      )}
+    </p>
+    {/* Time and status inside text bubble */}
+    <div className="flex items-center justify-end gap-1 mt-1">
+      <p className={`text-[10px] ${isOwn ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
+        {formatTime(msg.timestamp)}
+      </p>
+      {renderMessageStatus(msg)}
+    </div>
+  </div>
+)}
                           
                           {/* Reactions */}
                           {msg.reactions && msg.reactions.length > 0 && (
@@ -2409,7 +2652,7 @@ export default function GroupChatInterface({
                 onClick={() => {
                   setShowAttachments(!showAttachments);
                   setShowEmojiPicker(false);
-                  setShowMentions(false);
+                  setShowGIFPicker(false);
                 }}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
                 disabled={
@@ -2454,6 +2697,23 @@ export default function GroupChatInterface({
                         <p className="text-xs text-[#5f6368] dark:text-gray-400">Share videos</p>
                       </div>
                     </button>
+
+                    {/* GIF Button */}
+                    <button
+                      onClick={() => {
+                        setShowGIFPicker(true);
+                        setShowAttachments(false);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
+                        <span className="text-xl font-bold text-purple-600 dark:text-purple-400">GIF</span>
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="text-sm font-medium text-[#202124] dark:text-white">Send GIF</p>
+                        <p className="text-xs text-[#5f6368] dark:text-gray-400">Animated GIFs</p>
+                      </div>
+                    </button>
                   </div>
                 </div>
               )}
@@ -2468,13 +2728,26 @@ export default function GroupChatInterface({
               />
             </div>
 
+            {/* GIF Picker */}
+            {showGIFPicker && (
+              <div 
+                ref={gifPickerRef}
+                className="absolute bottom-20 left-0 z-50"
+              >
+                <GIFPicker
+                  onSelect={handleSendGIF}
+                  onClose={() => setShowGIFPicker(false)}
+                />
+              </div>
+            )}
+
             {/* Emoji Button */}
             <div className="relative" ref={emojiPickerRef}>
               <button
                 onClick={() => {
                   setShowEmojiPicker(!showEmojiPicker);
                   setShowAttachments(false);
-                  setShowMentions(false);
+                  setShowGIFPicker(false);
                 }}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
                 disabled={!isConnected || !roomJoined || !canSendMessage()}
@@ -2544,8 +2817,8 @@ export default function GroupChatInterface({
                           ? `Slow mode active (${timeRemaining}s)`
                           : "Only admins can send messages"
                       : isCurrentUserAdmin
-                        ? "Type a message as admin... (Use @ to mention, ✨ for AI)"
-                        : "Type a message... (Use @ to mention, ✨ for AI)"
+                        ? "Type a message as admin... (Use @ to mention, ✨ for AI, 📷 for GIF)"
+                        : "Type a message... (Use @ to mention, ✨ for AI, 📷 for GIF)"
               }
               className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
               disabled={
@@ -2625,8 +2898,7 @@ export default function GroupChatInterface({
             setEditingMessage(selectedMessage);
             setEditText(selectedMessage.content);
           }}
-          onDelete={() => handleDeleteMessage(selectedMessage, false)}
-          onDeleteForEveryone={() => handleDeleteMessage(selectedMessage, true)}
+          onDelete={(forEveryone) => handleDeleteMessage(selectedMessage, forEveryone)}
           onReact={(emoji) => handleReactToMessage(selectedMessage, emoji)}
           onCopy={handleCopyMessage}
           onMessageInfo={() => {
@@ -2638,6 +2910,8 @@ export default function GroupChatInterface({
             closeContextMenu();
           }}
           isOwnMessage={selectedMessage.senderId === currentUserId}
+          isCurrentUserAdmin={isCurrentUserAdmin}
+          adminName={getMemberName(currentUserId)}
         />
       )}
 

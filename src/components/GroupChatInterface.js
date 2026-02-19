@@ -9,7 +9,7 @@ import {
   X,
   Send,
   ShieldCheck,
-    Calendar,
+  Calendar,
   Paperclip,
   Shield,
   Image as ImageIcon,
@@ -32,6 +32,7 @@ import {
   XCircle,
   Reply,
   CornerDownRight,
+  DollarSign, // Added for split bill
 } from "lucide-react";
 import { BeanHead } from "beanheads";
 import EmojiPicker from "emoji-picker-react";
@@ -52,6 +53,7 @@ import { useSlowMode } from "@/hooks/useSlowMode";
 import MessageSearch from "./MessageSearch";
 import ReplyPreview from "./ReplyPreview";
 import GIFPicker from "./GIFPicker";
+import SplitBillModal from "./SplitBillModal"; // Added import
 
 export default function GroupChatInterface({
   group,
@@ -81,6 +83,11 @@ export default function GroupChatInterface({
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
   const [isSearching, setIsSearching] = useState(false);
   const [highlightedText, setHighlightedText] = useState("");
+
+  // Split Bill states
+  const [showSplitBillModal, setShowSplitBillModal] = useState(false);
+  const [slashCommand, setSlashCommand] = useState('');
+  const [showSlashSuggestions, setShowSlashSuggestions] = useState(false);
 
   // Track online members in the group
   const [onlineMembers, setOnlineMembers] = useState(new Set());
@@ -241,6 +248,17 @@ export default function GroupChatInterface({
     }
   };
 
+  // Handle slash commands
+  const handleSlashCommand = (input) => {
+    if (input === '/split') {
+      setShowSplitBillModal(true);
+      setNewMessage('');
+      setShowSlashSuggestions(false);
+      return true;
+    }
+    return false;
+  };
+
   // AI Enhancement functions
   const handleAIEnhance = async (message, prompt) => {
     setIsAIProcessing(true);
@@ -330,23 +348,22 @@ export default function GroupChatInterface({
   };
 
   // Updated canSendMessage function with admin bypass
-  // Updated canSendMessage function with admin bypass
-const canSendMessage = useCallback(() => {
-  // Check if user is admin - admins bypass all restrictions
-  if (isCurrentUserAdmin) return true;
-  
-  // Check admin message permission first (only if not admin)
-  if (groupData.settings?.onlyAdminsCanMessage) {
-    return false;
-  }
-  
-  // Then check slow mode
-  if (groupData.settings?.slowMode?.enabled && !canSendInSlowMode()) {
-    return false;
-  }
-  
-  return true;
-}, [groupData.settings?.onlyAdminsCanMessage, groupData.settings?.slowMode?.enabled, isCurrentUserAdmin, canSendInSlowMode]);
+  const canSendMessage = useCallback(() => {
+    // Check if user is admin - admins bypass all restrictions
+    if (isCurrentUserAdmin) return true;
+    
+    // Check admin message permission first (only if not admin)
+    if (groupData.settings?.onlyAdminsCanMessage) {
+      return false;
+    }
+    
+    // Then check slow mode
+    if (groupData.settings?.slowMode?.enabled && !canSendInSlowMode()) {
+      return false;
+    }
+    
+    return true;
+  }, [groupData.settings?.onlyAdminsCanMessage, groupData.settings?.slowMode?.enabled, isCurrentUserAdmin, canSendInSlowMode]);
 
   const getMemberName = (userId) => {
     const member = groupData.members?.find((m) => m.userId === userId);
@@ -992,6 +1009,19 @@ const canSendMessage = useCallback(() => {
   const handleInputChange = (e) => {
     const value = e.target.value;
     setNewMessage(value);
+
+    // Check for slash command at beginning
+    if (value.startsWith('/') && !value.includes(' ')) {
+      setSlashCommand(value);
+      const availableCommands = ['/split'];
+      if (availableCommands.includes(value)) {
+        setShowSlashSuggestions(true);
+      } else {
+        setShowSlashSuggestions(false);
+      }
+    } else {
+      setShowSlashSuggestions(false);
+    }
 
     const cursorPosition = e.target.selectionStart;
     const textBeforeCursor = value.substring(0, cursorPosition);
@@ -2000,8 +2030,7 @@ const canSendMessage = useCallback(() => {
   };
 
   // Handle slow mode save
-  // Handle slow mode save
-const handleSaveSlowMode = async (settings) => {
+  const handleSaveSlowMode = async (settings) => {
   try {
     const res = await fetch("/api/chat/groups/slow-mode", {
       method: "POST",
@@ -2422,20 +2451,10 @@ const handleSaveSlowMode = async (settings) => {
         {groupData.groupName || groupData.name}
       </h2>
 
-      {/* {isCurrentUserAdmin && (
-        <div className="flex justify-center mb-4">
-          <span className="inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded-full text-sm">
-            <Shield size={14} />
-            You are an admin
-          </span>
-        </div>
-      )} */}
-
       {/* Group Info */}
       <div className="space-y-3  mb-6">
         <div className="flex justify-center">
           <div className="flex items-center justify-center gap-2 w-fit text-[#5f6368] dark:text-gray-400 bg-gray-50 dark:bg-[#101010] p-3 rounded-xl">
-          {/* <Users size={18} className="flex-shrink-0" /> */}
           <span className="text-sm">
            <span className="font-medium text-[#202124] dark:text-white">{groupData.members?.length || 0}</span> members
            
@@ -2448,9 +2467,6 @@ const handleSaveSlowMode = async (settings) => {
         {groupData.createdBy && (
           <div className="flex justify-center">
             <div className="flex items-center justify-center gap-2 text-[#5f6368] dark:text-gray-400 bg-gray-50 w-fit dark:bg-[#101010] p-3 rounded-xl">
-            <div className="flex-shrink-0">
-             
-            </div>
             <span className="text-sm flex items-center gap-2">
               Created by{' '}
               <span className="font-medium flex items-center  text-[#202124] dark:text-white">
@@ -2468,7 +2484,6 @@ const handleSaveSlowMode = async (settings) => {
         {/* Created At */}
         {groupData.createdAt && (
           <div className="flex items-center -mt-4 justify-center gap-2 text-[#5f6368] dark:text-gray-400 -50 p-3 rounded-xl">
-            {/* <Calendar size={18} className="flex-shrink-0" /> */}
             <span className="text-sm flex items-center gap-2">
               Created on{' '}
               <span className="font-medium text-[#202124] dark:text-white">
@@ -2613,20 +2628,11 @@ const handleSaveSlowMode = async (settings) => {
                   src={att.url}
                   alt={att.name || 'GIF'}
                   className="max-w-full rounded-2xl max-h-64 object-cover   transition-opacity"
-                  // onClick={() => handleAttachmentClick(att, globalIndex)}
                   loading="lazy"
                 />
                 <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
                   GIF
                 </div>
-                {/* <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                  <button
-                    onClick={() => handleAttachmentClick(att, globalIndex)}
-                    className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                  >
-                    <Maximize2 size={20} />
-                  </button>
-                </div> */}
               </div>
               {/* Time and status below GIF */}
               <div className="flex items-center justify-end gap-1 mt-1 px-1">
@@ -2809,6 +2815,29 @@ const handleSaveSlowMode = async (settings) => {
             </div>
           )}
 
+          {/* Slash Command Suggestions */}
+          {showSlashSuggestions && (
+            <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-xl shadow-lg z-50">
+              <div className="p-2">
+                <div className="text-xs text-[#5f6368] dark:text-gray-400 px-3 py-2">
+                  Available commands
+                </div>
+                <button
+                  onClick={() => handleSlashCommand('/split')}
+                  className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-lg transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                    <DollarSign size={16} className="text-green-600 dark:text-green-400" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="text-sm font-medium text-[#202124] dark:text-white">/split</p>
+                    <p className="text-xs text-[#5f6368] dark:text-gray-400">Split a bill with group members</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
           {showMentions && (
             <div className="absolute bottom-full left-0 mb-2 w-64 z-50 mention-suggestions">
               <MentionSuggestions
@@ -2971,6 +3000,12 @@ const handleSaveSlowMode = async (settings) => {
               onKeyPress={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
+                  
+                  // Check for slash command
+                  if (newMessage.startsWith('/') && handleSlashCommand(newMessage)) {
+                    return;
+                  }
+                  
                   if (editingMessage) {
                     handleEditMessage();
                   } else if (attachments.length > 0) {
@@ -3007,8 +3042,8 @@ const handleSaveSlowMode = async (settings) => {
                             ? `Slow mode active (${timeRemaining}s)`
                             : "You cannot send messages"
                       : isCurrentUserAdmin
-                        ? "Type a message as admin... (Use @ to mention, ✨ for AI, 📷 for GIF)"
-                        : "Type a message... (Use @ to mention, ✨ for AI, 📷 for GIF)"
+                        ? "Type a message as admin... (Use @ to mention, ✨ for AI, 📷 for GIF, /split for bills)"
+                        : "Type a message... (Use @ to mention, ✨ for AI, 📷 for GIF, /split for bills)"
               }
               className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
               disabled={
@@ -3076,6 +3111,18 @@ const handleSaveSlowMode = async (settings) => {
         isProcessing={isAIProcessing}
         enhancedText={aiEnhancedText}
         error={aiError}
+      />
+
+      {/* Split Bill Modal */}
+      <SplitBillModal
+        isOpen={showSplitBillModal}
+        onClose={() => setShowSplitBillModal(false)}
+        group={groupData}
+        currentUserId={currentUserId}
+        onSave={(bill) => {
+          console.log('Bill created:', bill);
+          // Optionally refresh messages or show a notification
+        }}
       />
 
       {/* Modals */}

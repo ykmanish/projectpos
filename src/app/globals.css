@@ -13,6 +13,11 @@ body {
   display: none;
 }
 
+::selection {
+  background-color: #7BF1A8; /* Replace with your desired background color */
+  color: black; /* Optional: Change the text color when selected */
+}
+
 button {
   cursor: pointer;
 }

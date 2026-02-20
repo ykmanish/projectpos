@@ -105,7 +105,7 @@ export default function GIFPicker({ onSelect, onClose }) {
   const displayGIFs = query.trim() ? gifs : trending;
 
   return (
-    <div className="bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl shadow-xl w-80 md:w-96 max-h-[450px] overflow-hidden flex flex-col">
+    <div className="bg-white dark:bg-[#0c0c0c]  border-zinc-200 dark:border-[#232529] rounded-3xl shadow-xl w-80 md:w-96 max-h-[450px] overflow-hidden flex flex-col">
       {/* Header */}
       <div className="p-3 border-b border-zinc-200 dark:border-[#232529] flex items-center justify-between">
         <h3 className="font-medium text-[#202124] dark:text-white">Select GIF</h3>

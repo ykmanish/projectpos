@@ -4,10 +4,217 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   X, UserMinus, Ban, Shield, ShieldCheck, 
-  Calendar, Award, MessageCircle, AlertTriangle
+  Calendar, Award, MessageCircle, AlertTriangle,
+  ChevronLeft, Users, Trophy, Star, Lock
 } from 'lucide-react';
 import { BeanHead } from 'beanheads';
 import Image from 'next/image';
+
+// ─── Card Color Palette (matches reference design) ─────────────────
+const CARD_PALETTES = [
+  { bg: '#FF8C78', track: '#c96b58', bar: '#1a0a08', text: '#1a0a08', sub: '#7a3028' },
+  { bg: '#FFB8C6', track: '#d98898', bar: '#1a0810', text: '#1a0810', sub: '#7a3050' },
+  { bg: '#7DCFCC', track: '#4eaaa7', bar: '#082020', text: '#082020', sub: '#1a5a58' },
+  { bg: '#F5E09A', track: '#c8b860', bar: '#1a1408', text: '#1a1408', sub: '#6a5020' },
+  { bg: '#A8D8FF', track: '#70b0e0', bar: '#081220', text: '#081220', sub: '#204870' },
+  { bg: '#B8E8B0', track: '#80c078', bar: '#081408', text: '#081408', sub: '#205820' },
+  { bg: '#E0C8F8', track: '#b090d0', bar: '#120820', text: '#120820', sub: '#503878' },
+  { bg: '#FFD4A0', track: '#d8a060', bar: '#1a0e04', text: '#1a0e04', sub: '#7a4818' },
+];
+
+const getCardPalette = (title = '') => {
+  const idx = (title.charCodeAt(0) || 0) % CARD_PALETTES.length;
+  return CARD_PALETTES[idx];
+};
+
+// Helper function to parse avatar (BeanHead config)
+const parseAvatar = (avatarData) => {
+  if (!avatarData) return null;
+  
+  try {
+    if (typeof avatarData === 'object') return avatarData;
+    const parsed = JSON.parse(avatarData);
+    return parsed;
+  } catch (e) {
+    console.error('Failed to parse avatar:', e);
+    return null;
+  }
+};
+
+// Helper function to get beanConfig from avatar
+const getBeanConfig = (avatar) => {
+  const parsed = parseAvatar(avatar);
+  
+  if (!parsed) return null;
+  
+  if (typeof parsed === 'object' && parsed.beanConfig) {
+    return parsed.beanConfig;
+  }
+  
+  if (typeof parsed === 'object' && (parsed.mask || parsed.eyes || parsed.mouth)) {
+    return parsed;
+  }
+  
+  return null;
+};
+
+// ─── Rounded Square Avatar ─────────────────────────────────────────
+const SquareAvatar = ({ user, size = 14 }) => {
+  const GRADIENTS = [
+    'from-purple-400 to-purple-600', 'from-blue-400 to-blue-600',
+    'from-pink-400 to-pink-600',     'from-orange-400 to-orange-600',
+    'from-green-400 to-green-600',   'from-red-400 to-red-600',
+    'from-yellow-400 to-yellow-500', 'from-teal-400 to-teal-600',
+  ];
+  const idx = (user?.userName?.charCodeAt(0) || 0) % GRADIENTS.length;
+  const beanConfig = getBeanConfig(user?.avatar);
+  
+  return (
+    <div className={`w-${size} h-${size} rounded-full overflow-hidden flex-shrink-0 bg-[#e8f0fe]`}>
+      {beanConfig ? (
+        <BeanHead {...beanConfig} />
+      ) : (
+        <div className={`w-full h-full bg-gradient-to-br ${GRADIENTS[idx]} flex items-center justify-center`}>
+          <span className="text-white font-bold text-lg">{user?.userName?.charAt(0)}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Tier Badge Component ─────────────────────────────────────────
+const TierBadge = ({ tier, points }) => {
+  const tierColors = {
+    'Bronze': { bg: '', text: 'text-amber-700', icon: '/bronze.svg' },
+    'Silver': { bg: 'bg-gray-100', text: 'text-gray-600', icon: '/silver.svg' },
+    'Gold': { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '/gold.svg' },
+    'Platinum': { bg: 'bg-cyan-100', text: 'text-cyan-700', icon: '/platinum.svg' },
+    'Diamond': { bg: 'bg-blue-100', text: 'text-blue-700', icon: '/diamond.svg' },
+    'Obsidian': { bg: 'bg-purple-100', text: 'text-purple-700', icon: '/obsidian.svg' },
+    'Opal': { bg: 'bg-pink-100', text: 'text-pink-700', icon: '/opal.svg' },
+    'Ultimate': { bg: 'bg-gradient-to-r from-red-100 to-orange-100', text: 'text-red-700', icon: '/ultimate.svg' },
+  };
+
+  const colors = tierColors[tier?.name] || tierColors.Bronze;
+
+  return (
+    <div className={`flex items-center gap-2 px-3 py-1.5 ${colors.bg} rounded-full`}>
+      {tier?.icon && (
+        <Image src={tier.icon} alt={tier.name} width={48} height={48} className="object-contain" />
+      )}
+      
+    </div>
+  );
+};
+
+// ─── Action Button Component ──────────────────────────────────────
+const ActionButton = ({ icon: Icon, onClick, children, variant = 'primary', disabled = false }) => {
+  const variants = {
+    primary: 'bg-black hover:bg-gray-900 text-white',
+    secondary: 'bg-gray-100 hover:bg-gray-200 text-gray-700',
+    danger: 'bg-red-50 hover:bg-red-100 text-red-700',
+    warning: 'bg-orange-50 hover:bg-orange-100 text-orange-700',
+    info: 'bg-blue-50 hover:bg-blue-100 text-blue-700',
+    disabled: 'bg-gray-200 text-gray-500 cursor-not-allowed'
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full py-3 rounded-2xl font-bold text-[14px] transition-all flex items-center justify-center gap-2 active:scale-[0.98] ${disabled ? variants.disabled : variants[variant]}`}
+    >
+      <Icon size={18} strokeWidth={2.5} />
+      {children}
+    </button>
+  );
+};
+
+// ─── Confirmation Card Component ──────────────────────────────────
+const ConfirmationCard = ({ type, userName, onConfirm, onCancel, loading }) => {
+  const config = {
+    unfriend: {
+      icon: UserMinus,
+      color: 'orange',
+      title: `Unfriend ${userName}?`,
+      description: 'You will no longer be friends. This action can be undone by sending another friend request.',
+      confirmText: 'Unfriend'
+    },
+    block: {
+      icon: Ban,
+      color: 'red',
+      title: `Block ${userName}?`,
+      description: 'They won\'t be able to message you or see your profile. You can unblock them anytime.',
+      confirmText: 'Block'
+    },
+    unblock: {
+      icon: ShieldCheck,
+      color: 'blue',
+      title: `Unblock ${userName}?`,
+      description: 'They will be able to message you again.',
+      confirmText: 'Unblock'
+    }
+  };
+
+  const cfg = config[type];
+  const Icon = cfg.icon;
+  const colorClasses = {
+    orange: {
+      bg: 'bg-orange-50',
+      icon: 'text-orange-600',
+      title: 'text-orange-800',
+      desc: 'text-orange-700',
+      button: 'bg-orange-600 hover:bg-orange-700'
+    },
+    red: {
+      bg: 'bg-red-50',
+      icon: 'text-red-600',
+      title: 'text-red-800',
+      desc: 'text-red-700',
+      button: 'bg-red-600 hover:bg-red-700'
+    },
+    blue: {
+      bg: 'bg-blue-50',
+      icon: 'text-blue-600',
+      title: 'text-blue-800',
+      desc: 'text-blue-700',
+      button: 'bg-blue-600 hover:bg-blue-700'
+    }
+  };
+
+  const colors = colorClasses[cfg.color];
+
+  return (
+    <div className={`p-4 ${colors.bg} rounded-3xl space-y-3 animate-fade-in`}>
+      <div className="flex items-start gap-3">
+        <Icon size={20} className={`${colors.icon} flex-shrink-0 mt-0.5`} />
+        <div>
+          <p className={`text-sm font-medium ${colors.title}`}>{cfg.title}</p>
+          <p className={`text-xs ${colors.desc} mt-1`}>{cfg.description}</p>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={onCancel}
+          className="flex-1 py-2.5 bg-white text-gray-700 rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={loading}
+          className={`flex-1 py-2.5 ${colors.button} text-white rounded-xl transition-colors text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50`}
+        >
+          {loading ? (
+            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          ) : (
+            cfg.confirmText
+          )}
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export default function UserInfoModal({ 
   isOpen, 
@@ -41,7 +248,7 @@ export default function UserInfoModal({
       icon: '/bronze.svg',
       bgColor: 'bg-amber-600',
       textColor: 'text-amber-600',
-      darkBgColor: 'bg-amber-600', // Same for dark mode
+      darkBgColor: 'bg-amber-600',
       darkTextColor: 'text-amber-500'
     },
     { 
@@ -139,12 +346,10 @@ export default function UserInfoModal({
         setUserFullData(data.user);
         setUserPoints(data.user.points || 0);
         
-        // Extract createdAt from user data
         if (data.user.createdAt) {
           setUserCreatedAt(data.user.createdAt);
         }
         
-        // Find current tier
         const tier = tiers.find(t => data.user.points >= t.min && data.user.points <= t.max) || tiers[0];
         setUserTier(tier);
       }
@@ -155,20 +360,13 @@ export default function UserInfoModal({
 
   const checkBlockStatus = async () => {
     try {
-      // Check if current user blocked the target user
       const iBlockedRes = await fetch(`/api/friends/blocked/check?userId=${currentUserId}&targetId=${user.userId}`);
       const iBlockedData = await iBlockedRes.json();
       
-      // Check if target user blocked the current user
       const theyBlockedRes = await fetch(`/api/friends/blocked/check?userId=${user.userId}&targetId=${currentUserId}`);
       const theyBlockedData = await theyBlockedRes.json();
       
       setBlockStatus({
-        iBlockedThem: iBlockedData.success && iBlockedData.isBlocked,
-        theyBlockedMe: theyBlockedData.success && theyBlockedData.isBlocked
-      });
-      
-      console.log('🔍 Block status in modal:', {
         iBlockedThem: iBlockedData.success && iBlockedData.isBlocked,
         theyBlockedMe: theyBlockedData.success && theyBlockedData.isBlocked
       });
@@ -183,8 +381,6 @@ export default function UserInfoModal({
       const data = await res.json();
       if (data.user) {
         setUserPoints(data.user.points || 0);
-        
-        // Find current tier
         const tier = tiers.find(t => data.user.points >= t.min && data.user.points <= t.max) || tiers[0];
         setUserTier(tier);
       }
@@ -257,20 +453,16 @@ export default function UserInfoModal({
   };
 
   const handleSendMessage = () => {
-    // Check if they blocked me - prevent sending message
     if (blockStatus.theyBlockedMe) {
       alert("You cannot send a message to this user because they have blocked you.");
       return;
     }
-    
-    // Allow sending message even if I blocked them (but they'll get a warning)
     onSendMessage?.(user);
     onClose();
   };
 
   const formatDate = (dateString) => {
     if (!dateString) {
-      // If we have userFullData but no createdAt, try to get it from there
       if (userFullData?.createdAt) {
         return formatDate(userFullData.createdAt);
       }
@@ -279,7 +471,6 @@ export default function UserInfoModal({
     
     try {
       const date = new Date(dateString);
-      // Check if date is valid
       if (isNaN(date.getTime())) {
         return 'Invalid date';
       }
@@ -296,153 +487,85 @@ export default function UserInfoModal({
 
   if (!isOpen || !user) return null;
 
-  // Determine the actual block status
   const isBlocked = blockStatus.iBlockedThem;
   const isBlockedByThem = blockStatus.theyBlockedMe;
   const isFriend = friendshipStatus === 'friends' && !isBlocked && !isBlockedByThem;
   const isPending = friendshipStatus === 'pending_sent' || friendshipStatus === 'pending_received';
 
-  // Parse user avatar
-  let userAvatar = null;
-  if (user.avatar) {
-    try {
-      userAvatar = typeof user.avatar === 'string' ? JSON.parse(user.avatar) : user.avatar;
-    } catch (e) {
-      console.error('Failed to parse user avatar', e);
-    }
-  }
-
-  // Get initials for fallback
-  const getInitials = (name) => {
-    if (!name) return 'U';
-    return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-  };
-
-  // Get the createdAt date (try multiple sources)
   const memberSinceDate = userCreatedAt || userFullData?.createdAt || user?.createdAt;
+  const palette = getCardPalette(user.userName);
 
-  // Calculate progress to next tier
   const pointsToNextTier = userTier?.nextRequirement ? userTier.nextRequirement - userPoints : null;
   const progressPercentage = userTier?.nextRequirement 
     ? Math.min(100, ((userPoints - userTier.min) / (userTier.nextRequirement - userTier.min)) * 100)
     : 100;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[60] p-0 sm:p-4">
       <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ duration: 0.2 }}
-        className="bg-white dark:bg-[#0c0c0c] rounded-[30px] max-w-md w-full max-h-[90vh] overflow-hidden transition-colors duration-300"
+        initial={{ opacity: 0, y: 100 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 100 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="bg-white rounded-t-[2rem] sm:rounded-[2rem] w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden shadow-2xl"
       >
         {/* Header */}
-        <div className="p-6 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-[#000000] dark:text-white">User Profile</h2>
+        <div className="flex items-center justify-between px-5 pt-6 pb-4 flex-shrink-0">
+          {/* <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors"
+          >
+            <ChevronLeft size={17} className="text-gray-700" />
+          </button> */}
+          <h2 className="text-lg font-bold text-gray-900">Profile</h2>
           <button
             onClick={onClose}
-            className="p-2 bg-gray-100 dark:bg-[#101010] rounded-full transition-colors hover:bg-gray-200 dark:hover:bg-[#181A1E]"
+            className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors"
           >
-            <X size={20} className="text-[#202124] dark:text-white" />
+            <X size={16} className="text-gray-700" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-          {/* User Avatar & Basic Info */}
-          <div className="flex items-center gap-4 mb-6">
-            <div className="relative">
-              <div className="w-20 h-20 rounded-full overflow-hidden bg-zinc-100 dark:bg-[#232529] flex items-center justify-center text-[#202124] dark:text-white font-semibold text-2xl">
-                {userAvatar?.beanConfig ? (
-                  <BeanHead {...userAvatar.beanConfig} />
-                ) : (
-                  getInitials(user.userName)
-                )}
-              </div>
-              {isBlocked && (
-                <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 border-2 border-white dark:border-[#0c0c0c] rounded-full flex items-center justify-center">
-                  <Ban size={12} className="text-white" />
-                </span>
-              )}
-              {isBlockedByThem && !isBlocked && (
-                <span className="absolute -top-1 -right-1 w-6 h-6 bg-orange-500 border-2 border-white dark:border-[#0c0c0c] rounded-full flex items-center justify-center">
-                  <Ban size={12} className="text-white" />
-                </span>
-              )}
-            </div>
-            <div className="flex-1">
-              <h3 className="text-2xl font-semibold text-[#000000] dark:text-white">{user.userName}</h3>
-              {user.username && (
-                <p className="text-[#5f6368] dark:text-gray-400">@{user.username}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Tier Badge - Enhanced Display */}
-          <div className="mb-6 p-4 bg-gray-100 dark:bg-[#101010] rounded-3xl  border-gray-200 dark:border-none">
-            <div className="flex items-center gap-4">
-              {/* Tier Icon */}
-              <div className={`w-20 h-20 rounded-full flex items-center justify-center`}>
-                {userTier?.icon && (
-                  <Image 
-                    src={userTier.icon} 
-                    alt={userTier.name}
-                    width={70}
-                    height={70}
-                    className="object-contain"
-                  />
-                )}
-              </div>
-              
-              {/* Tier Info */}
+        <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-5 min-h-0">
+          {/* User Info Card */}
+          <div className="rounded-3xl bg-cyan-100 p-5" >
+            <div className="flex items-center gap-4 mb-4">
+              <SquareAvatar user={user} size={16} />
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-lg font-bold ${
-                    userTier?.darkTextColor || userTier?.textColor || 'text-amber-600 dark:text-amber-500'
-                  }`}>
-                    {userTier?.name || 'Bronze'}
-                  </span>
-                  <span className="text-sm text-[#5f6368] dark:text-gray-400">Tier</span>
-                </div>
-                
-                {/* Points Display */}
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-[#202124] dark:text-white">{userPoints}</span>
-                  <span className="text-sm text-[#5f6368] dark:text-gray-400">points</span>
-                </div>
-                
-                {/* Progress to Next Tier */}
-                {userTier?.nextRequirement && (
-                  <div className="mt-2">
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-[#5f6368] dark:text-gray-400">
-                        Progress to {tiers[tiers.indexOf(userTier) + 1]?.name}
-                      </span>
-                    </div>
-                    <div className="w-full h-2 bg-gray-200 dark:bg-[#232529] rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full ${
-                          userTier?.darkBgColor || userTier?.bgColor || 'bg-amber-600'
-                        } rounded-full transition-all duration-300`}
-                        style={{ width: `${progressPercentage}%` }}
-                      />
-                    </div>
-                  </div>
+                <h3 className="text-2xl font-extrabold" style={{ color: palette.text }}>
+                  {user.userName}
+                </h3>
+                {user.username && (
+                  <p className="text-sm mt-1" style={{ color: palette.sub }}>
+                    @{user.username}
+                  </p>
                 )}
               </div>
+              {/* Block indicator */}
+              {(isBlocked || isBlockedByThem) && (
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  isBlocked ? 'bg-red-500/20' : 'bg-orange-500/20'
+                }`}>
+                  <Ban size={20} className={isBlocked ? 'text-red-600' : 'text-orange-600'} />
+                </div>
+              )}
             </div>
-          </div>
 
-          {/* Status Badge */}
-          <div className="mb-6 p-4 bg-gray-50 dark:bg-[#101010] rounded-2xl">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-[#5f6368] dark:text-gray-400">Friendship Status</span>
-              <span className={`text-xs font-medium px-3 py-1 rounded-full ${
-                isBlocked ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
-                isBlockedByThem ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' :
-                isFriend ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
-                isPending ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
-                'bg-gray-100 dark:bg-[#232529] text-gray-700 dark:text-gray-400'
+            {/* Status Badge */}
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/30">
+              <div className="flex items-center gap-2">
+                <Users size={16} style={{ color: palette.sub }} />
+                <span className="text-sm font-medium" style={{ color: palette.text }}>
+                  Friendship Status
+                </span>
+              </div>
+              <span className={`text-xs  px-3 py-1.5 rounded-full ${
+                isBlocked ? 'bg-red-500/20 text-red-700' :
+                isBlockedByThem ? 'bg-orange-500/20 text-orange-700' :
+                isFriend ? 'bg-green-500/20 text-green-700' :
+                isPending ? 'bg-yellow-500/20 text-yellow-700' :
+                'bg-gray-500/20 text-gray-700'
               }`}>
                 {isBlocked ? 'You Blocked' :
                  isBlockedByThem ? 'Blocked You' :
@@ -453,14 +576,53 @@ export default function UserInfoModal({
             </div>
           </div>
 
-          {/* Blocked Warning */}
+          
+
+          {/* Points Progress Card */}
+          <div className="rounded-3xl p-5 bg-gray-50">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-16 h-16 rounded-full bg-black/5 flex items-center justify-center">
+               <TierBadge tier={userTier}  />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">Points Progress</p>
+                <p className="text-xs text-gray-400">Total points earned</p>
+              </div>
+            </div>
+
+            <div className="flex items-baseline gap-1 mb-3">
+              <span className="text-3xl font-extrabold text-gray-900">{userPoints}</span>
+              <span className="text-sm text-gray-400">points</span>
+            </div>
+
+            {/* Progress to Next Tier */}
+            {userTier?.nextRequirement && (
+              <div>
+                <div className="flex justify-between text-xs mb-2">
+                  <span className="text-gray-500">{userTier.name}</span>
+                  {/* <span className="text-gray-500">Next: {tiers[tiers.indexOf(userTier) + 1]?.name}</span> */}
+                </div>
+                <div className="w-full h-4 bg-gray-200 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-black rounded-full transition-all duration-300"
+                    style={{ width: `${progressPercentage}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  {pointsToNextTier} points needed for next tier
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Blocked Warnings */}
           {isBlocked && (
-            <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-3xl">
+            <div className="p-4 bg-red-50 rounded-3xl">
               <div className="flex items-start gap-3">
-                <Ban size={18} className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                <Ban size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-red-800 dark:text-red-300">You Blocked This User</p>
-                  <p className="text-xs text-red-700 dark:text-red-400 mt-1">
+                  <p className="text-sm font-medium text-red-800">You Blocked This User</p>
+                  <p className="text-xs text-red-700 mt-1">
                     You have blocked this user. They cannot message you.
                   </p>
                 </div>
@@ -469,12 +631,12 @@ export default function UserInfoModal({
           )}
 
           {isBlockedByThem && !isBlocked && (
-            <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 rounded-3xl">
+            <div className="p-4 bg-orange-50 rounded-3xl">
               <div className="flex items-start gap-3">
-                <Ban size={18} className="text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" />
+                <Ban size={20} className="text-orange-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-orange-800 dark:text-orange-300">This User Blocked You</p>
-                  <p className="text-xs text-orange-700 dark:text-orange-400 mt-1">
+                  <p className="text-sm font-medium text-orange-800">This User Blocked You</p>
+                  <p className="text-xs text-orange-700 mt-1">
                     This user has blocked you. You cannot message them.
                   </p>
                 </div>
@@ -485,183 +647,96 @@ export default function UserInfoModal({
           {/* Action Buttons */}
           <div className="space-y-3">
             {/* Send Message Button */}
-            <button
+            <ActionButton
+              icon={MessageCircle}
               onClick={handleSendMessage}
+              variant={isBlockedByThem ? 'disabled' : 'primary'}
               disabled={isBlockedByThem}
-              className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-colors font-medium ${
-                isBlockedByThem 
-                  ? 'bg-gray-200 dark:bg-[#232529] text-gray-500 dark:text-gray-400 cursor-not-allowed' 
-                  : 'bg-[#34A853] text-white hover:bg-[#2D9249] dark:bg-[#34A853] dark:hover:bg-[#2D9249]'
-              }`}
-              title={isBlockedByThem ? "This user has blocked you" : "Send a message"}
             >
-              <MessageCircle size={18} />
-              {isBlockedByThem ? 'Cannot Send Message (Blocked)' : 'Send Message'}
-            </button>
+              {isBlockedByThem ? 'Cannot Send Message' : 'Send Message'}
+            </ActionButton>
 
-            {/* Unfriend Button (only if friends and not blocked) */}
+            {/* Unfriend Button */}
             {isFriend && !isBlocked && !isBlockedByThem && !showConfirm && (
-              <button
+              <ActionButton
+                icon={UserMinus}
                 onClick={() => setShowConfirm('unfriend')}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded-xl hover:bg-orange-100 dark:hover:bg-orange-900/50 transition-colors font-medium"
+                variant="warning"
               >
-                <UserMinus size={18} />
                 Unfriend
-              </button>
+              </ActionButton>
             )}
 
-            {/* Block/Unblock Button - Only show if they haven't blocked us */}
-            {!isBlockedByThem && (
-              <>
-                {!isBlocked && !showConfirm && (
-                  <button
-                    onClick={() => setShowConfirm('block')}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors font-medium"
-                  >
-                    <Ban size={18} />
-                    Block User
-                  </button>
-                )}
-
-                {isBlocked && !showConfirm && (
-                  <button
-                    onClick={() => setShowConfirm('unblock')}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors font-medium"
-                  >
-                    <ShieldCheck size={18} />
-                    Unblock User
-                  </button>
-                )}
-              </>
+            {/* Block/Unblock Buttons */}
+            {!isBlockedByThem && !showConfirm && (
+              isBlocked ? (
+                <ActionButton
+                  icon={ShieldCheck}
+                  onClick={() => setShowConfirm('unblock')}
+                  variant="info"
+                >
+                  Unblock User
+                </ActionButton>
+              ) : (
+                <ActionButton
+                  icon={Ban}
+                  onClick={() => setShowConfirm('block')}
+                  variant="danger"
+                >
+                  Block User
+                </ActionButton>
+              )
             )}
 
-            {/* Confirmation UI */}
+            {/* Confirmation Cards */}
             {showConfirm === 'unfriend' && (
-              <div className="p-4 bg-orange-50 dark:bg-orange-900/30 rounded-3xl space-y-3">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle size={20} className="text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-orange-800 dark:text-orange-300">Unfriend {user.userName}?</p>
-                    <p className="text-xs text-orange-700 dark:text-orange-400 mt-1">
-                      You will no longer be friends. This action can be undone by sending another friend request.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowConfirm(null)}
-                    className="flex-1 px-3 py-2 bg-white dark:bg-[#0c0c0c] text-orange-700 dark:text-orange-400 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900/50 transition-colors text-sm"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleUnfriend}
-                    disabled={loading}
-                    className="flex-1 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Removing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <UserMinus size={16} />
-                        <span>Unfriend</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
+              <ConfirmationCard
+                type="unfriend"
+                userName={user.userName}
+                onConfirm={handleUnfriend}
+                onCancel={() => setShowConfirm(null)}
+                loading={loading}
+              />
             )}
 
             {showConfirm === 'block' && (
-              <div className="p-4 bg-red-50 dark:bg-red-900/30 rounded-3xl space-y-3">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle size={20} className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-red-800 dark:text-red-300">Block {user.userName}?</p>
-                    <p className="text-xs text-red-700 dark:text-red-400 mt-1">
-                      They won't be able to message you or see your profile. You can unblock them anytime.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowConfirm(null)}
-                    className="flex-1 px-3 py-2 bg-white dark:bg-[#0c0c0c] text-red-700 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors text-sm"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleBlock}
-                    disabled={loading}
-                    className="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Blocking...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Ban size={16} />
-                        <span>Block</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
+              <ConfirmationCard
+                type="block"
+                userName={user.userName}
+                onConfirm={handleBlock}
+                onCancel={() => setShowConfirm(null)}
+                loading={loading}
+              />
             )}
 
             {showConfirm === 'unblock' && (
-              <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-3xl space-y-3">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle size={20} className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-blue-800 dark:text-blue-300">Unblock {user.userName}?</p>
-                    <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
-                      They will be able to message you again.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowConfirm(null)}
-                    className="flex-1 px-3 py-2 bg-white dark:bg-[#0c0c0c] text-blue-700 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors text-sm"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleUnblock}
-                    disabled={loading}
-                    className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Unblocking...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ShieldCheck size={16} />
-                        <span>Unblock</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
+              <ConfirmationCard
+                type="unblock"
+                userName={user.userName}
+                onConfirm={handleUnblock}
+                onCancel={() => setShowConfirm(null)}
+                loading={loading}
+              />
             )}
           </div>
 
           {/* Member Since */}
-          <div className="mt-6 pt-4 flex justify-center border-t border-[#f1f3f4] dark:border-[#181A1E]">
-            <p className="text-xs text-[#5f6368] dark:text-gray-400 text-center flex items-center gap-1">
+          <div className="flex items-center justify-center gap-2 pt-4 border-t border-gray-100">
+            <Calendar size={14} className="text-gray-400" />
+            <p className="text-xs text-gray-400">
               Member since {formatDate(memberSinceDate)}
             </p>
           </div>
         </div>
       </motion.div>
+
+      <style jsx>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(-6px); }
+          to   { opacity: 1; transform: translateY(0);    }
+        }
+        .animate-fade-in { animation: fade-in 0.2s ease-out; }
+      `}</style>
     </div>
   );
 }

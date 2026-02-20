@@ -1,6 +1,6 @@
 // components/GroupChatInterface.js
 
-'use client';
+"use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSocket } from "@/context/SocketContext";
@@ -14,6 +14,7 @@ import {
   Shield,
   Image as ImageIcon,
   Video,
+  UserCircle, Clock, Info,
   Maximize2,
   MessageCircle,
   Check,
@@ -32,7 +33,8 @@ import {
   XCircle,
   Reply,
   CornerDownRight,
-  DollarSign, // Added for split bill
+  DollarSign,
+  CheckCircle,
 } from "lucide-react";
 import { BeanHead } from "beanheads";
 import EmojiPicker from "emoji-picker-react";
@@ -53,7 +55,8 @@ import { useSlowMode } from "@/hooks/useSlowMode";
 import MessageSearch from "./MessageSearch";
 import ReplyPreview from "./ReplyPreview";
 import GIFPicker from "./GIFPicker";
-import SplitBillModal from "./SplitBillModal"; // Added import
+import SplitBillModal from "./SplitBillModal";
+import { getCurrencySymbol, getCurrencyFlag } from '@/constants/currencies';
 
 export default function GroupChatInterface({
   group,
@@ -86,8 +89,15 @@ export default function GroupChatInterface({
 
   // Split Bill states
   const [showSplitBillModal, setShowSplitBillModal] = useState(false);
-  const [slashCommand, setSlashCommand] = useState('');
+  const [slashCommand, setSlashCommand] = useState("");
   const [showSlashSuggestions, setShowSlashSuggestions] = useState(false);
+  const [availableCommands] = useState([
+    {
+      command: "/split",
+      description: "Split a bill with group members",
+      icon: DollarSign,
+    },
+  ]);
 
   // Track online members in the group
   const [onlineMembers, setOnlineMembers] = useState(new Set());
@@ -97,12 +107,14 @@ export default function GroupChatInterface({
   const [replyingToMessage, setReplyingToMessage] = useState(null);
 
   // Check if current user is admin
-  const isCurrentUserAdmin = groupData.members?.find(m => m.userId === currentUserId)?.role === 'admin';
+  const isCurrentUserAdmin =
+    groupData.members?.find((m) => m.userId === currentUserId)?.role ===
+    "admin";
 
   // Slow mode settings
   const [slowModeSettings, setSlowModeSettings] = useState({
     enabled: group?.settings?.slowMode?.enabled || false,
-    cooldown: group?.settings?.slowMode?.cooldown || 30
+    cooldown: group?.settings?.slowMode?.cooldown || 30,
   });
 
   // Initialize slow mode hook with userId for persistence and admin status
@@ -113,7 +125,7 @@ export default function GroupChatInterface({
     canSendMessage: canSendInSlowMode,
     registerMessageSent,
     updateSlowMode: updateLocalSlowMode,
-    resetCooldown
+    resetCooldown,
   } = useSlowMode(slowModeSettings, currentUserId, isCurrentUserAdmin);
 
   // AI Enhancement states
@@ -169,201 +181,7 @@ export default function GroupChatInterface({
   const { socket, isConnected, getUserOnlineStatus } = useSocket();
   const roomId = group.groupId;
 
-  // Initialize encryption
-  useEffect(() => {
-    if (group?.groupId && currentUserId) {
-      initializeGroupEncryption();
-    }
-  }, [currentUserId, group?.groupId]);
-
-  // Monitor online status of group members
-  useEffect(() => {
-    if (groupData?.members) {
-      const online = new Set();
-      groupData.members.forEach(member => {
-        const status = getUserOnlineStatus(member.userId);
-        if (status.online) {
-          online.add(member.userId);
-        }
-      });
-      setOnlineMembers(online);
-    }
-  }, [groupData?.members, getUserOnlineStatus]);
-
-  // Click outside handler for dropdown
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowDropdown(false);
-      }
-      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
-        setShowEmojiPicker(false);
-      }
-      if (attachmentPickerRef.current && !attachmentPickerRef.current.contains(event.target)) {
-        setShowAttachments(false);
-      }
-      if (gifPickerRef.current && !gifPickerRef.current.contains(event.target)) {
-        setShowGIFPicker(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
-
-  const initializeGroupEncryption = async () => {
-    try {
-      console.log("🔐 Initializing group encryption...");
-
-      await encryptionService.initializeKeys(currentUserId);
-
-      if (group.members) {
-        console.log("🔑 Ensuring all group members have keys...");
-        for (const member of group.members) {
-          try {
-            await fetch(
-              `/api/chat/encryption?userId=${member.userId}&action=my-keys`,
-            );
-          } catch (error) {
-            console.log("⚠️ Member may need keys:", member.userId);
-          }
-        }
-      }
-
-      console.log("✅ Getting group key...");
-      const key = await encryptionService.getGroupKey(
-        currentUserId,
-        group.groupId,
-      );
-
-      setGroupKey(key);
-      setEncryptionReady(true);
-
-      console.log("✅ Group encryption ready");
-    } catch (error) {
-      console.error("❌ Group encryption failed:", error);
-      setEncryptionReady(false);
-    }
-  };
-
-  // Handle slash commands
-  const handleSlashCommand = (input) => {
-    if (input === '/split') {
-      setShowSplitBillModal(true);
-      setNewMessage('');
-      setShowSlashSuggestions(false);
-      return true;
-    }
-    return false;
-  };
-
-  // AI Enhancement functions
-  const handleAIEnhance = async (message, prompt) => {
-    setIsAIProcessing(true);
-    setAiError("");
-    setAiEnhancedText("");
-
-    try {
-      const response = await fetch("/api/ai/enhance-message", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: message,
-          prompt: prompt,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setAiEnhancedText(data.enhancedMessage);
-      } else {
-        setAiError(data.error || "Failed to enhance message");
-      }
-    } catch (error) {
-      console.error("AI enhancement error:", error);
-      setAiError("Failed to connect to AI service");
-    } finally {
-      setIsAIProcessing(false);
-    }
-  };
-
-  const handleApplyAIEnhancement = (enhancedText) => {
-    setNewMessage(enhancedText);
-    setShowAIEnhancement(false);
-    setAiEnhancedText("");
-    setAiError("");
-    
-    // Focus back on input
-    setTimeout(() => {
-      inputRef.current?.focus();
-    }, 100);
-  };
-
-  // Decrypt all messages when groupKey is available
-  useEffect(() => {
-    if (groupKey && messages.length > 0) {
-      decryptAllMessages();
-    }
-  }, [groupKey, messages]);
-
-  const decryptAllMessages = async () => {
-    const newDecryptedMap = new Map(decryptedMessages);
-
-    for (const message of messages) {
-      if (
-        message.encryptedContent &&
-        !decryptedMessages.has(message.timestamp)
-      ) {
-        try {
-          let encryptedData = message.encryptedContent;
-          if (typeof encryptedData === "string") {
-            try {
-              encryptedData = JSON.parse(encryptedData);
-            } catch {
-              encryptedData = { encrypted: encryptedData, iv: "" };
-            }
-          }
-
-          const decrypted = await encryptionService.decryptMessage(
-            encryptedData,
-            groupKey,
-          );
-          newDecryptedMap.set(message.timestamp, decrypted);
-        } catch (error) {
-          console.error("Decryption error:", error);
-          newDecryptedMap.set(
-            message.timestamp,
-            message.content || "[Decryption failed]",
-          );
-        }
-      }
-    }
-
-    setDecryptedMessages(newDecryptedMap);
-  };
-
-  // Updated canSendMessage function with admin bypass
-  const canSendMessage = useCallback(() => {
-    // Check if user is admin - admins bypass all restrictions
-    if (isCurrentUserAdmin) return true;
-    
-    // Check admin message permission first (only if not admin)
-    if (groupData.settings?.onlyAdminsCanMessage) {
-      return false;
-    }
-    
-    // Then check slow mode
-    if (groupData.settings?.slowMode?.enabled && !canSendInSlowMode()) {
-      return false;
-    }
-    
-    return true;
-  }, [groupData.settings?.onlyAdminsCanMessage, groupData.settings?.slowMode?.enabled, isCurrentUserAdmin, canSendInSlowMode]);
+  // ==================== HELPER FUNCTIONS (Defined first) ====================
 
   const getMemberName = (userId) => {
     const member = groupData.members?.find((m) => m.userId === userId);
@@ -412,6 +230,26 @@ export default function GroupChatInterface({
     );
   };
 
+  const formatTime = (timestamp) => {
+    return new Date(timestamp).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const formatDate = (timestamp) => {
+    const messageDate = new Date(timestamp).toDateString();
+    const today = new Date().toDateString();
+    const yesterday = new Date(Date.now() - 86400000).toDateString();
+
+    if (messageDate === today) return "Today";
+    if (messageDate === yesterday) return "Yesterday";
+    return new Date(timestamp).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -420,7 +258,7 @@ export default function GroupChatInterface({
     const messageElement = messageRefs.current.get(messageId);
     if (messageElement) {
       messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
-      
+
       // Add a temporary highlight effect to the message container
       messageElement.classList.add("highlight-message");
       setTimeout(() => {
@@ -428,6 +266,623 @@ export default function GroupChatInterface({
       }, 2000);
     }
   };
+
+  const getMessageContent = (message) => {
+    if (message.deleted) {
+      if (message.deletedByAdmin) {
+        return `This message was deleted by admin (${message.deletedByName || "Admin"})`;
+      }
+      return message.content || "This message was deleted";
+    }
+    if (message.encryptedContent) {
+      return decryptedMessages.get(message.timestamp) || message.content || "";
+    }
+    return message.content || "";
+  };
+
+  const parseMessageContent = (content) => {
+    if (!content) return [];
+
+    const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = mentionRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({
+          type: "text",
+          content: content.substring(lastIndex, match.index),
+        });
+      }
+
+      parts.push({
+        type: "mention",
+        name: match[1],
+        userId: match[2],
+        content: `@${match[1]}`,
+      });
+
+      lastIndex = mentionRegex.lastIndex;
+    }
+
+    if (lastIndex < content.length) {
+      parts.push({
+        type: "text",
+        content: content.substring(lastIndex),
+      });
+    }
+
+    return parts;
+  };
+
+  // Function to highlight text in content
+  const highlightText = (content, highlight) => {
+    if (!highlight.trim() || !content) {
+      return content;
+    }
+
+    const regex = new RegExp(
+      `(${highlight.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+      "gi",
+    );
+    const parts = content.split(regex);
+
+    return parts.map((part, index) => {
+      if (regex.test(part)) {
+        return (
+          <mark
+            key={index}
+            className="bg-green-300 dark:bg-green-600 text-inherit px-0.5 rounded"
+          >
+            {part}
+          </mark>
+        );
+      }
+      return part;
+    });
+  };
+
+  // Bill interaction helpers
+  const handleOpenBill = (billId) => {
+    setShowSplitBillModal(true);
+    // You can pass the billId to the modal to open that specific bill
+    console.log('Opening bill:', billId);
+  };
+
+  const handleOpenBillDetails = (billId) => {
+    // Open bill details in a modal or navigate to bill details page
+    console.log('Opening bill details for:', billId);
+  };
+
+  // Refresh bill data manually
+  const refreshBillData = async (billId) => {
+    try {
+      const res = await fetch(`/api/chat/split-bill?groupId=${roomId}&billId=${billId}`);
+      const data = await res.json();
+      
+      if (data.success && data.bill) {
+        // Update the message with fresh bill data
+        updateBillMessageInState(data.bill);
+      }
+    } catch (error) {
+      console.error('Error refreshing bill data:', error);
+    }
+  };
+
+  // Helper function to update bill message in state
+  const updateBillMessageInState = (bill) => {
+    setMessages(prev => prev.map(msg => {
+      if (msg.billId === bill.id) {
+        const paidCount = bill.splits.filter(s => s.status === 'paid').length;
+        const totalCount = bill.splits.length;
+        const paidAmount = bill.splits
+          .filter(s => s.status === 'paid')
+          .reduce((sum, s) => sum + s.amount, 0);
+        const paidPercentage = bill.totalAmount > 0 ? (paidAmount / bill.totalAmount) * 100 : 0;
+        
+        // Get payer name
+        const paidByMember = bill.splits.find(s => s.userId === bill.paidBy);
+        const paidByName = paidByMember?.userName || 'Someone';
+
+        const currencySymbol = getCurrencySymbol(bill.currency || 'USD');
+        
+        // Create updated content
+        const updatedContent = `New Split Bill: ${bill.title}\n Total: ${currencySymbol}${bill.totalAmount?.toFixed(2) || '0.00'}\nPaid by: ${paidByName}\nPending payments: ${totalCount - paidCount} people\n\nUse /split to view or pay bills`;
+
+        return {
+          ...msg,
+          content: updatedContent,
+          billData: {
+            title: bill.title,
+            totalAmount: bill.totalAmount,
+            paidBy: bill.paidBy,
+            paidByName: paidByName,
+            paidCount,
+            totalCount,
+            pendingCount: totalCount - paidCount,
+            paidPercentage,
+            splits: bill.splits || []
+          }
+        };
+      }
+      return msg;
+    }));
+  };
+
+  // Update the renderMessageWithMentions function to handle bill messages specially
+const renderMessageWithMentions = (content, highlight, isBillMessage = false, billId = null, billCurrency = null, billData = null, billCancelled = false) => {
+  if (!content) return null;
+
+  if (isBillMessage) {
+    if (billCancelled) {
+      return (
+        <div className="bill-message-content w-72 lg:w-[20svw]">
+          <div className="rounded-[30px] p-5 w-full bg-gray-300 dark:bg-gray-700">
+            <div className="flex items-center gap-2 mb-2">
+              <XCircle size={20} className="text-red-500" />
+              <h3 className="text-xl font-extrabold text-gray-700 dark:text-gray-300">
+                Bill Cancelled
+              </h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              This bill has been cancelled
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Use billData directly from props if available
+    if (billData) {
+      console.log('📊 Rendering bill with data:', billData);
+      
+      const title = billData.title || 'Split Bill';
+      const currencySymbol = getCurrencySymbol(billCurrency || 'USD');
+      const total = `${currencySymbol}${billData.totalAmount?.toFixed(2) || '0.00'}`;
+      const paidBy = billData.paidByName || 'Someone';
+      const paidCount = billData.paidCount || 0;
+      const totalCount = billData.totalCount || 0;
+      const pendingCount = billData.pendingCount || 0;
+      const paidPercentage = billData.paidPercentage || 0;
+
+      // Get card palette based on title
+      const CARD_PALETTES = [
+        { bg: '#FF8C78', track: '#c96b58', bar: '#1a0a08', text: '#1a0a08', sub: '#7a3028' },
+        { bg: '#FFB8C6', track: '#d98898', bar: '#1a0810', text: '#1a0810', sub: '#7a3050' },
+        { bg: '#7DCFCC', track: '#4eaaa7', bar: '#082020', text: '#082020', sub: '#1a5a58' },
+        { bg: '#F5E09A', track: '#c8b860', bar: '#1a1408', text: '#1a1408', sub: '#6a5020' },
+        { bg: '#A8D8FF', track: '#70b0e0', bar: '#081220', text: '#081220', sub: '#204870' },
+        { bg: '#B8E8B0', track: '#80c078', bar: '#081408', text: '#081408', sub: '#205820' },
+        { bg: '#E0C8F8', track: '#b090d0', bar: '#120820', text: '#120820', sub: '#503878' },
+        { bg: '#FFD4A0', track: '#d8a060', bar: '#1a0e04', text: '#1a0e04', sub: '#7a4818' },
+      ];
+      
+      const paletteIdx = (title.charCodeAt(0) || 0) % CARD_PALETTES.length;
+      const palette = CARD_PALETTES[paletteIdx];
+
+      return (
+        <div className="bill-message-content w-72 lg:w-[20svw]">
+          {/* Bill Card */}
+          <div 
+            className="rounded-[30px] p-5 w-full"
+            style={{ backgroundColor: palette.bg }}
+          >
+            {/* Row 1: Title */}
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-xl font-extrabold leading-tight" style={{ color: palette.text }}>
+                  {title}
+                </h3>
+                <p className="text-xs mt-1 font-medium" style={{ color: palette.sub }}>
+                  Split Bill
+                </p>
+              </div>
+            </div>
+
+            {/* Row 2: Total and Paid By */}
+            <div className="flex items-end justify-between mb-5">
+              <div>
+                <p className="text-xs font-semibold mb-1" style={{ color: palette.sub }}>Total</p>
+                <p className="text-2xl font-extrabold tracking-tight" style={{ color: palette.text }}>
+                  {total}
+                </p>
+              </div>
+              
+              {/* Paid by indicator */}
+              <div className="text-right">
+                <p className="text-xs font-semibold mb-2" style={{ color: palette.sub }}>Paid by</p>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-bold" style={{ color: palette.text }}>
+                    {paidBy}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+           
+
+            {/* Pending indicator */}
+            {pendingCount > 0 ? (
+              <div className="mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Clock size={14} style={{ color: palette.sub }} />
+                  <span className="text-xs font-medium" style={{ color: palette.sub }}>
+                    {pendingCount} pending 
+                  </span>
+                </div>
+                
+                {/* View Bill Button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenBill(billId);
+                  }}
+                  className="text-xs font-bold px-3 py-1.5 rounded-full transition-all hover:scale-105 active:scale-95"
+                  style={{ 
+                    backgroundColor: palette.text,
+                    color: palette.bg
+                  }}
+                >
+                  View Details
+                </button>
+              </div>
+            ) : (
+              /* Fully paid indicator */
+              <div className="mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle size={14} style={{ color: palette.text }} />
+                  <span className="text-xs font-bold" style={{ color: palette.text }}>
+                    Fully Paid
+                  </span>
+                </div>
+                <span className="text-xs font-medium" style={{ color: palette.sub }}>
+                  ✓ Settled
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Parse bill details from content if billData is not available
+    let title = 'Split Bill';
+    let total = '';
+    let paidBy = '';
+    let paidCount = 0;
+    let totalCount = 0;
+    let pendingCount = 0;
+    let paidPercentage = 0;
+    
+    // Fallback to parsing from content string
+    const titleMatch = content.match(/New Split Bill: ([^\n]+)/);
+    const totalMatch = content.match(/Total: ([^\n]+)/);
+    const paidByMatch = content.match(/Paid by: ([^\n]+)/);
+    const pendingMatch = content.match(/Pending payments: ([^ people]+)/);
+    
+    title = titleMatch ? titleMatch[1] : 'Split Bill';
+    total = totalMatch ? totalMatch[1] : '';
+    paidBy = paidByMatch ? paidByMatch[1] : '';
+    pendingCount = pendingMatch ? parseInt(pendingMatch[1]) : 0;
+    
+    // Calculate counts based on actual data if available
+    totalCount = pendingCount + 1;
+    paidCount = 1; // The payer has paid
+
+    // Get currency symbol
+    const currencySymbol = billCurrency ? getCurrencySymbol(billCurrency) : '$';
+    
+    // Ensure counts are accurate
+    totalCount = Math.max(totalCount, paidCount + pendingCount);
+    
+    // Calculate paid percentage if not provided
+    if (!paidPercentage && totalCount > 0) {
+      paidPercentage = (paidCount / totalCount) * 100;
+    }
+
+    // Get card palette based on title
+    const CARD_PALETTES = [
+      { bg: '#FF8C78', track: '#c96b58', bar: '#1a0a08', text: '#1a0a08', sub: '#7a3028' },
+      { bg: '#FFB8C6', track: '#d98898', bar: '#1a0810', text: '#1a0810', sub: '#7a3050' },
+      { bg: '#7DCFCC', track: '#4eaaa7', bar: '#082020', text: '#082020', sub: '#1a5a58' },
+      { bg: '#F5E09A', track: '#c8b860', bar: '#1a1408', text: '#1a1408', sub: '#6a5020' },
+      { bg: '#A8D8FF', track: '#70b0e0', bar: '#081220', text: '#081220', sub: '#204870' },
+      { bg: '#B8E8B0', track: '#80c078', bar: '#081408', text: '#081408', sub: '#205820' },
+      { bg: '#E0C8F8', track: '#b090d0', bar: '#120820', text: '#120820', sub: '#503878' },
+      { bg: '#FFD4A0', track: '#d8a060', bar: '#1a0e04', text: '#1a0e04', sub: '#7a4818' },
+    ];
+    
+    const paletteIdx = (title.charCodeAt(0) || 0) % CARD_PALETTES.length;
+    const palette = CARD_PALETTES[paletteIdx];
+
+    return (
+      <div className="bill-message-content w-72 lg:w-[20svw]">
+        {/* Bill Card */}
+        <div 
+          className="rounded-[30px] p-5 w-full"
+          style={{ backgroundColor: palette.bg }}
+        >
+          {/* Row 1: Title */}
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h3 className="text-xl font-extrabold leading-tight" style={{ color: palette.text }}>
+                {title}
+              </h3>
+              <p className="text-xs mt-1 font-medium" style={{ color: palette.sub }}>
+                Split Bill
+              </p>
+            </div>
+          </div>
+
+          {/* Row 2: Total and Paid By */}
+          <div className="flex items-end justify-between mb-5">
+            <div>
+              <p className="text-xs font-semibold mb-1" style={{ color: palette.sub }}>Total</p>
+              <p className="text-2xl font-extrabold tracking-tight" style={{ color: palette.text }}>
+                {total || `${currencySymbol}0.00`}
+              </p>
+            </div>
+            
+            {/* Paid by indicator */}
+            <div className="text-right">
+              <p className="text-xs font-semibold mb-2" style={{ color: palette.sub }}>Paid by</p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-bold" style={{ color: palette.text }}>
+                  {paidBy || 'Someone'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          
+          
+
+          {/* Pending indicator */}
+          {pendingCount > 0 ? (
+            <div className="mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
+              {/* <div className="flex items-center gap-1.5">
+                <Clock size={14} style={{ color: palette.sub }} />
+                <span className="text-xs font-medium" style={{ color: palette.sub }}>
+                  {pendingCount} pending 
+                </span>
+              </div> */}
+              
+              {/* View Bill Button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenBill(billId);
+                }}
+                className="text-xs font-bold px-3 py-1.5 rounded-full transition-all hover:scale-105 active:scale-95"
+                style={{ 
+                  backgroundColor: palette.text,
+                  color: palette.bg
+                }}
+              >
+                View Details
+              </button>
+            </div>
+          ) : (
+            /* Fully paid indicator */
+            <div className="mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <CheckCircle size={14} style={{ color: palette.text }} />
+                <span className="text-xs font-bold" style={{ color: palette.text }}>
+                  Fully Paid
+                </span>
+              </div>
+              <span className="text-xs font-medium" style={{ color: palette.sub }}>
+                ✓ Settled
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Regular message rendering with mention parsing
+  const parts = parseMessageContent(content);
+
+  return parts.map((part, index) => {
+    if (part.type === "mention") {
+      const isCurrentUser = part.userId === currentUserId;
+      return (
+        <span
+          key={index}
+          className={`inline-flex items-center px-2 py-0.5 rounded-lg font-medium mx-0.5 text-sm ${
+            isCurrentUser
+              ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800"
+              : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800"
+          }`}
+          title={`Mention: ${part.name}`}
+        >
+          @{part.name}
+        </span>
+      );
+    }
+
+    // Apply highlighting to text parts
+    if (highlight && part.content) {
+      return (
+        <span key={index}>{highlightText(part.content, highlight)}</span>
+      );
+    }
+
+    return <span key={index}>{part.content}</span>;
+  });
+};
+
+
+
+  // Updated message status rendering for groups
+  const renderMessageStatus = (message) => {
+    if (message.senderId !== currentUserId) return null;
+
+    const totalMembers = groupData.members?.length || 0;
+    const readByCount = message.readBy?.length || 0;
+    const otherMembersCount = totalMembers - 1;
+
+    // If message is read by all members
+    if (readByCount >= otherMembersCount && otherMembersCount > 0) {
+      return (
+        <CheckCheck size={16} className="text-blue-500" title="Read by all" />
+      );
+    }
+    // If message is delivered (at least one online member received it)
+    else if (message.delivered || readByCount > 0) {
+      return (
+        <CheckCheck
+          size={16}
+          className="text-gray-400 dark:text-gray-500"
+          title="Delivered"
+        />
+      );
+    }
+    // Message is sent but not delivered to anyone
+    else {
+      return (
+        <Check
+          size={16}
+          className="text-gray-400 dark:text-gray-500"
+          title="Sent"
+        />
+      );
+    }
+  };
+
+  const MessageWrapper = ({ message, children, isOwn }) => {
+    const longPressEvent = useLongPress(
+      (e) => handleMessageLongPress(e, message),
+      null,
+      { threshold: 500 },
+    );
+
+    // Check if this message is the current search result
+    const isCurrentSearchResult =
+      searchResults[currentSearchIndex]?.messageId ===
+      `${message.timestamp}-${message.senderId}`;
+
+    return (
+      <div
+        ref={(el) =>
+          messageRefs.current.set(
+            `${message.timestamp}-${message.senderId}`,
+            el,
+          )
+        }
+        {...longPressEvent}
+        onContextMenu={(e) => handleMessageRightClick(e, message)}
+        className={`relative group transition-all z-10 duration-300 ${
+          isCurrentSearchResult
+            ? " ring-green-400 dark:ring-green-500 rounded-3xl "
+            : ""
+        }`}
+      >
+        {children}
+      </div>
+    );
+  };
+
+  // Render reply preview in a message
+  const renderReplyPreview = (replyTo) => {
+    if (!replyTo) return null;
+
+    return (
+      <div
+        className="mb-2 p-2 bg-gray-50 dark:bg-[#1a1a1a] rounded border-l-4 border-green-500 cursor-pointer hover:bg-gray-100 dark:hover:bg-[#222222] transition-colors"
+        onClick={() => handleReplyClick(replyTo)}
+      >
+        <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <CornerDownRight size={12} />
+          <span>Replying to {replyTo.senderName}</span>
+        </div>
+        <div className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2">
+          {replyTo.hasAttachments ? (
+            <span className="flex items-center gap-1">
+              {replyTo.attachmentType === "image" ? (
+                <ImageIcon size={12} />
+              ) : replyTo.attachmentType === "gif" ? (
+                <span className="font-bold">GIF</span>
+              ) : (
+                <Video size={12} />
+              )}
+              {replyTo.attachmentType === "image"
+                ? "Photo"
+                : replyTo.attachmentType === "gif"
+                  ? "GIF"
+                  : "Video"}
+            </span>
+          ) : (
+            replyTo.content || ""
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ==================== USE EFFECTS ====================
+
+  // Initialize encryption
+  useEffect(() => {
+    if (group?.groupId && currentUserId) {
+      initializeGroupEncryption();
+    }
+  }, [currentUserId, group?.groupId]);
+
+  // Monitor online status of group members
+  useEffect(() => {
+    if (groupData?.members) {
+      const online = new Set();
+      groupData.members.forEach((member) => {
+        const status = getUserOnlineStatus(member.userId);
+        if (status.online) {
+          online.add(member.userId);
+        }
+      });
+      setOnlineMembers(online);
+    }
+  }, [groupData?.members, getUserOnlineStatus]);
+
+  // Click outside handler for dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target)
+      ) {
+        setShowEmojiPicker(false);
+      }
+      if (
+        attachmentPickerRef.current &&
+        !attachmentPickerRef.current.contains(event.target)
+      ) {
+        setShowAttachments(false);
+      }
+      if (
+        gifPickerRef.current &&
+        !gifPickerRef.current.contains(event.target)
+      ) {
+        setShowGIFPicker(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Decrypt all messages when groupKey is available
+  useEffect(() => {
+    if (groupKey && messages.length > 0) {
+      decryptAllMessages();
+    }
+  }, [groupKey, messages]);
 
   useEffect(() => {
     scrollToBottom();
@@ -449,190 +904,200 @@ export default function GroupChatInterface({
     setAllAttachments(attachments);
   }, [messages]);
 
-  useEffect(() => {
-    if (!socket || !isConnected || !currentUserId || !group?.groupId) {
-      setRoomJoined(false);
-      return;
+useEffect(() => {
+  if (!socket || !isConnected || !currentUserId || !group?.groupId) {
+    setRoomJoined(false);
+    return;
+  }
+
+  console.log("🔌 Setting up group chat for room:", roomId);
+  socket.emit("join-chat", {
+    roomId,
+    userId: currentUserId,
+    groupMembers: groupData.members,
+  });
+
+  const onJoinedRoom = ({ roomId: joinedRoom, success }) => {
+    if (success && joinedRoom === roomId) {
+      console.log("✅ Successfully joined group room:", roomId);
+      setRoomJoined(true);
+      fetchMessages();
+      markMessagesAsRead();
     }
+  };
 
-    console.log("🔌 Setting up group chat for room:", roomId);
-    socket.emit("join-chat", {
-      roomId,
-      userId: currentUserId,
-      groupMembers: groupData.members,
-    });
+  const onMemberJoined = (data) => {
+    console.log("👋 Member joined group:", data);
 
-    const onJoinedRoom = ({ roomId: joinedRoom, success }) => {
-      if (success && joinedRoom === roomId) {
-        console.log("✅ Successfully joined group room:", roomId);
-        setRoomJoined(true);
-        fetchMessages();
-        markMessagesAsRead();
-      }
+    // Add join notification
+    const notification = {
+      id: `join-${data.timestamp}`,
+      type: "join",
+      userId: data.userId,
+      userName: data.userName,
+      timestamp: data.timestamp,
     };
 
-    const onMemberJoined = (data) => {
-      console.log("👋 Member joined group:", data);
+    setJoinNotifications((prev) => [...prev, notification]);
 
-      // Add join notification
-      const notification = {
-        id: `join-${data.timestamp}`,
-        type: "join",
+    // Update group data with new member
+    setGroupData((prev) => {
+      if (!prev) return prev;
+
+      // Check if member already exists
+      const memberExists = prev.members?.some(
+        (m) => m.userId === data.userId,
+      );
+      if (memberExists) return prev;
+
+      const newMember = {
         userId: data.userId,
         userName: data.userName,
-        timestamp: data.timestamp,
+        username: data.username,
+        avatar: data.avatar,
+        role: "member",
+        joinedAt: data.timestamp,
       };
 
-      setJoinNotifications((prev) => [...prev, notification]);
+      const updatedMembers = [...(prev.members || []), newMember];
 
-      // Update group data with new member
-      setGroupData((prev) => {
-        if (!prev) return prev;
+      return {
+        ...prev,
+        members: updatedMembers,
+      };
+    });
 
-        // Check if member already exists
-        const memberExists = prev.members?.some(
-          (m) => m.userId === data.userId,
-        );
-        if (memberExists) return prev;
+    // Remove notification after 5 seconds
+    setTimeout(() => {
+      setJoinNotifications((prev) =>
+        prev.filter((n) => n.id !== notification.id),
+      );
+    }, 5000);
 
-        const newMember = {
-          userId: data.userId,
-          userName: data.userName,
-          username: data.username,
-          avatar: data.avatar,
-          role: "member",
-          joinedAt: data.timestamp,
-        };
-
-        const updatedMembers = [...(prev.members || []), newMember];
-
-        return {
-          ...prev,
-          members: updatedMembers,
-        };
+    // Important: Re-fetch messages for the new member to get decryption keys
+    if (data.userId === currentUserId) {
+      console.log("🔄 This user just joined, re-initializing encryption...");
+      initializeGroupEncryption().then(() => {
+        fetchMessages();
       });
-
-      // Remove notification after 5 seconds
-      setTimeout(() => {
-        setJoinNotifications((prev) =>
-          prev.filter((n) => n.id !== notification.id),
-        );
-      }, 5000);
-
-      // Important: Re-fetch messages for the new member to get decryption keys
-      if (data.userId === currentUserId) {
-        console.log("🔄 This user just joined, re-initializing encryption...");
-        initializeGroupEncryption().then(() => {
-          fetchMessages();
-        });
-      }
-    };
-
-   const onGroupSettingsUpdated = (data) => {
-  console.log("⚙️ Group settings updated via socket:", data);
-  if (data.roomId === roomId) {
-    // Update group data with new settings
-    setGroupData(prev => ({
-      ...prev,
-      settings: {
-        ...prev.settings,
-        ...data.settings
-      }
-    }));
-    
-    // If slow mode settings changed, update them
-    if (data.settings.slowMode) {
-      setSlowModeSettings(data.settings.slowMode);
-      updateLocalSlowMode(data.settings.slowMode);
-      
-      // Show a small notification (optional)
-      const isEnabled = data.settings.slowMode.enabled;
-      const cooldown = data.settings.slowMode.cooldown;
-      const message = isEnabled 
-        ? `⏱️ Slow mode enabled (${cooldown}s cooldown)` 
-        : "⏱️ Slow mode disabled";
-      
-      console.log(message);
-      
-      // You can add a toast notification here if you have one
     }
+  };
+
+  const onGroupSettingsUpdated = (data) => {
+    console.log("⚙️ Group settings updated via socket:", data);
+    if (data.roomId === roomId) {
+      setGroupData((prev) => ({
+        ...prev,
+        settings: {
+          ...prev.settings,
+          ...data.settings,
+        },
+      }));
+
+      if (data.settings.slowMode) {
+        setSlowModeSettings(data.settings.slowMode);
+        updateLocalSlowMode(data.settings.slowMode);
+      }
+    }
+  };
+
+ const onMessage = (message) => {
+  if (message.roomId === roomId) {
+    const userJoinTime = groupData.members?.find(
+      (m) => m.userId === currentUserId,
+    )?.joinedAt;
     
-    // Show a small notification for admin-only messaging
-    if (data.settings.onlyAdminsCanMessage !== undefined) {
-      const isEnabled = data.settings.onlyAdminsCanMessage;
-      const message = isEnabled 
-        ? "🔒 Admin-only messaging has been enabled" 
-        : "🔓 Admin-only messaging has been disabled";
-      
-      console.log(message);
+    if (userJoinTime && message.timestamp > userJoinTime) {
+      // Handle encryption if needed
+      if (message.encryptedContent && groupKey) {
+        let encryptedData = message.encryptedContent;
+        if (typeof encryptedData === "string") {
+          try {
+            encryptedData = JSON.parse(encryptedData);
+          } catch {
+            encryptedData = { encrypted: encryptedData, iv: "" };
+          }
+        }
+
+        encryptionService
+          .decryptMessage(encryptedData, groupKey)
+          .then((decrypted) => {
+            setDecryptedMessages((prev) =>
+              new Map(prev).set(message.timestamp, decrypted),
+            );
+          })
+          .catch((error) => {
+            console.error("Decryption error:", error);
+            setDecryptedMessages((prev) =>
+              new Map(prev).set(
+                message.timestamp,
+                message.content || "[Decryption failed]",
+              ),
+            );
+          });
+      }
+
+      setMessages((prev) => {
+        const exists = prev.some(
+          (m) =>
+            m.timestamp === message.timestamp &&
+            m.senderId === message.senderId,
+        );
+        if (exists) return prev;
+        
+        // Make sure to preserve all message properties including billId and billData
+        return [...prev, message];
+      });
+    }
+
+    if (message.senderId !== currentUserId) {
+      setTimeout(() => markMessagesAsRead(), 500);
+    }
+
+    if (onMessageUpdate) {
+      onMessageUpdate(message);
     }
   }
 };
 
-    const onMessage = (message) => {
-      console.log("📩 Group message received:", message);
-      if (message.roomId === roomId) {
-        // Only add message if it's after user joined
-        const userJoinTime = groupData.members?.find(
-          (m) => m.userId === currentUserId,
-        )?.joinedAt;
-        if (userJoinTime && message.timestamp > userJoinTime) {
-          if (message.encryptedContent && groupKey) {
-            let encryptedData = message.encryptedContent;
-            if (typeof encryptedData === "string") {
-              try {
-                encryptedData = JSON.parse(encryptedData);
-              } catch {
-                encryptedData = { encrypted: encryptedData, iv: "" };
-              }
-            }
+  const onMessageUpdated = (data) => {
+    console.log("📝 Message updated:", data);
+    if (data.roomId === roomId) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.timestamp === data.timestamp && msg.senderId === data.senderId
+            ? { ...msg, ...data }
+            : msg,
+        ),
+      );
+      setDecryptedMessages((prev) => {
+        const newMap = new Map(prev);
+        newMap.delete(data.timestamp);
+        return newMap;
+      });
+    }
+  };
 
-            encryptionService
-              .decryptMessage(encryptedData, groupKey)
-              .then((decrypted) => {
-                setDecryptedMessages((prev) =>
-                  new Map(prev).set(message.timestamp, decrypted),
-                );
-              })
-              .catch((error) => {
-                console.error("Decryption error:", error);
-                setDecryptedMessages((prev) =>
-                  new Map(prev).set(
-                    message.timestamp,
-                    message.content || "[Decryption failed]",
-                  ),
-                );
-              });
-          }
+  const onMessageDeleted = (data) => {
+    console.log("🗑️ Message deleted:", data);
+    if (data.roomId === roomId) {
+      if (data.deleteForEveryone) {
+        const deletedContent = data.deletedByAdmin
+          ? `This message was deleted by admin (${data.deletedByName})`
+          : "This message was deleted";
 
-          setMessages((prev) => {
-            const exists = prev.some(
-              (m) =>
-                m.timestamp === message.timestamp &&
-                m.senderId === message.senderId,
-            );
-            if (exists) return prev;
-            return [...prev, message];
-          });
-        }
-
-        if (message.senderId !== currentUserId) {
-          setTimeout(() => markMessagesAsRead(), 500);
-        }
-
-        if (onMessageUpdate) {
-          onMessageUpdate(message);
-        }
-      }
-    };
-
-    const onMessageUpdated = (data) => {
-      console.log("📝 Message updated:", data);
-      if (data.roomId === roomId) {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.timestamp === data.timestamp && msg.senderId === data.senderId
-              ? { ...msg, ...data }
+              ? {
+                  ...msg,
+                  deleted: true,
+                  deletedBy: data.deletedBy,
+                  deletedByAdmin: data.deletedByAdmin,
+                  deletedByName: data.deletedByName,
+                  content: deletedContent,
+                  attachments: [],
+                }
               : msg,
           ),
         );
@@ -641,223 +1106,433 @@ export default function GroupChatInterface({
           newMap.delete(data.timestamp);
           return newMap;
         });
-      }
-    };
-
-    const onMessageDeleted = (data) => {
-      console.log("🗑️ Message deleted:", data);
-      if (data.roomId === roomId) {
-        if (data.deleteForEveryone) {
-          const deletedContent = data.deletedByAdmin 
-            ? `This message was deleted by admin (${data.deletedByName})`
-            : "This message was deleted";
-            
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.timestamp === data.timestamp && msg.senderId === data.senderId
-                ? {
-                    ...msg,
-                    deleted: true,
-                    deletedBy: data.deletedBy,
-                    deletedByAdmin: data.deletedByAdmin,
-                    deletedByName: data.deletedByName,
-                    content: deletedContent,
-                    attachments: [],
-                  }
-                : msg
-            )
-          );
-          setDecryptedMessages((prev) => {
-            const newMap = new Map(prev);
-            newMap.delete(data.timestamp);
-            return newMap;
-          });
-        } else {
-          setMessages((prev) =>
-            prev.filter(
-              (msg) =>
-                !(
-                  msg.timestamp === data.timestamp &&
-                  msg.senderId === data.senderId
-                ),
-            ),
-          );
-          setDecryptedMessages((prev) => {
-            const newMap = new Map(prev);
-            newMap.delete(data.timestamp);
-            return newMap;
-          });
-        }
-      }
-    };
-
-    const onMessageReaction = (data) => {
-      console.log("😊 Message reaction:", data);
-      if (data.roomId === roomId) {
+      } else {
         setMessages((prev) =>
-          prev.map((msg) =>
-            msg.timestamp === data.timestamp &&
-            msg.senderId === data.messageOwnerId
-              ? { ...msg, reactions: data.reactions }
-              : msg,
+          prev.filter(
+            (msg) =>
+              !(
+                msg.timestamp === data.timestamp &&
+                msg.senderId === data.senderId
+              ),
           ),
         );
-      }
-    };
-
-    const onMessageRead = (data) => {
-      console.log("✓✓ Group messages marked as read:", data);
-      if (data.roomId === roomId && data.userId !== currentUserId) {
-        setMessages((prev) =>
-          prev.map((msg) => {
-            if (msg.senderId === currentUserId) {
-              const readBy = msg.readBy || [];
-              if (!readBy.includes(data.userId)) {
-                readBy.push(data.userId);
-              }
-              return { ...msg, readBy, read: readBy.length > 0 };
-            }
-            return msg;
-          }),
-        );
-      }
-    };
-
-    const onMessageDelivered = (data) => {
-      console.log('✓ Group messages delivered:', data);
-      if (data.roomId === roomId && data.isGroupMessage) {
-        setMessages((prev) =>
-          prev.map((msg) => {
-            if (msg.senderId === currentUserId && !msg.delivered) {
-              return { ...msg, delivered: true, deliveredAt: data.deliveredAt };
-            }
-            return msg;
-          }),
-        );
-      }
-    };
-
-    const onUserCameOnline = (data) => {
-      console.log('👤 User came online in group:', data);
-      if (data.roomId === roomId) {
-        setOnlineMembers(prev => new Set(prev).add(data.userId));
-        
-        // Update delivery status for messages sent to this user
-        setMessages(prev =>
-          prev.map(msg => {
-            // For messages sent to the group, they're considered delivered when any member is online
-            if (msg.senderId === currentUserId && !msg.delivered) {
-              return { ...msg, delivered: true, deliveredAt: data.timestamp };
-            }
-            return msg;
-          })
-        );
-      }
-    };
-
-    const onUserWentOffline = (data) => {
-      console.log('👤 User went offline:', data);
-      if (data.userId && data.roomId === roomId) {
-        setOnlineMembers(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(data.userId);
-          return newSet;
+        setDecryptedMessages((prev) => {
+          const newMap = new Map(prev);
+          newMap.delete(data.timestamp);
+          return newMap;
         });
       }
-    };
+    }
+  };
 
-    const onCheckUndelivered = (data) => {
-      console.log('🔍 Check undelivered messages:', data);
-      if (data.roomId === roomId) {
-        // Request status of undelivered messages
-        if (socket && isConnected) {
-          socket.emit('get-undelivered-status', { 
-            roomId, 
-            userId: currentUserId,
-            isGroupMessage: true 
-          });
+  const onMessageReaction = (data) => {
+    console.log("😊 Message reaction:", data);
+    if (data.roomId === roomId) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.timestamp === data.timestamp &&
+          msg.senderId === data.messageOwnerId
+            ? { ...msg, reactions: data.reactions }
+            : msg,
+        ),
+      );
+    }
+  };
+
+  const onMessageRead = (data) => {
+    console.log("✓✓ Group messages marked as read:", data);
+    if (data.roomId === roomId && data.userId !== currentUserId) {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.senderId === currentUserId) {
+            const readBy = msg.readBy || [];
+            if (!readBy.includes(data.userId)) {
+              readBy.push(data.userId);
+            }
+            return { ...msg, readBy, read: readBy.length > 0 };
+          }
+          return msg;
+        }),
+      );
+    }
+  };
+
+  const onMessageDelivered = (data) => {
+    console.log("✓ Group messages delivered:", data);
+    if (data.roomId === roomId && data.isGroupMessage) {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.senderId === currentUserId && !msg.delivered) {
+            return { ...msg, delivered: true, deliveredAt: data.deliveredAt };
+          }
+          return msg;
+        }),
+      );
+    }
+  };
+
+  const onUserCameOnline = (data) => {
+    console.log("👤 User came online in group:", data);
+    if (data.roomId === roomId) {
+      setOnlineMembers((prev) => new Set(prev).add(data.userId));
+
+      // Update delivery status for messages sent to this user
+      setMessages((prev) =>
+        prev.map((msg) => {
+          // For messages sent to the group, they're considered delivered when any member is online
+          if (msg.senderId === currentUserId && !msg.delivered) {
+            return { ...msg, delivered: true, deliveredAt: data.timestamp };
+          }
+          return msg;
+        }),
+      );
+    }
+  };
+
+  const onUserWentOffline = (data) => {
+    console.log("👤 User went offline:", data);
+    if (data.userId && data.roomId === roomId) {
+      setOnlineMembers((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(data.userId);
+        return newSet;
+      });
+    }
+  };
+
+  const onCheckUndelivered = (data) => {
+    console.log("🔍 Check undelivered messages:", data);
+    if (data.roomId === roomId) {
+      // Request status of undelivered messages
+      if (socket && isConnected) {
+        socket.emit("get-undelivered-status", {
+          roomId,
+          userId: currentUserId,
+          isGroupMessage: true,
+        });
+      }
+    }
+  };
+
+  const onTyping = ({ userId, isTyping }) => {
+    if (userId !== currentUserId) {
+      setGroupTyping((prev) => {
+        if (isTyping) {
+          return [...new Set([...prev, userId])];
+        } else {
+          return prev.filter((id) => id !== userId);
+        }
+      });
+    }
+  };
+
+  const onOnline = ({ userId, online, lastSeen }) => {
+    if (userId) {
+      setOnlineMembers((prev) => {
+        if (online) {
+          return new Set(prev).add(userId);
+        } else {
+          const newSet = new Set(prev);
+          newSet.delete(userId);
+          return newSet;
+        }
+      });
+    }
+  };
+
+  // ====== BILL MESSAGE UPDATE LISTENERS ======
+  const onBillUpdated = (data) => {
+    console.log('💰 Bill updated:', data);
+    if (data.roomId === roomId) {
+      // Refresh the bill modal if it's open
+      if (showSplitBillModal) {
+        refreshBillData(data.bill.id);
+      }
+      
+      // Update the bill message in the chat
+      if (data.bill) {
+        updateBillMessageInState(data.bill);
+      }
+    }
+  };
+
+  const onBillMessageUpdated = (data) => {
+    console.log('💰 Bill message updated in chat:', data);
+    if (data.roomId === roomId && data.billData) {
+      setMessages(prev => {
+        return prev.map(msg => {
+          if (msg.billId === data.billId) {
+            // Calculate updated stats
+            const paidCount = data.billData.paidCount || 0;
+            const totalCount = data.billData.totalCount || 0;
+            const pendingCount = data.billData.pendingCount || (totalCount - paidCount);
+            const paidPercentage = data.billData.paidPercentage || (totalCount > 0 ? (paidCount / totalCount) * 100 : 0);
+            
+            const currencySymbol = getCurrencySymbol(data.billData.currency || 'USD');
+
+            // Create updated content
+            const updatedContent = `New Split Bill: ${data.billData.title}\n Total: ${currencySymbol}${data.billData.totalAmount?.toFixed(2) || '0.00'}\nPaid by: ${data.billData.paidByName || 'Someone'}\nPending payments: ${pendingCount} people\n\nUse /split to view or pay bills`;
+
+            return {
+              ...msg,
+              content: updatedContent,
+              billData: {
+                title: data.billData.title,
+                totalAmount: data.billData.totalAmount,
+                paidBy: data.billData.paidBy,
+                paidByName: data.billData.paidByName || 'Someone',
+                paidCount,
+                totalCount,
+                pendingCount,
+                paidPercentage,
+                splits: data.billData.splits || []
+              }
+            };
+          }
+          return msg;
+        });
+      });
+    }
+  };
+
+  const onBillCreated = (data) => {
+    console.log('💰 New bill created:', data);
+    if (data.roomId === roomId) {
+      // The message will be added via the regular message handler
+      // But you might want to refresh the bill modal if it's open
+      if (showSplitBillModal) {
+        refreshBillData(data.bill.id);
+      }
+    }
+  };
+
+  const onBillCancelled = (data) => {
+    console.log('🚫 Bill cancelled:', data);
+    if (data.roomId === roomId) {
+      setMessages(prev => prev.map(msg => {
+        if (msg.billId === data.billId) {
+          return {
+            ...msg,
+            billCancelled: true,
+            cancelledBy: data.cancelledBy,
+            cancelledAt: data.cancelledAt
+          };
+        }
+        return msg;
+      }));
+    }
+  };
+
+  const onBillDirectUpdate = (data) => {
+    console.log('💰 Direct bill update received:', data);
+    if (data.roomId === roomId && data.bill) {
+      // Update the bill message in the chat
+      const bill = data.bill;
+      const paidCount = bill.splits?.filter(s => s.status === 'paid').length || 0;
+      const totalCount = bill.splits?.length || 0;
+      const paidAmount = bill.splits
+        ?.filter(s => s.status === 'paid')
+        .reduce((sum, s) => sum + s.amount, 0) || 0;
+      const paidPercentage = bill.totalAmount > 0 ? (paidAmount / bill.totalAmount) * 100 : 0;
+      
+      // Get payer name
+      const paidByMember = bill.splits?.find(s => s.userId === bill.paidBy);
+      const paidByName = paidByMember?.userName || 'Someone';
+
+      const currencySymbol = getCurrencySymbol(bill.currency || 'USD');
+
+      setMessages(prev => prev.map(msg => {
+        if (msg.billId === data.billId) {
+          // Create updated content
+          const updatedContent = `New Split Bill: ${bill.title}\n Total: ${currencySymbol}${bill.totalAmount?.toFixed(2) || '0.00'}\nPaid by: ${paidByName}\nPending payments: ${totalCount - paidCount} people\n\nUse /split to view or pay bills`;
+
+          return {
+            ...msg,
+            content: updatedContent,
+            billData: {
+              title: bill.title,
+              totalAmount: bill.totalAmount,
+              paidBy: bill.paidBy,
+              paidByName: paidByName,
+              paidCount,
+              totalCount,
+              pendingCount: totalCount - paidCount,
+              paidPercentage,
+              splits: bill.splits || []
+            }
+          };
+        }
+        return msg;
+      }));
+    }
+  };
+
+  // ====== BILL DELETION LISTENERS ======
+  const onBillMessageDeleted = (data) => {
+    console.log('🗑️ Bill message deleted:', data);
+    if (data.roomId === roomId) {
+      // Remove the bill message from chat
+      setMessages(prev => prev.filter(msg => msg.billId !== data.billId));
+    }
+  };
+
+  const onBillDeleted = (data) => {
+    console.log('💰 Bill deleted:', data);
+    if (data.roomId === roomId) {
+      // Remove the bill message from chat
+      setMessages(prev => prev.filter(msg => msg.billId !== data.billId));
+    }
+  };
+
+  // Register all socket event listeners
+  socket.on("joined-room", onJoinedRoom);
+  socket.on("member-joined", onMemberJoined);
+  socket.on("group-settings-updated", onGroupSettingsUpdated);
+  socket.on("receive-message", onMessage);
+  socket.on("message-updated", onMessageUpdated);
+  socket.on("message-deleted", onMessageDeleted);
+  socket.on("message-reaction", onMessageReaction);
+  socket.on("message-read", onMessageRead);
+  socket.on("message-delivered", onMessageDelivered);
+  socket.on("user-came-online", onUserCameOnline);
+  socket.on("user-went-offline", onUserWentOffline);
+  socket.on("check-undelivered-messages", onCheckUndelivered);
+  socket.on("user-typing", onTyping);
+  socket.on("user-online", onOnline);
+  socket.on("user-status-change", onOnline);
+  
+  // Register bill message listeners
+  socket.on("bill-updated", onBillUpdated);
+  socket.on("bill-message-updated", onBillMessageUpdated);
+  socket.on("bill-created", onBillCreated);
+  socket.on("bill-cancelled", onBillCancelled);
+  socket.on("bill-direct-update", onBillDirectUpdate);
+  
+  // Register bill deletion listeners
+  socket.on("bill-message-deleted", onBillMessageDeleted);
+  socket.on("bill-deleted", onBillDeleted);
+
+  fetchMessages();
+
+  return () => {
+    console.log("🧹 Cleaning up group chat listeners");
+    socket.off("joined-room", onJoinedRoom);
+    socket.off("member-joined", onMemberJoined);
+    socket.off("group-settings-updated", onGroupSettingsUpdated);
+    socket.off("receive-message", onMessage);
+    socket.off("message-updated", onMessageUpdated);
+    socket.off("message-deleted", onMessageDeleted);
+    socket.off("message-reaction", onMessageReaction);
+    socket.off("message-read", onMessageRead);
+    socket.off("message-delivered", onMessageDelivered);
+    socket.off("user-came-online", onUserCameOnline);
+    socket.off("user-went-offline", onUserWentOffline);
+    socket.off("check-undelivered-messages", onCheckUndelivered);
+    socket.off("user-typing", onTyping);
+    socket.off("user-online", onOnline);
+    socket.off("user-status-change", onOnline);
+    
+    // Remove bill message listeners
+    socket.off("bill-updated", onBillUpdated);
+    socket.off("bill-message-updated", onBillMessageUpdated);
+    socket.off("bill-created", onBillCreated);
+    socket.off("bill-cancelled", onBillCancelled);
+    socket.off("bill-direct-update", onBillDirectUpdate);
+    
+    // Remove bill deletion listeners
+    socket.off("bill-message-deleted", onBillMessageDeleted);
+    socket.off("bill-deleted", onBillDeleted);
+
+    socket.emit("leave-chat", { roomId, userId: currentUserId });
+    setRoomJoined(false);
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+  };
+}, [
+  socket,
+  isConnected,
+  group?.groupId,
+  currentUserId,
+  roomId,
+  groupKey,
+  groupData.members,
+  showSplitBillModal,
+]);
+
+  // ==================== ASYNC FUNCTIONS ====================
+
+  const initializeGroupEncryption = async () => {
+    try {
+      console.log("🔐 Initializing group encryption...");
+
+      await encryptionService.initializeKeys(currentUserId);
+
+      if (group.members) {
+        console.log("🔑 Ensuring all group members have keys...");
+        for (const member of group.members) {
+          try {
+            await fetch(
+              `/api/chat/encryption?userId=${member.userId}&action=my-keys`,
+            );
+          } catch (error) {
+            console.log("⚠️ Member may need keys:", member.userId);
+          }
         }
       }
-    };
 
-    const onTyping = ({ userId, isTyping }) => {
-      if (userId !== currentUserId) {
-        setGroupTyping((prev) => {
-          if (isTyping) {
-            return [...new Set([...prev, userId])];
-          } else {
-            return prev.filter((id) => id !== userId);
+      console.log("✅ Getting group key...");
+      const key = await encryptionService.getGroupKey(
+        currentUserId,
+        group.groupId,
+      );
+
+      setGroupKey(key);
+      setEncryptionReady(true);
+
+      console.log("✅ Group encryption ready");
+    } catch (error) {
+      console.error("❌ Group encryption failed:", error);
+      setEncryptionReady(false);
+    }
+  };
+
+  const decryptAllMessages = async () => {
+    const newDecryptedMap = new Map(decryptedMessages);
+
+    for (const message of messages) {
+      if (
+        message.encryptedContent &&
+        !decryptedMessages.has(message.timestamp)
+      ) {
+        try {
+          let encryptedData = message.encryptedContent;
+          if (typeof encryptedData === "string") {
+            try {
+              encryptedData = JSON.parse(encryptedData);
+            } catch {
+              encryptedData = { encrypted: encryptedData, iv: "" };
+            }
           }
-        });
+
+          const decrypted = await encryptionService.decryptMessage(
+            encryptedData,
+            groupKey,
+          );
+          newDecryptedMap.set(message.timestamp, decrypted);
+        } catch (error) {
+          console.error("Decryption error:", error);
+          newDecryptedMap.set(
+            message.timestamp,
+            message.content || "[Decryption failed]",
+          );
+        }
       }
-    };
+    }
 
-    const onOnline = ({ userId, online, lastSeen }) => {
-      if (userId) {
-        setOnlineMembers(prev => {
-          if (online) {
-            return new Set(prev).add(userId);
-          } else {
-            const newSet = new Set(prev);
-            newSet.delete(userId);
-            return newSet;
-          }
-        });
-      }
-    };
-
-    socket.on("joined-room", onJoinedRoom);
-    socket.on("member-joined", onMemberJoined);
-    socket.on("group-settings-updated", onGroupSettingsUpdated);
-    socket.on("receive-message", onMessage);
-    socket.on("message-updated", onMessageUpdated);
-    socket.on("message-deleted", onMessageDeleted);
-    socket.on("message-reaction", onMessageReaction);
-    socket.on("message-read", onMessageRead);
-    socket.on("message-delivered", onMessageDelivered);
-    socket.on('user-came-online', onUserCameOnline);
-    socket.on('user-went-offline', onUserWentOffline);
-    socket.on('check-undelivered-messages', onCheckUndelivered);
-    socket.on("user-typing", onTyping);
-    socket.on('user-online', onOnline);
-    socket.on('user-status-change', onOnline);
-
-    fetchMessages();
-
-    return () => {
-      console.log("🧹 Cleaning up group chat listeners");
-      socket.off("joined-room", onJoinedRoom);
-      socket.off("member-joined", onMemberJoined);
-      socket.off("group-settings-updated", onGroupSettingsUpdated);
-      socket.off("receive-message", onMessage);
-      socket.off("message-updated", onMessageUpdated);
-      socket.off("message-deleted", onMessageDeleted);
-      socket.off("message-reaction", onMessageReaction);
-      socket.off("message-read", onMessageRead);
-      socket.off("message-delivered", onMessageDelivered);
-      socket.off('user-came-online', onUserCameOnline);
-      socket.off('user-went-offline', onUserWentOffline);
-      socket.off('check-undelivered-messages', onCheckUndelivered);
-      socket.off("user-typing", onTyping);
-      socket.off('user-online', onOnline);
-      socket.off('user-status-change', onOnline);
-
-      socket.emit("leave-chat", { roomId, userId: currentUserId });
-      setRoomJoined(false);
-
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-    };
-  }, [
-    socket,
-    isConnected,
-    group?.groupId,
-    currentUserId,
-    roomId,
-    groupKey,
-    groupData.members,
-  ]);
+    setDecryptedMessages(newDecryptedMap);
+  };
 
   const shareGroupKeyWithNewMember = useCallback(
     async (newMemberId) => {
@@ -910,14 +1585,14 @@ export default function GroupChatInterface({
       const data = await res.json();
       if (data.success) {
         // Process messages to ensure admin deletion info is preserved
-        const processedMessages = data.messages.map(msg => {
+        const processedMessages = data.messages.map((msg) => {
           // If message is deleted by admin, ensure the content shows admin deletion
           if (msg.deleted && msg.deletedByAdmin) {
-            msg.content = `This message was deleted by admin (${msg.deletedByName || 'Admin'})`;
+            msg.content = `This message was deleted by admin (${msg.deletedByName || "Admin"})`;
           }
           return msg;
         });
-        
+
         setMessages(processedMessages);
         console.log(`✅ Loaded ${processedMessages.length} messages`);
       }
@@ -978,6 +1653,127 @@ export default function GroupChatInterface({
     }
   };
 
+  const uploadAttachments = async () => {
+    const attachmentsToUpload = attachments.filter(
+      (att) => !att.url && att.file,
+    );
+
+    if (attachmentsToUpload.length === 0) {
+      return attachments;
+    }
+
+    setUploading(true);
+
+    const uploadedAttachments = [];
+
+    for (const att of attachmentsToUpload) {
+      const formData = new FormData();
+      formData.append("file", att.file);
+      formData.append("userId", currentUserId);
+
+      try {
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (data.success) {
+          uploadedAttachments.push({
+            url: data.url,
+            type: data.category,
+            name: data.name,
+          });
+        }
+      } catch (error) {
+        console.error("Error uploading file:", error);
+      }
+    }
+
+    setUploading(false);
+    return uploadedAttachments;
+  };
+
+  // ==================== EVENT HANDLERS ====================
+
+  // Updated canSendMessage function with admin bypass
+  const canSendMessage = useCallback(() => {
+    // Check if user is admin - admins bypass all restrictions
+    if (isCurrentUserAdmin) return true;
+
+    // Check admin message permission first (only if not admin)
+    if (groupData.settings?.onlyAdminsCanMessage) {
+      return false;
+    }
+
+    // Then check slow mode
+    if (groupData.settings?.slowMode?.enabled && !canSendInSlowMode()) {
+      return false;
+    }
+
+    return true;
+  }, [
+    groupData.settings?.onlyAdminsCanMessage,
+    groupData.settings?.slowMode?.enabled,
+    isCurrentUserAdmin,
+    canSendInSlowMode,
+  ]);
+
+  // Handle slash commands
+  const handleSlashCommand = (input) => {
+    if (input === "/split") {
+      setShowSplitBillModal(true);
+      setNewMessage("");
+      setShowSlashSuggestions(false);
+      return true;
+    }
+    return false;
+  };
+
+  // AI Enhancement functions
+  const handleAIEnhance = async (message, prompt) => {
+    setIsAIProcessing(true);
+    setAiError("");
+    setAiEnhancedText("");
+
+    try {
+      const response = await fetch("/api/ai/enhance-message", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: message,
+          prompt: prompt,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setAiEnhancedText(data.enhancedMessage);
+      } else {
+        setAiError(data.error || "Failed to enhance message");
+      }
+    } catch (error) {
+      console.error("AI enhancement error:", error);
+      setAiError("Failed to connect to AI service");
+    } finally {
+      setIsAIProcessing(false);
+    }
+  };
+
+  const handleApplyAIEnhancement = (enhancedText) => {
+    setNewMessage(enhancedText);
+    setShowAIEnhancement(false);
+    setAiEnhancedText("");
+    setAiError("");
+
+    // Focus back on input
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
+
   // Reply feature functions
   const handleReplyToMessage = (message) => {
     setReplyingToMessage(message);
@@ -995,7 +1791,7 @@ export default function GroupChatInterface({
     // Scroll to the original message
     const messageId = `${replyTo.timestamp}-${replyTo.senderId}`;
     scrollToMessage(messageId);
-    
+
     // Highlight the message briefly
     const messageElement = messageRefs.current.get(messageId);
     if (messageElement) {
@@ -1011,14 +1807,12 @@ export default function GroupChatInterface({
     setNewMessage(value);
 
     // Check for slash command at beginning
-    if (value.startsWith('/') && !value.includes(' ')) {
+    if (value.startsWith("/") && !value.includes(" ")) {
       setSlashCommand(value);
-      const availableCommands = ['/split'];
-      if (availableCommands.includes(value)) {
-        setShowSlashSuggestions(true);
-      } else {
-        setShowSlashSuggestions(false);
-      }
+      const matchedCommands = availableCommands.filter((cmd) =>
+        cmd.command.startsWith(value),
+      );
+      setShowSlashSuggestions(matchedCommands.length > 0);
     } else {
       setShowSlashSuggestions(false);
     }
@@ -1118,66 +1912,6 @@ export default function GroupChatInterface({
     }
   };
 
-  const parseMessageContent = (content) => {
-    if (!content) return [];
-
-    const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
-    const parts = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = mentionRegex.exec(content)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push({
-          type: "text",
-          content: content.substring(lastIndex, match.index),
-        });
-      }
-
-      parts.push({
-        type: "mention",
-        name: match[1],
-        userId: match[2],
-        content: `@${match[1]}`,
-      });
-
-      lastIndex = mentionRegex.lastIndex;
-    }
-
-    if (lastIndex < content.length) {
-      parts.push({
-        type: "text",
-        content: content.substring(lastIndex),
-      });
-    }
-
-    return parts;
-  };
-
-  // Function to highlight text in content
-  const highlightText = (content, highlight) => {
-    if (!highlight.trim() || !content) {
-      return content;
-    }
-
-    const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    const parts = content.split(regex);
-
-    return parts.map((part, index) => {
-      if (regex.test(part)) {
-        return (
-          <mark
-            key={index}
-            className="bg-green-300 dark:bg-green-600 text-inherit px-0.5 rounded"
-          >
-            {part}
-          </mark>
-        );
-      }
-      return part;
-    });
-  };
-
   // Search functionality
   const handleSearch = (query) => {
     setSearchQuery(query);
@@ -1202,7 +1936,7 @@ export default function GroupChatInterface({
         let startPos = 0;
         let index;
         const contentLower = content.toLowerCase();
-        
+
         while ((index = contentLower.indexOf(searchLower, startPos)) > -1) {
           indices.push(index);
           startPos = index + searchLower.length;
@@ -1215,14 +1949,14 @@ export default function GroupChatInterface({
           timestamp: msg.timestamp,
           senderId: msg.senderId,
           matchIndices: indices,
-          matchCount: indices.length
+          matchCount: indices.length,
         });
       }
     });
 
     // Sort results by timestamp (oldest first for better navigation)
     results.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    
+
     setSearchResults(results);
     setCurrentSearchIndex(results.length > 0 ? 0 : -1);
 
@@ -1279,10 +2013,15 @@ export default function GroupChatInterface({
         messageId: `${replyingToMessage.timestamp}-${replyingToMessage.senderId}`,
         timestamp: replyingToMessage.timestamp,
         senderId: replyingToMessage.senderId,
-        senderName: replyingToMessage.senderId === currentUserId ? 'You' : getMemberName(replyingToMessage.senderId),
+        senderName:
+          replyingToMessage.senderId === currentUserId
+            ? "You"
+            : getMemberName(replyingToMessage.senderId),
         content: replyContent,
-        hasAttachments: replyingToMessage.attachments && replyingToMessage.attachments.length > 0,
-        attachmentType: replyingToMessage.attachments?.[0]?.type
+        hasAttachments:
+          replyingToMessage.attachments &&
+          replyingToMessage.attachments.length > 0,
+        attachmentType: replyingToMessage.attachments?.[0]?.type,
       };
     }
 
@@ -1293,13 +2032,15 @@ export default function GroupChatInterface({
       receiverId: "group",
       isGroupMessage: true,
       content: "",
-      attachments: [{
-        url: gif.url,
-        type: 'gif',
-        name: gif.name || 'GIF',
-        gifId: gif.gifId,
-        gifData: gif
-      }],
+      attachments: [
+        {
+          url: gif.url,
+          type: "gif",
+          name: gif.name || "GIF",
+          gifId: gif.gifId,
+          gifData: gif,
+        },
+      ],
       replyTo: replyTo,
       timestamp: now,
       delivered: false, // Start as false for offline members
@@ -1363,10 +2104,15 @@ export default function GroupChatInterface({
         messageId: `${replyingToMessage.timestamp}-${replyingToMessage.senderId}`,
         timestamp: replyingToMessage.timestamp,
         senderId: replyingToMessage.senderId,
-        senderName: replyingToMessage.senderId === currentUserId ? 'You' : getMemberName(replyingToMessage.senderId),
+        senderName:
+          replyingToMessage.senderId === currentUserId
+            ? "You"
+            : getMemberName(replyingToMessage.senderId),
         content: replyContent,
-        hasAttachments: replyingToMessage.attachments && replyingToMessage.attachments.length > 0,
-        attachmentType: replyingToMessage.attachments?.[0]?.type
+        hasAttachments:
+          replyingToMessage.attachments &&
+          replyingToMessage.attachments.length > 0,
+        attachmentType: replyingToMessage.attachments?.[0]?.type,
       };
     }
 
@@ -1399,7 +2145,7 @@ export default function GroupChatInterface({
         type: att.type,
         name: att.name,
         gifId: att.gifId,
-        gifData: att.gifData
+        gifData: att.gifData,
       })),
       replyTo: replyTo,
       timestamp: now,
@@ -1474,7 +2220,7 @@ export default function GroupChatInterface({
         type: att.type,
         name: att.name,
         gifId: att.gifId,
-        gifData: att.gifData
+        gifData: att.gifData,
       }));
 
     const allUploadedAttachments = [
@@ -1493,10 +2239,15 @@ export default function GroupChatInterface({
         messageId: `${replyingToMessage.timestamp}-${replyingToMessage.senderId}`,
         timestamp: replyingToMessage.timestamp,
         senderId: replyingToMessage.senderId,
-        senderName: replyingToMessage.senderId === currentUserId ? 'You' : getMemberName(replyingToMessage.senderId),
+        senderName:
+          replyingToMessage.senderId === currentUserId
+            ? "You"
+            : getMemberName(replyingToMessage.senderId),
         content: replyContent,
-        hasAttachments: replyingToMessage.attachments && replyingToMessage.attachments.length > 0,
-        attachmentType: replyingToMessage.attachments?.[0]?.type
+        hasAttachments:
+          replyingToMessage.attachments &&
+          replyingToMessage.attachments.length > 0,
+        attachmentType: replyingToMessage.attachments?.[0]?.type,
       };
     }
 
@@ -1619,9 +2370,13 @@ export default function GroupChatInterface({
   };
 
   // Updated handleDeleteMessage for admin functionality
-  const handleDeleteMessage = async (message, forEveryone = false, isAdminDelete = false) => {
+  const handleDeleteMessage = async (
+    message,
+    forEveryone = false,
+    isAdminDelete = false,
+  ) => {
     const adminName = isCurrentUserAdmin ? getMemberName(currentUserId) : null;
-    
+
     if (forEveryone) {
       socket.emit("delete-message", {
         roomId,
@@ -1631,7 +2386,7 @@ export default function GroupChatInterface({
         isGroupMessage: true,
         deletedBy: currentUserId,
         deletedByAdmin: isAdminDelete || isCurrentUserAdmin,
-        deletedByName: adminName
+        deletedByName: adminName,
       });
 
       try {
@@ -1646,21 +2401,23 @@ export default function GroupChatInterface({
             isGroupMessage: true,
             deletedBy: currentUserId,
             deletedByAdmin: isAdminDelete || isCurrentUserAdmin,
-            deletedByName: adminName
+            deletedByName: adminName,
           }),
         });
 
         const data = await response.json();
-        
+
         // Immediately update local state with the admin deletion info
         if (data.success) {
-          const deletedContent = (isAdminDelete || isCurrentUserAdmin) 
-            ? `This message was deleted by admin (${adminName})`
-            : "This message was deleted";
-            
+          const deletedContent =
+            isAdminDelete || isCurrentUserAdmin
+              ? `This message was deleted by admin (${adminName})`
+              : "This message was deleted";
+
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.timestamp === message.timestamp && msg.senderId === message.senderId
+              msg.timestamp === message.timestamp &&
+              msg.senderId === message.senderId
                 ? {
                     ...msg,
                     deleted: true,
@@ -1670,8 +2427,8 @@ export default function GroupChatInterface({
                     content: deletedContent,
                     attachments: [],
                   }
-                : msg
-            )
+                : msg,
+            ),
           );
         }
       } catch (error) {
@@ -1798,46 +2555,6 @@ export default function GroupChatInterface({
     setPreviewPreSendAttachment(attachment);
   };
 
-  const uploadAttachments = async () => {
-    const attachmentsToUpload = attachments.filter(
-      (att) => !att.url && att.file,
-    );
-
-    if (attachmentsToUpload.length === 0) {
-      return attachments;
-    }
-
-    setUploading(true);
-
-    const uploadedAttachments = [];
-
-    for (const att of attachmentsToUpload) {
-      const formData = new FormData();
-      formData.append("file", att.file);
-      formData.append("userId", currentUserId);
-
-      try {
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const data = await res.json();
-        if (data.success) {
-          uploadedAttachments.push({
-            url: data.url,
-            type: data.category,
-            name: data.name,
-          });
-        }
-      } catch (error) {
-        console.error("Error uploading file:", error);
-      }
-    }
-
-    setUploading(false);
-    return uploadedAttachments;
-  };
-
   const handleAttachmentClick = (attachment, index) => {
     setPreviewAttachment(attachment);
     setCurrentAttachmentIndex(index);
@@ -1896,26 +2613,6 @@ export default function GroupChatInterface({
     navigator.clipboard.writeText(text);
   };
 
-  const formatTime = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  const formatDate = (timestamp) => {
-    const messageDate = new Date(timestamp).toDateString();
-    const today = new Date().toDateString();
-    const yesterday = new Date(Date.now() - 86400000).toDateString();
-
-    if (messageDate === today) return "Today";
-    if (messageDate === yesterday) return "Yesterday";
-    return new Date(timestamp).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-  };
-
   const handleUpdateSettings = async (updates) => {
     try {
       const res = await fetch("/api/chat/groups", {
@@ -1928,21 +2625,21 @@ export default function GroupChatInterface({
         }),
       });
       const data = await res.json();
-      
+
       if (data.success) {
         // Update local state immediately
         setGroupData(data.group);
-        
+
         // Emit socket event to notify all group members about settings change
         if (socket && isConnected) {
           socket.emit("group-settings-updated", {
             roomId: roomId,
             settings: updates,
             updatedBy: currentUserId,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
           });
         }
-        
+
         if (onGroupUpdate) {
           onGroupUpdate(data.group);
         }
@@ -2031,89 +2728,171 @@ export default function GroupChatInterface({
 
   // Handle slow mode save
   const handleSaveSlowMode = async (settings) => {
+    try {
+      const res = await fetch("/api/chat/groups/slow-mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          groupId: group.groupId,
+          userId: currentUserId,
+          settings,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setSlowModeSettings(settings);
+        updateLocalSlowMode(settings);
+
+        // Update group data with new settings
+        setGroupData((prev) => ({
+          ...prev,
+          settings: {
+            ...prev.settings,
+            slowMode: settings,
+          },
+        }));
+
+        // Emit socket event to notify all group members about slow mode change
+        if (socket && isConnected) {
+          socket.emit("group-settings-updated", {
+            roomId: roomId,
+            settings: { slowMode: settings },
+            updatedBy: currentUserId,
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        if (onGroupUpdate) {
+          onGroupUpdate({
+            ...groupData,
+            settings: {
+              ...groupData.settings,
+              slowMode: settings,
+            },
+          });
+        }
+
+        setShowSlowModeModal(false);
+      }
+    } catch (error) {
+      console.error("Error saving slow mode settings:", error);
+    }
+  };
+
+  // Handle bill creation success
+ // Handle bill creation success
+// Handle bill creation success
+const handleBillCreated = async (bill) => {
+  // Create an encrypted message about the bill
+  const now = new Date().toISOString();
+
+  // Get currency symbol
+  const currencySymbol = getCurrencySymbol(bill.currency || 'USD');
+
+  // Calculate accurate counts
+  const paidCount = bill.splits?.filter(s => s.status === 'paid').length || 0;
+  const totalCount = bill.splits?.length || 0;
+  const pendingCount = totalCount - paidCount;
+  
+  // Calculate paid percentage
+  const paidAmount = bill.splits
+    ?.filter(s => s.status === 'paid')
+    .reduce((sum, s) => sum + s.amount, 0) || 0;
+  const paidPercentage = bill.totalAmount ? (paidAmount / bill.totalAmount) * 100 : 0;
+
+  // Get payer name
+  const paidByName = bill.splits?.find(s => s.userId === bill.paidBy)?.userName || 
+                     getMemberName(bill.paidBy);
+
+  const billMessage = `New Split Bill: ${bill.title}\n Total: ${currencySymbol}${bill.totalAmount?.toFixed(2) || '0.00'}\nPaid by: ${paidByName}\nPending payments: ${pendingCount} people\n\nUse /split to view or pay bills`;
+
+  let contentForDB = billMessage;
+  let encryptedContent = null;
+
+  if (encryptionReady && groupKey) {
+    try {
+      encryptedContent = await encryptionService.encryptMessage(
+        billMessage,
+        groupKey,
+      );
+      contentForDB = null;
+    } catch (error) {
+      console.error("❌ Encryption failed for bill message:", error);
+    }
+  }
+
+  // CRITICAL: Make sure bill.id is properly set
+  const messageData = {
+    roomId,
+    senderId: currentUserId,
+    senderName: getMemberName(currentUserId),
+    receiverId: "group",
+    isGroupMessage: true,
+    content: contentForDB,
+    encryptedContent: encryptedContent,
+    attachments: [],
+    replyTo: null,
+    timestamp: now,
+    delivered: false,
+    deliveredAt: null,
+    read: false,
+    readBy: [currentUserId],
+    reactions: [],
+    isEncrypted: !!encryptedContent,
+    // These two properties are CRITICAL for bill messages
+    billId: bill.id,  // This MUST be set
+    billCurrency: bill.currency,
+    // Store bill data for the UI
+    billData: {
+      title: bill.title,
+      totalAmount: bill.totalAmount,
+      paidBy: bill.paidBy,
+      paidByName: paidByName,
+      paidCount,
+      totalCount,
+      pendingCount,
+      paidPercentage,
+      splits: bill.splits
+    }
+  };
+
+  // Create local message with decrypted content
+  const localMessage = {
+    ...messageData,
+    content: billMessage, // Use decrypted content for local display
+  };
+
+  // Add to messages state
+  setMessages(prev => [...prev, localMessage]);
+
+  if (encryptedContent && groupKey) {
+    setDecryptedMessages((prev) => new Map(prev).set(now, billMessage));
+  }
+
+  // Send via socket
+  if (socket && isConnected) {
+    socket.emit("send-message", messageData);
+  }
+
+  // Save to database
   try {
-    const res = await fetch("/api/chat/groups/slow-mode", {
+    await fetch("/api/chat/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        groupId: group.groupId,
-        userId: currentUserId,
-        settings
-      }),
+      body: JSON.stringify(messageData),
     });
-    
-    const data = await res.json();
-    
-    if (data.success) {
-      setSlowModeSettings(settings);
-      updateLocalSlowMode(settings);
-      
-      // Update group data with new settings
-      setGroupData(prev => ({
-        ...prev,
-        settings: {
-          ...prev.settings,
-          slowMode: settings
-        }
-      }));
-      
-      // Emit socket event to notify all group members about slow mode change
-      if (socket && isConnected) {
-        socket.emit("group-settings-updated", {
-          roomId: roomId,
-          settings: { slowMode: settings },
-          updatedBy: currentUserId,
-          timestamp: new Date().toISOString()
-        });
-      }
-      
-      if (onGroupUpdate) {
-        onGroupUpdate({
-          ...groupData,
-          settings: {
-            ...groupData.settings,
-            slowMode: settings
-          }
-        });
-      }
-      
-      setShowSlowModeModal(false);
-    }
   } catch (error) {
-    console.error("Error saving slow mode settings:", error);
+    console.error('Error saving message to database:', error);
+  }
+
+  if (onMessageUpdate) {
+    onMessageUpdate(localMessage);
   }
 };
 
-  // Render reply preview in a message
-  const renderReplyPreview = (replyTo) => {
-    if (!replyTo) return null;
-
-    return (
-      <div 
-        className="mb-2 p-2 bg-gray-50 dark:bg-[#1a1a1a] rounded border-l-4 border-green-500 cursor-pointer hover:bg-gray-100 dark:hover:bg-[#222222] transition-colors"
-        onClick={() => handleReplyClick(replyTo)}
-      >
-        <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mb-1">
-          <CornerDownRight size={12} />
-          <span>Replying to {replyTo.senderName}</span>
-        </div>
-        <div className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2">
-          {replyTo.hasAttachments ? (
-            <span className="flex items-center gap-1">
-              {replyTo.attachmentType === 'image' ? <ImageIcon size={12} /> : 
-               replyTo.attachmentType === 'gif' ? <span className="font-bold">GIF</span> :
-               <Video size={12} />}
-              {replyTo.attachmentType === 'image' ? 'Photo' : 
-               replyTo.attachmentType === 'gif' ? 'GIF' : 'Video'}
-            </span>
-          ) : (
-            replyTo.content || ''
-          )}
-        </div>
-      </div>
-    );
-  };
-
+  // Group messages by date
   const groupedMessages = messages.reduce((groups, message) => {
     const date = formatDate(message.timestamp);
     if (!groups[date]) {
@@ -2123,137 +2902,46 @@ export default function GroupChatInterface({
     return groups;
   }, {});
 
-  // Updated message status rendering for groups
-  const renderMessageStatus = (message) => {
-    if (message.senderId !== currentUserId) return null;
-
-    const totalMembers = groupData.members?.length || 0;
-    const readByCount = message.readBy?.length || 0;
-    const otherMembersCount = totalMembers - 1;
-
-    // If message is read by all members
-    if (readByCount >= otherMembersCount && otherMembersCount > 0) {
-      return <CheckCheck size={16} className="text-blue-500" title="Read by all" />;
-    } 
-    // If message is delivered (at least one online member received it)
-    else if (message.delivered || readByCount > 0) {
-      return <CheckCheck size={16} className="text-gray-400 dark:text-gray-500" title="Delivered" />;
-    } 
-    // Message is sent but not delivered to anyone
-    else {
-      return <Check size={16} className="text-gray-400 dark:text-gray-500" title="Sent" />;
-    }
-  };
-
-  const MessageWrapper = ({ message, children, isOwn }) => {
-    const longPressEvent = useLongPress(
-      (e) => handleMessageLongPress(e, message),
-      null,
-      { threshold: 500 },
-    );
-
-    // Check if this message is the current search result
-    const isCurrentSearchResult = searchResults[currentSearchIndex]?.messageId === `${message.timestamp}-${message.senderId}`;
-
-    return (
-      <div
-        ref={el => messageRefs.current.set(`${message.timestamp}-${message.senderId}`, el)}
-        {...longPressEvent}
-        onContextMenu={(e) => handleMessageRightClick(e, message)}
-        className={`relative group transition-all z-10 duration-300 ${
-          isCurrentSearchResult ? ' ring-green-400 dark:ring-green-500 rounded-3xl ' : ''
-        }`}
-      >
-        {children}
-      </div>
-    );
-  };
-
-  const getMessageContent = (message) => {
-    if (message.deleted) {
-      if (message.deletedByAdmin) {
-        return `This message was deleted by admin (${message.deletedByName || 'Admin'})`;
-      }
-      return message.content || "This message was deleted";
-    }
-    if (message.encryptedContent) {
-      return decryptedMessages.get(message.timestamp) || message.content || "";
-    }
-    return message.content || "";
-  };
-
-  const renderMessageWithMentions = (content, highlight) => {
-    if (!content) return null;
-
-    const parts = parseMessageContent(content);
-
-    return parts.map((part, index) => {
-      if (part.type === "mention") {
-        const isCurrentUser = part.userId === currentUserId;
-        return (
-          <span
-            key={index}
-            className={`inline-flex items-center px-3 py-0.5 rounded-xl font-medium mx-0.5 ${
-              isCurrentUser
-                ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-            }`}
-            title={`Mention: ${part.name}`}
-          >
-            <AtSign size={12} className="mr-0.5" />
-            {part.name}
-          </span>
-        );
-      }
-      
-      // Apply highlighting to text parts
-      if (highlight && part.content) {
-        return (
-          <span key={index}>
-            {highlightText(part.content, highlight)}
-          </span>
-        );
-      }
-      
-      return <span key={index}>{part.content}</span>;
-    });
-  };
-
+  // Dropdown items
   const dropdownItems = [
     {
-      id: 'encryption',
-      label: 'Encryption Info',
+      id: "encryption",
+      label: "Encryption Info",
       icon: ShieldCheck,
       onClick: () => {
         setShowDropdown(false);
         setShowGroupEncryptionModal(true);
       },
-      className: 'text-green-600 dark:text-green-400'
+      className: "text-green-600 dark:text-green-400",
     },
     {
-      id: 'group-settings',
-      label: 'Group Settings',
+      id: "group-settings",
+      label: "Group Settings",
       icon: Settings2,
       onClick: () => {
         setShowDropdown(false);
         fetchGroupData();
         setShowGroupInfo(true);
-      }
+      },
     },
     {
-      id: 'slow-mode',
-      label: slowModeSettings.enabled ? `Slow Mode (${slowModeSettings.cooldown}s)` : 'Slow Mode',
+      id: "slow-mode",
+      label: slowModeSettings.enabled
+        ? `Slow Mode (${slowModeSettings.cooldown}s)`
+        : "Slow Mode",
       icon: Snowflake,
       onClick: () => {
         setShowDropdown(false);
         fetchGroupData();
         setShowSlowModeModal(true);
       },
-      className: slowModeSettings.enabled ? 'text-blue-600 dark:text-blue-400' : ''
+      className: slowModeSettings.enabled
+        ? "text-blue-600 dark:text-blue-400"
+        : "",
     },
     {
-      id: 'search',
-      label: 'Search Messages',
+      id: "search",
+      label: "Search Messages",
       icon: Search,
       onClick: () => {
         setShowDropdown(false);
@@ -2261,9 +2949,11 @@ export default function GroupChatInterface({
         setTimeout(() => {
           searchInputRef.current?.focus();
         }, 100);
-      }
-    }
+      },
+    },
   ];
+
+  // ==================== RENDER ====================
 
   return (
     <>
@@ -2275,7 +2965,10 @@ export default function GroupChatInterface({
               onClick={onClose}
               className="lg:hidden p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
             >
-              <ChevronLeft size={20} className="text-[#202124] dark:text-white" />
+              <ChevronLeft
+                size={20}
+                className="text-[#202124] dark:text-white"
+              />
             </button>
 
             <div className="w-10 h-10 rounded-full overflow-hidden bg-zinc-100 dark:bg-[#232529] flex items-center justify-center text-[#202124] dark:text-white font-semibold text-lg flex-shrink-0">
@@ -2315,21 +3008,27 @@ export default function GroupChatInterface({
                     Admin
                   </span>
                 )}
-                {groupData.settings?.onlyAdminsCanMessage && !isCurrentUserAdmin && (
-                  <Lock size={14} className="text-[#5f6368] dark:text-gray-400" />
-                )}
+                {groupData.settings?.onlyAdminsCanMessage &&
+                  !isCurrentUserAdmin && (
+                    <Lock
+                      size={14}
+                      className="text-[#5f6368] dark:text-gray-400"
+                    />
+                  )}
               </h3>
               <div className="flex items-center gap-2 text-xs">
                 <div className="flex items-center gap-1 text-[#5f6368] dark:text-gray-400">
                   <Users size={12} />
                   <span>{groupData.members?.length || 0} members</span>
                   <span className="mx-1">•</span>
-                  <span className="text-green-600 dark:text-green-400">{onlineMembers.size} online</span>
+                  <span className="text-green-600 dark:text-green-400">
+                    {onlineMembers.size} online
+                  </span>
                 </div>
                 {groupTyping.length > 0 && (
                   <span className="text-green-600 dark:text-green-400 animate-pulse">
                     {groupTyping.length === 1
-                      ? `${getMemberName(groupTyping[0])} ${groupData.members?.find(m => m.userId === groupTyping[0])?.role === 'admin' ? '(Admin)' : ''} is typing...`
+                      ? `${getMemberName(groupTyping[0])} ${groupData.members?.find((m) => m.userId === groupTyping[0])?.role === "admin" ? "(Admin)" : ""} is typing...`
                       : `${groupTyping.length} people are typing...`}
                   </span>
                 )}
@@ -2346,7 +3045,10 @@ export default function GroupChatInterface({
               onClick={() => setShowDropdown(!showDropdown)}
               className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
             >
-              <MoreVertical size={20} className="text-[#5f6368] dark:text-gray-400" />
+              <MoreVertical
+                size={20}
+                className="text-[#5f6368] dark:text-gray-400"
+              />
             </button>
 
             {showDropdown && (
@@ -2355,7 +3057,7 @@ export default function GroupChatInterface({
                   <button
                     key={item.id}
                     onClick={item.onClick}
-                    className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-100 dark:hover:bg-[#101010] transition-colors ${item.className || 'text-[#202124] dark:text-white'}`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-100 dark:hover:bg-[#101010] transition-colors ${item.className || "text-[#202124] dark:text-white"}`}
                   >
                     <item.icon size={18} />
                     <span className="text-sm">{item.label}</span>
@@ -2408,120 +3110,131 @@ export default function GroupChatInterface({
           ))}
 
           {loading ? (
-  <div className="flex justify-center py-8">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#34A853]"></div>
-  </div>
-) : messages.length === 0 ? (
-  <div className="flex items-center justify-center ">
-    <div className="bg-white dark:bg-[#0c0c0c] rounded-[35px]  border-[#f1f3f4] dark:border-[#232529] -lg p-8 max-w-md w-full mx-4">
-      {/* Group Avatar */}
-      <div className="flex justify-center mb-4">
-        <div className="w-20 h-20 rounded-full overflow-hidden bg-zinc-100 flex items-center justify-center text-white font-bold text-3xl -lg">
-          {(() => {
-            let groupAvatar = null;
-            if (groupData.avatar) {
-              try {
-                groupAvatar =
-                  typeof groupData.avatar === "string"
-                    ? JSON.parse(groupData.avatar)
-                    : groupData.avatar;
-              } catch (e) {
-                console.error("Failed to parse group avatar", e);
-              }
-            }
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#34A853]"></div>
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="flex items-center justify-center ">
+              <div className="bg-white dark:bg-[#0c0c0c] rounded-[35px]  border-[#f1f3f4] dark:border-[#232529] -lg p-8 max-w-md w-full mx-4">
+                {/* Group Avatar */}
+                <div className="flex justify-center mb-4">
+                  <div className="w-20 h-20 rounded-full overflow-hidden bg-zinc-100 flex items-center justify-center text-white font-bold text-3xl -lg">
+                    {(() => {
+                      let groupAvatar = null;
+                      if (groupData.avatar) {
+                        try {
+                          groupAvatar =
+                            typeof groupData.avatar === "string"
+                              ? JSON.parse(groupData.avatar)
+                              : groupData.avatar;
+                        } catch (e) {
+                          console.error("Failed to parse group avatar", e);
+                        }
+                      }
 
-            if (groupAvatar?.beanConfig) {
-              return <BeanHead {...groupAvatar.beanConfig} />;
-            } else {
-              const groupName =
-                groupData.groupName || groupData.name || "Group";
-              return groupName
-                .split(" ")
-                .map((w) => w[0])
-                .join("")
-                .toUpperCase()
-                .slice(0, 2);
-            }
-          })()}
-        </div>
-      </div>
+                      if (groupAvatar?.beanConfig) {
+                        return <BeanHead {...groupAvatar.beanConfig} />;
+                      } else {
+                        const groupName =
+                          groupData.groupName || groupData.name || "Group";
+                        return groupName
+                          .split(" ")
+                          .map((w) => w[0])
+                          .join("")
+                          .toUpperCase()
+                          .slice(0, 2);
+                      }
+                    })()}
+                  </div>
+                </div>
 
-      {/* Group Name */}
-      <h2 className="text-2xl small font-semibold text-center text-[#000000] dark:text-white mb-2">
-        {groupData.groupName || groupData.name}
-      </h2>
+                {/* Group Name */}
+                <h2 className="text-2xl small font-semibold text-center text-[#000000] dark:text-white mb-2">
+                  {groupData.groupName || groupData.name}
+                </h2>
 
-      {/* Group Info */}
-      <div className="space-y-3  mb-6">
-        <div className="flex justify-center">
-          <div className="flex items-center justify-center gap-2 w-fit text-[#5f6368] dark:text-gray-400 bg-gray-50 dark:bg-[#101010] p-3 rounded-xl">
-          <span className="text-sm">
-           <span className="font-medium text-[#202124] dark:text-white">{groupData.members?.length || 0}</span> members
-           
-          </span>
-        </div>
-        </div>
-        
+                {/* Group Info */}
+                <div className="space-y-3  mb-6">
+                  <div className="flex justify-center">
+                    <div className="flex items-center justify-center gap-2 w-fit text-[#5f6368] dark:text-gray-400 bg-gray-50 dark:bg-[#101010] p-3 rounded-xl">
+                      <span className="text-sm">
+                        <span className="font-medium text-[#202124] dark:text-white">
+                          {groupData.members?.length || 0}
+                        </span>{" "}
+                        members
+                      </span>
+                    </div>
+                  </div>
 
-        {/* Created By */}
-        {groupData.createdBy && (
-          <div className="flex justify-center">
-            <div className="flex items-center justify-center gap-2 text-[#5f6368] dark:text-gray-400 bg-gray-50 w-fit dark:bg-[#101010] p-3 rounded-xl">
-            <span className="text-sm flex items-center gap-2">
-              Created by{' '}
-              <span className="font-medium flex items-center  text-[#202124] dark:text-white">
-                {getMemberName(groupData.createdBy)}
-                {groupData.members?.find(m => m.userId === groupData.createdBy)?.role === 'admin' && (
-                  <Shield size={12} className="inline ml-1 text-green-600 dark:text-green-400" />
-                )}
-              </span>
-            </span>
-          </div>
-          </div>
-          
-        )}
+                  {/* Created By */}
+                  {groupData.createdBy && (
+                    <div className="flex justify-center">
+                      <div className="flex items-center justify-center gap-2 text-[#5f6368] dark:text-gray-400 bg-gray-50 w-fit dark:bg-[#101010] p-3 rounded-xl">
+                        <span className="text-sm flex items-center gap-2">
+                          Created by{" "}
+                          <span className="font-medium flex items-center  text-[#202124] dark:text-white">
+                            {getMemberName(groupData.createdBy)}
+                            {groupData.members?.find(
+                              (m) => m.userId === groupData.createdBy,
+                            )?.role === "admin" && (
+                              <Shield
+                                size={12}
+                                className="inline ml-1 text-green-600 dark:text-green-400"
+                              />
+                            )}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
-        {/* Created At */}
-        {groupData.createdAt && (
-          <div className="flex items-center -mt-4 justify-center gap-2 text-[#5f6368] dark:text-gray-400 -50 p-3 rounded-xl">
-            <span className="text-sm flex items-center gap-2">
-              Created on{' '}
-              <span className="font-medium text-[#202124] dark:text-white">
-                {new Date(groupData.createdAt).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
-              </span>
-            </span>
-          </div>
-        )}
+                  {/* Created At */}
+                  {groupData.createdAt && (
+                    <div className="flex items-center -mt-4 justify-center gap-2 text-[#5f6368] dark:text-gray-400 -50 p-3 rounded-xl">
+                      <span className="text-sm flex items-center gap-2">
+                        Created on{" "}
+                        <span className="font-medium text-[#202124] dark:text-white">
+                          {new Date(groupData.createdAt).toLocaleDateString(
+                            "en-US",
+                            {
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                            },
+                          )}
+                        </span>
+                      </span>
+                    </div>
+                  )}
 
-        {/* Group Settings Summary */}
-        {groupData.settings && (
-          <div className="flex flex-wrap gap-2 mt-2">
-            {groupData.settings.onlyAdminsCanMessage && (
-              <span className="inline-flex items-center gap-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-full">
-                <Lock size={12} />
-                Only admins can message
-              </span>
-            )}
-            {groupData.settings.slowMode?.enabled && (
-              <span className="inline-flex items-center gap-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-1 rounded-full">
-                <Snowflake size={12} />
-                Slow mode ({groupData.settings.slowMode.cooldown}s)
-              </span>
-            )}
-          </div>
-        )}
-      </div>
+                  {/* Group Settings Summary */}
+                  {groupData.settings && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {groupData.settings.onlyAdminsCanMessage && (
+                        <span className="inline-flex items-center gap-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-full">
+                          <Lock size={12} />
+                          Only admins can message
+                        </span>
+                      )}
+                      {groupData.settings.slowMode?.enabled && (
+                        <span className="inline-flex items-center gap-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-1 rounded-full">
+                          <Snowflake size={12} />
+                          Slow mode ({groupData.settings.slowMode.cooldown}s)
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-      {/* Message Icon and Text */}
-      
-    </div>
-  </div>
-) : (
-
+                {/* Message Icon and Text */}
+                <div className="text-center">
+                  <p className="text-[#5f6368] dark:text-gray-400 text-sm">
+                    No messages yet. Start the conversation!
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
             Object.entries(groupedMessages).map(([date, dateMessages]) => (
               <div key={date}>
                 <div className="flex justify-center mb-4">
@@ -2532,165 +3245,234 @@ export default function GroupChatInterface({
 
                 {dateMessages.map((msg, index) => {
                   const isOwn = msg.senderId === currentUserId;
-                  const showSenderInfo = !isOwn && (
-                    index === 0 || 
-                    dateMessages[index - 1]?.senderId !== msg.senderId
-                  );
+                  const showSenderInfo =
+                    !isOwn &&
+                    (index === 0 ||
+                      dateMessages[index - 1]?.senderId !== msg.senderId);
                   const messageContent = getMessageContent(msg);
-                  const hasTextContent = messageContent && messageContent.trim().length > 0;
+                  const hasTextContent =
+                    messageContent && messageContent.trim().length > 0;
+
+                  // Check if this is a bill message
+                  const isBillMessage =
+                    msg.billId ||
+                    (messageContent && messageContent.includes("Split Bill"));
 
                   return (
-                    <MessageWrapper key={`${msg.timestamp}-${index}`} message={msg} isOwn={isOwn}>
+                    <MessageWrapper
+                      key={`${msg.timestamp}-${index}`}
+                      message={msg}
+                      isOwn={isOwn}
+                    >
                       <div
-                        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2 transition-all duration-200 ease-out`}
+                        className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-2 transition-all duration-200 ease-out`}
                       >
-                        <div className={`max-w-[70%] ${isOwn ? 'order-2' : 'order-1'}`}>
+                        <div
+                          className={`max-w-[70%] ${isOwn ? "order-2" : "order-1"}`}
+                        >
                           {!isOwn && showSenderInfo && (
                             <div className="flex items-center gap-2 mb-1 ml-1">
                               {renderAvatar(
-                                groupData.members?.find(m => m.userId === msg.senderId)?.avatar,
+                                groupData.members?.find(
+                                  (m) => m.userId === msg.senderId,
+                                )?.avatar,
                                 getMemberName(msg.senderId),
-                                "w-6 h-6"
+                                "w-6 h-6",
                               )}
                               <span className="text-xs flex items-center text-[#5f6368] dark:text-gray-400">
                                 {msg.senderName || getMemberName(msg.senderId)}
-                                {getMemberRole(msg.senderId) === 'admin' && (
+                                {getMemberRole(msg.senderId) === "admin" && (
                                   <span className="ml-1 text-green-600 dark:text-green-400">
                                     <Shield size={10} />
                                   </span>
                                 )}
                                 {onlineMembers.has(msg.senderId) && (
-                                  <span className="ml-1 text-green-600 dark:text-green-400">●</span>
+                                  <span className="ml-1 text-green-600 dark:text-green-400">
+                                    ●
+                                  </span>
                                 )}
                               </span>
                             </div>
                           )}
-                          
+
                           {/* Reply preview if this message is a reply */}
                           {msg.replyTo && renderReplyPreview(msg.replyTo)}
-                          
+
                           {/* Media attachments */}
-{msg.attachments && msg.attachments.length > 0 && !msg.deleted && (
-  <div className={`space-y-2 ${hasTextContent ? 'mb-2' : ''}`}>
-    {msg.attachments.map((att, idx) => {
-      const globalIndex = allAttachments.findIndex(
-        a => a.url === att.url && a.messageId === msg.timestamp
-      );
-      
-      return (
-        <div key={idx} className="relative group">
-          {att.type === 'image' ? (
-            <div className="relative">
-              <img
-                src={att.url}
-                alt="Attachment"
-                className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                onClick={() => handleAttachmentClick(att, globalIndex)}
-              />
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                <button
-                  onClick={() => handleAttachmentClick(att, globalIndex)}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                >
-                  <Maximize2 size={20} />
-                </button>
-              </div>
-              {/* Time overlay for images */}
-              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
-                {formatTime(msg.timestamp)}
-              </div>
-            </div>
-          ) : att.type === 'video' ? (
-            <div className="relative">
-              <video
-                src={att.url}
-                className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer"
-                onClick={() => handleAttachmentClick(att, globalIndex)}
-              />
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                <button
-                  onClick={() => handleAttachmentClick(att, globalIndex)}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                >
-                  <Maximize2 size={20} />
-                </button>
-              </div>
-              {/* Time overlay for videos */}
-              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
-                <span>{formatTime(msg.timestamp)}</span>
-                {renderMessageStatus(msg)}
-              </div>
-            </div>
-          ) : att.type === 'gif' ? (
-            <div className="flex flex-col">
-              <div className="relative">
-                <img
-                  src={att.url}
-                  alt={att.name || 'GIF'}
-                  className="max-w-full rounded-2xl max-h-64 object-cover   transition-opacity"
-                  loading="lazy"
-                />
-                <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
-                  GIF
-                </div>
-              </div>
-              {/* Time and status below GIF */}
-              <div className="flex items-center justify-end gap-1 mt-1 px-1">
-                <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                  {formatTime(msg.timestamp)}
-                </span>
-                {renderMessageStatus(msg)}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      );
-    })}
-  </div>
-)}
-                          
+                          {msg.attachments &&
+                            msg.attachments.length > 0 &&
+                            !msg.deleted && (
+                              <div
+                                className={`space-y-2 ${hasTextContent ? "mb-2" : ""}`}
+                              >
+                                {msg.attachments.map((att, idx) => {
+                                  const globalIndex = allAttachments.findIndex(
+                                    (a) =>
+                                      a.url === att.url &&
+                                      a.messageId === msg.timestamp,
+                                  );
+
+                                  return (
+                                    <div key={idx} className="relative group">
+                                      {att.type === "image" ? (
+                                        <div className="relative">
+                                          <img
+                                            src={att.url}
+                                            alt="Attachment"
+                                            className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                            onClick={() =>
+                                              handleAttachmentClick(
+                                                att,
+                                                globalIndex,
+                                              )
+                                            }
+                                          />
+                                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                                            <button
+                                              onClick={() =>
+                                                handleAttachmentClick(
+                                                  att,
+                                                  globalIndex,
+                                                )
+                                              }
+                                              className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                                            >
+                                              <Maximize2 size={20} />
+                                            </button>
+                                          </div>
+                                          {/* Time overlay for images */}
+                                          <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                                            {formatTime(msg.timestamp)}
+                                          </div>
+                                        </div>
+                                      ) : att.type === "video" ? (
+                                        <div className="relative">
+                                          <video
+                                            src={att.url}
+                                            className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer"
+                                            onClick={() =>
+                                              handleAttachmentClick(
+                                                att,
+                                                globalIndex,
+                                              )
+                                            }
+                                          />
+                                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                                            <button
+                                              onClick={() =>
+                                                handleAttachmentClick(
+                                                  att,
+                                                  globalIndex,
+                                                )
+                                              }
+                                              className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                                            >
+                                              <Maximize2 size={20} />
+                                            </button>
+                                          </div>
+                                          {/* Time overlay for videos */}
+                                          <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
+                                            <span>
+                                              {formatTime(msg.timestamp)}
+                                            </span>
+                                            {renderMessageStatus(msg)}
+                                          </div>
+                                        </div>
+                                      ) : att.type === "gif" ? (
+                                        <div className="flex flex-col">
+                                          <div className="relative">
+                                            <img
+                                              src={att.url}
+                                              alt={att.name || "GIF"}
+                                              className="max-w-full rounded-2xl max-h-64 object-cover   transition-opacity"
+                                              loading="lazy"
+                                            />
+                                            <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                                              GIF
+                                            </div>
+                                          </div>
+                                          {/* Time and status below GIF */}
+                                          <div className="flex items-center justify-end gap-1 mt-1 px-1">
+                                            <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                                              {formatTime(msg.timestamp)}
+                                            </span>
+                                            {renderMessageStatus(msg)}
+                                          </div>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
                           {/* Text content with highlighting */}
                           {hasTextContent && (
                             <div
                               className={`rounded-2xl p-3 ${
-                                msg.deleted 
+                                msg.deleted
                                   ? msg.deletedByAdmin
-                                    ? 'bg-zinc-100 dark:bg-zinc-500/20 italic text-zinc-700 dark:text-zinc-400  border-amber-200 dark:border-amber-800'
-                                    : 'bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400'
-                                  : isOwn
-                                  ? 'bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none'
-                                  : 'bg-white dark:bg-[#101010] dark:text-white border-[#dadce0] dark:border-[#232529] rounded-tl-none'
+                                    ? "bg-zinc-100 dark:bg-zinc-500/20 italic text-zinc-700 dark:text-zinc-400 border-amber-200 dark:border-amber-800"
+                                    : "bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400"
+                                  : isBillMessage
+                                    ? "p-0 bg-transparent" // Remove background for bill messages since card has its own
+                                    : isOwn
+                                      ? "bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none"
+                                      : "bg-white dark:bg-[#101010] dark:text-white  border-[#dadce0] dark:border-[#232529] rounded-tl-none"
                               }`}
                             >
-                              <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
-                                {msg.deleted ? (
-                                  msg.deletedByAdmin ? (
-                                    <span>
-                                      This message was deleted by admin 
-                                      <span className="font-semibold ml-1">
-                                        ({msg.deletedByName || 'Admin'})
+                              {isBillMessage ? (
+                                renderMessageWithMentions(
+                                  messageContent,
+                                  highlightedText,
+                                  true,
+                                  msg.billId,
+                                  msg.billCurrency,
+                                  msg.billData,
+                                  msg.billCancelled // Pass the cancelled flag
+                                )
+                              ) : (
+                                <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                                  {msg.deleted ? (
+                                    msg.deletedByAdmin ? (
+                                      <span>
+                                        This message was deleted by admin
+                                        <span className="font-semibold ml-1">
+                                          ({msg.deletedByName || "Admin"})
+                                        </span>
                                       </span>
-                                    </span>
+                                    ) : (
+                                      msg.content || "This message was deleted"
+                                    )
                                   ) : (
-                                    msg.content || "This message was deleted"
-                                  )
-                                ) : (
-                                  renderMessageWithMentions(messageContent, highlightedText)
-                                )}
-                                {msg.edited && !msg.deleted && (
-                                  <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">(edited)</span>
-                                )}
-                              </p>
-                              {/* Time and status inside text bubble */}
-                              <div className="flex items-center justify-end gap-1 mt-1">
-                                <p className={`text-[10px] ${isOwn ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                                  {formatTime(msg.timestamp)}
+                                    renderMessageWithMentions(
+                                      messageContent,
+                                      highlightedText,
+                                      false
+                                    )
+                                  )}
+                                  {msg.edited && !msg.deleted && (
+                                    <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">
+                                      (edited)
+                                    </span>
+                                  )}
                                 </p>
-                                {renderMessageStatus(msg)}
-                              </div>
+                              )}
+                              
+                              {/* Time and status inside text bubble */}
+                              {!isBillMessage && (
+                                <div className="flex items-center justify-end gap-1 mt-2">
+                                  <p
+                                    className={`text-[10px] ${isOwn ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"}`}
+                                  >
+                                    {formatTime(msg.timestamp)}
+                                  </p>
+                                  {renderMessageStatus(msg)}
+                                </div>
+                              )}
                             </div>
                           )}
-                          
+
                           {/* Reactions */}
                           {msg.reactions && msg.reactions.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1 px-2">
@@ -2698,39 +3480,49 @@ export default function GroupChatInterface({
                                 msg.reactions.reduce((acc, r) => {
                                   acc[r.emoji] = (acc[r.emoji] || 0) + 1;
                                   return acc;
-                                }, {})
+                                }, {}),
                               ).map(([emoji, count]) => (
                                 <span
                                   key={emoji}
                                   className="text-xs bg-gray-100 dark:bg-[#101010] rounded-full px-2 py-1 flex items-center gap-1"
                                 >
                                   <span>{emoji}</span>
-                                  {count > 1 && <span className="text-gray-600 dark:text-gray-400">{count}</span>}
+                                  {count > 1 && (
+                                    <span className="text-gray-600 dark:text-gray-400">
+                                      {count}
+                                    </span>
+                                  )}
                                 </span>
                               ))}
                             </div>
                           )}
                         </div>
-                        
+
                         {/* Reply button - on the left for own messages */}
                         {!msg.deleted && isOwn && (
                           <button
                             onClick={() => handleReplyToMessage(msg)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full -lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 mr-2 flex-shrink-0 self-center order-1"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full hover:bg-gray-100 dark:hover:bg-[#101010] z-10 mr-2 flex-shrink-0 self-center order-1"
                             title="Reply to this message"
                           >
-                            <Reply size={14} className="text-[#5f6368] dark:text-gray-400" />
+                            <Reply
+                              size={14}
+                              className="text-[#5f6368] dark:text-gray-400"
+                            />
                           </button>
                         )}
-                        
+
                         {/* Reply button - on the right for others' messages */}
                         {!msg.deleted && !isOwn && (
                           <button
                             onClick={() => handleReplyToMessage(msg)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full -lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 ml-2 flex-shrink-0 self-center order-3"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full hover:bg-gray-100 dark:hover:bg-[#101010] z-10 ml-2 flex-shrink-0 self-center order-3"
                             title="Reply to this message"
                           >
-                            <Reply size={14} className="text-[#5f6368] dark:text-gray-400" />
+                            <Reply
+                              size={14}
+                              className="text-[#5f6368] dark:text-gray-400"
+                            />
                           </button>
                         )}
                       </div>
@@ -2767,7 +3559,9 @@ export default function GroupChatInterface({
         {editingMessage && (
           <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-900/30 flex items-center gap-2">
             <div className="flex-1">
-              <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Editing message</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">
+                Editing message
+              </p>
               <input
                 type="text"
                 value={editText}
@@ -2817,21 +3611,28 @@ export default function GroupChatInterface({
 
           {/* Slash Command Suggestions */}
           {showSlashSuggestions && (
-            <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-xl shadow-lg z-50">
+            <div className="absolute bottom-full left-4 mb-2 w-64 bg-white dark:bg-[#0c0c0c]  border-zinc-200 dark:border-[#232529] rounded-2xl z-50">
               <div className="p-2">
                 <div className="text-xs text-[#5f6368] dark:text-gray-400 px-3 py-2">
                   Available commands
                 </div>
                 <button
-                  onClick={() => handleSlashCommand('/split')}
+                  onClick={() => handleSlashCommand("/split")}
                   className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-lg transition-colors"
                 >
                   <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                    <DollarSign size={16} className="text-green-600 dark:text-green-400" />
+                    <DollarSign
+                      size={16}
+                      className="text-green-600 dark:text-green-400"
+                    />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="text-sm font-medium text-[#202124] dark:text-white">/split</p>
-                    <p className="text-xs text-[#5f6368] dark:text-gray-400">Split a bill with group members</p>
+                    <p className="text-sm font-medium text-[#202124] dark:text-white">
+                      /split
+                    </p>
+                    <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                      Split a bill with group members
+                    </p>
                   </div>
                 </button>
               </div>
@@ -2857,7 +3658,10 @@ export default function GroupChatInterface({
               title="Enhance with AI"
               disabled={!isConnected || !roomJoined || !canSendMessage()}
             >
-              <Sparkles size={20} className="text-purple-600 dark:text-purple-400" />
+              <Sparkles
+                size={20}
+                className="text-purple-600 dark:text-purple-400"
+              />
               {newMessage.trim() && (
                 <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
               )}
@@ -2879,24 +3683,32 @@ export default function GroupChatInterface({
                   !canSendMessage()
                 }
               >
-                <Paperclip size={20} className="text-[#5f6368] dark:text-gray-400" />
+                <Paperclip
+                  size={20}
+                  className="text-[#5f6368] dark:text-gray-400"
+                />
               </button>
 
               {showAttachments && (
-                <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px] -lg">
+                <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px]">
                   <div className="space-y-2">
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
                     >
                       <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
-                        <ImageIcon size={20} className="text-blue-600 dark:text-blue-400" />
+                        <ImageIcon
+                          size={20}
+                          className="text-blue-600 dark:text-blue-400"
+                        />
                       </div>
                       <div className="flex-1 text-left">
                         <p className="text-sm font-medium text-[#202124] dark:text-white">
                           Send Image
                         </p>
-                        <p className="text-xs text-[#5f6368] dark:text-gray-400">Share photos</p>
+                        <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                          Share photos
+                        </p>
                       </div>
                     </button>
 
@@ -2905,13 +3717,18 @@ export default function GroupChatInterface({
                       className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
                     >
                       <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
-                        <Video size={20} className="text-red-600 dark:text-red-400" />
+                        <Video
+                          size={20}
+                          className="text-red-600 dark:text-red-400"
+                        />
                       </div>
                       <div className="flex-1 text-left">
                         <p className="text-sm font-medium text-[#202124] dark:text-white">
                           Send Video
                         </p>
-                        <p className="text-xs text-[#5f6368] dark:text-gray-400">Share videos</p>
+                        <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                          Share videos
+                        </p>
                       </div>
                     </button>
 
@@ -2924,11 +3741,17 @@ export default function GroupChatInterface({
                       className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
                     >
                       <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
-                        <span className="text-xl font-bold text-purple-600 dark:text-purple-400">GIF</span>
+                        <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                          GIF
+                        </span>
                       </div>
                       <div className="flex-1 text-left">
-                        <p className="text-sm font-medium text-[#202124] dark:text-white">Send GIF</p>
-                        <p className="text-xs text-[#5f6368] dark:text-gray-400">Animated GIFs</p>
+                        <p className="text-sm font-medium text-[#202124] dark:text-white">
+                          Send GIF
+                        </p>
+                        <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                          Animated GIFs
+                        </p>
                       </div>
                     </button>
                   </div>
@@ -2947,9 +3770,9 @@ export default function GroupChatInterface({
 
             {/* GIF Picker */}
             {showGIFPicker && (
-              <div 
+              <div
                 ref={gifPickerRef}
-                className="absolute bottom-20 left-0 z-50"
+                className="absolute bottom-20 left-4 z-50"
               >
                 <GIFPicker
                   onSelect={handleSendGIF}
@@ -2981,7 +3804,11 @@ export default function GroupChatInterface({
                     searchDisabled
                     skinTonesDisabled
                     previewConfig={{ showPreview: false }}
-                    theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'}
+                    theme={
+                      document.documentElement.classList.contains("dark")
+                        ? "dark"
+                        : "light"
+                    }
                   />
                 </div>
               )}
@@ -3000,12 +3827,15 @@ export default function GroupChatInterface({
               onKeyPress={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  
+
                   // Check for slash command
-                  if (newMessage.startsWith('/') && handleSlashCommand(newMessage)) {
+                  if (
+                    newMessage.startsWith("/") &&
+                    handleSlashCommand(newMessage)
+                  ) {
                     return;
                   }
-                  
+
                   if (editingMessage) {
                     handleEditMessage();
                   } else if (attachments.length > 0) {
@@ -3119,10 +3949,10 @@ export default function GroupChatInterface({
         onClose={() => setShowSplitBillModal(false)}
         group={groupData}
         currentUserId={currentUserId}
-        onSave={(bill) => {
-          console.log('Bill created:', bill);
-          // Optionally refresh messages or show a notification
-        }}
+        onSave={handleBillCreated}
+        socket={socket}
+        isConnected={isConnected}
+        roomId={roomId}
       />
 
       {/* Modals */}
@@ -3135,7 +3965,9 @@ export default function GroupChatInterface({
             setEditingMessage(selectedMessage);
             setEditText(selectedMessage.content);
           }}
-          onDelete={(forEveryone) => handleDeleteMessage(selectedMessage, forEveryone)}
+          onDelete={(forEveryone) =>
+            handleDeleteMessage(selectedMessage, forEveryone)
+          }
           onReact={(emoji) => handleReactToMessage(selectedMessage, emoji)}
           onCopy={handleCopyMessage}
           onMessageInfo={() => {
@@ -3216,28 +4048,29 @@ export default function GroupChatInterface({
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
-        
+
         mark {
           background-color: #fbbf24;
           color: inherit;
           padding: 0 2px;
           border-radius: 2px;
         }
-        
+
         .dark mark {
           background-color: rgba(245, 158, 11, 0.5);
         }
-        
+
         .highlight-message {
           animation: highlight-pulse 2s ease-in-out;
         }
-        
+
         .highlight-reply-message {
           animation: highlight-reply-pulse 2s ease-in-out;
         }
-        
+
         @keyframes highlight-pulse {
-          0%, 100% {
+          0%,
+          100% {
             opacity: 1;
           }
           50% {
@@ -3245,9 +4078,10 @@ export default function GroupChatInterface({
             background-color: rgba(245, 158, 11, 0.1);
           }
         }
-        
+
         @keyframes highlight-reply-pulse {
-          0%, 100% {
+          0%,
+          100% {
             opacity: 1;
           }
           50% {

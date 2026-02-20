@@ -1,3 +1,5 @@
+// src/app/api/chat/groups/route.js
+
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { customAlphabet } from 'nanoid';
@@ -78,7 +80,7 @@ export async function GET(request) {
 
     const memberUsers = await users.find(
       { userId: { $in: allMemberIds } },
-      { projection: { userId: 1, name: 1, preferredName: 1, username: 1, avatar: 1 } }
+        { projection: { userId: 1, name: 1, preferredName: 1, username: 1, avatar: 1 } }
     ).toArray();
 
     const memberMap = {};
@@ -306,32 +308,7 @@ export async function PATCH(request) {
 
     console.log('✅ Group updated successfully:', groupId);
 
-    // Emit socket event for real-time update (if socket.io is available)
-    try {
-      const { getIO } = require('@/lib/socket');
-      const io = getIO();
-      if (io) {
-        // Emit to all members in the group
-        io.to(groupId).emit('group-settings-updated', {
-          groupId,
-          updates: {
-            ...(updates.name && { name: updates.name }),
-            ...(updates.description && { description: updates.description }),
-            ...(updates.avatar && { avatar: updates.avatar }),
-            ...(updates.allowMemberInvite !== undefined && { allowMemberInvite: updates.allowMemberInvite }),
-            ...(updates.allowMemberPost !== undefined && { allowMemberPost: updates.allowMemberPost }),
-            ...(updates.onlyAdminsCanMessage !== undefined && { onlyAdminsCanMessage: updates.onlyAdminsCanMessage }),
-            ...(updates.slowMode !== undefined && { slowMode: updates.slowMode })
-          },
-          updatedBy: userId,
-          timestamp: new Date().toISOString()
-        });
-        console.log('📡 Emitted group-settings-updated event to room:', groupId);
-      }
-    } catch (socketError) {
-      console.log('Socket.io not available or error emitting:', socketError);
-      // Don't fail the request if socket emission fails
-    }
+    // REMOVED THE SOCKET EMISSION CODE - let the client handle socket events
 
     return NextResponse.json({
       success: true,
@@ -383,6 +360,7 @@ export async function DELETE(request) {
     }
 
     if (action === 'delete') {
+      // Check if user is admin
       if (member.role !== 'admin') {
         return NextResponse.json(
           { error: 'Only admins can delete the group' },
@@ -393,55 +371,37 @@ export async function DELETE(request) {
       await groups.deleteOne({ groupId });
       console.log('✅ Group deleted:', groupId);
 
-      // Emit socket event for group deletion
-      try {
-        const { getIO } = require('@/lib/socket');
-        const io = getIO();
-        if (io) {
-          io.to(groupId).emit('group-deleted', {
-            groupId,
-            deletedBy: userId,
-            timestamp: new Date().toISOString()
-          });
-        }
-      } catch (socketError) {
-        console.log('Socket.io not available or error emitting:', socketError);
-      }
+      // REMOVED THE SOCKET EMISSION CODE - let the client handle socket events
 
       return NextResponse.json({
         success: true,
         message: 'Group deleted successfully'
       });
+
     } else if (action === 'leave') {
+      // Remove user from members
       const updatedMembers = group.members.filter(m => m.userId !== userId);
 
+      // If no members left, delete the group
       if (updatedMembers.length === 0) {
         await groups.deleteOne({ groupId });
         console.log('✅ Group deleted (last member left):', groupId);
         
-        // Emit socket event for group deletion
-        try {
-          const { getIO } = require('@/lib/socket');
-          const io = getIO();
-          if (io) {
-            io.to(groupId).emit('group-deleted', {
-              groupId,
-              deletedBy: userId,
-              timestamp: new Date().toISOString()
-            });
-          }
-        } catch (socketError) {
-          console.log('Socket.io not available or error emitting:', socketError);
-        }
-
         return NextResponse.json({
           success: true,
           message: 'Left group successfully (group deleted)'
         });
       }
 
+      // If the leaving user was an admin, promote the next member
       if (member.role === 'admin') {
-        updatedMembers[0].role = 'admin';
+        // Find the longest standing member to promote
+        const sortedMembers = [...updatedMembers].sort(
+          (a, b) => new Date(a.joinedAt) - new Date(b.joinedAt)
+        );
+        if (sortedMembers.length > 0) {
+          sortedMembers[0].role = 'admin';
+        }
       }
 
       await groups.updateOne(
@@ -456,29 +416,16 @@ export async function DELETE(request) {
 
       console.log('✅ User left group:', userId, groupId);
 
-      // Emit socket event for member left
-      try {
-        const { getIO } = require('@/lib/socket');
-        const io = getIO();
-        if (io) {
-          io.to(groupId).emit('member-left', {
-            groupId,
-            userId,
-            userName: member.userName,
-            timestamp: new Date().toISOString()
-          });
-        }
-      } catch (socketError) {
-        console.log('Socket.io not available or error emitting:', socketError);
-      }
+      // REMOVED THE SOCKET EMISSION CODE - let the client handle socket events
 
       return NextResponse.json({
         success: true,
         message: 'Left group successfully'
       });
+
     } else {
       return NextResponse.json(
-        { error: 'Invalid action' },
+        { error: 'Invalid action. Use "delete" or "leave"' },
         { status: 400 }
       );
     }
@@ -486,7 +433,7 @@ export async function DELETE(request) {
   } catch (error) {
     console.error('Error deleting/leaving group:', error);
     return NextResponse.json(
-      { error: 'Failed to process request' },
+      { error: 'Failed to process request: ' + error.message },
       { status: 500 }
     );
   }

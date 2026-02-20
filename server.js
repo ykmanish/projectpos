@@ -29,7 +29,6 @@ app.prepare().then(() => {
   const groupMembers = new Map(); // roomId -> Set of userIds
   const undeliveredMessages = new Map(); // userId -> array of messages (for DMs)
   const undeliveredGroupMessages = new Map(); // roomId -> Map of userId -> array of messages
-  const pendingDeliveries = new Map(); // userId -> Set of roomIds with undelivered messages
 
   io.on('connection', (socket) => {
     console.log('✅ New client connected:', socket.id);
@@ -38,7 +37,6 @@ app.prepare().then(() => {
       console.log(`👤 User ${userId} is now online`);
       
       const wasOnline = onlineUsers.has(userId);
-      const previousSocketId = userSockets.get(userId);
       
       onlineUsers.set(userId, { 
         socketId: socket.id, 
@@ -194,7 +192,7 @@ app.prepare().then(() => {
       console.log(`✅ Member join notification broadcast to room ${data.roomId}`);
     });
 
-    // NEW: Handle group settings updates
+    // Handle group settings updates
     socket.on('group-settings-updated', (data) => {
       console.log('⚙️ Group settings updated:', data);
       console.log('Room:', data.roomId);
@@ -217,6 +215,97 @@ app.prepare().then(() => {
       });
       
       console.log(`✅ Group settings update broadcast to room ${data.roomId}`);
+    });
+
+    // ========== BILL EVENT HANDLERS ==========
+    
+    // Handle bill creation
+    socket.on('bill-created', (data) => {
+      console.log('💰 Bill created:', data.bill?.id || data.billId);
+      console.log('Room:', data.roomId);
+      console.log('Created by:', data.createdBy);
+      
+      // Broadcast to all members in the group including sender
+      io.to(data.roomId).emit('bill-created', {
+        bill: data.bill,
+        roomId: data.roomId,
+        createdBy: data.createdBy,
+        timestamp: data.timestamp
+      });
+      
+      console.log(`✅ Bill creation broadcast to room ${data.roomId}`);
+    });
+
+    // Handle bill updates
+    socket.on('bill-updated', (data) => {
+      console.log('💰 Bill updated:', data.bill?.id || data.billId);
+      console.log('Room:', data.roomId);
+      console.log('Updated by:', data.updatedBy);
+      
+      // Broadcast to all members in the group including sender
+      io.to(data.roomId).emit('bill-updated', {
+        bill: data.bill,
+        roomId: data.roomId,
+        updatedBy: data.updatedBy,
+        timestamp: data.timestamp
+      });
+      
+      console.log(`✅ Bill update broadcast to room ${data.roomId}`);
+    });
+
+    // Handle bill message updates (for chat UI)
+    socket.on('bill-message-updated', (data) => {
+      console.log('💰 Bill message updated:', data.billId);
+      console.log('Room:', data.roomId);
+      console.log('Updated by:', data.updatedBy);
+      console.log('Bill Data:', data.billData);
+      
+      // Broadcast to all members in the group including sender
+      io.to(data.roomId).emit('bill-message-updated', {
+        billId: data.billId,
+        roomId: data.roomId,
+        billData: data.billData,
+        updatedBy: data.updatedBy,
+        timestamp: data.timestamp
+      });
+      
+      console.log(`✅ Bill message update broadcast to room ${data.roomId}`);
+    });
+
+    // Handle bill cancellation
+    socket.on('bill-cancelled', (data) => {
+      console.log('🚫 Bill cancelled:', data.billId);
+      console.log('Room:', data.roomId);
+      console.log('Cancelled by:', data.cancelledBy);
+      
+      // Broadcast to all members in the group including sender
+      io.to(data.roomId).emit('bill-cancelled', {
+        billId: data.billId,
+        roomId: data.roomId,
+        cancelledBy: data.cancelledBy,
+        timestamp: data.timestamp
+      });
+      
+      console.log(`✅ Bill cancellation broadcast to room ${data.roomId}`);
+    });
+
+    // Handle direct bill updates (backup)
+    socket.on('bill-direct-update', (data) => {
+      console.log('💰 Direct bill update received:', data.billId);
+      console.log('Room:', data.roomId);
+      console.log('Updated by:', data.updatedBy);
+      console.log('Bill data:', data.bill);
+      
+      // Broadcast to all members in the group including sender
+      io.to(data.roomId).emit('bill-direct-update', {
+        billId: data.billId,
+        roomId: data.roomId,
+        bill: data.bill,
+        updatedBy: data.updatedBy,
+        timestamp: data.timestamp
+      });
+      
+      console.log(`✅ Direct bill update broadcast to room ${data.roomId}`);
     });
 
     socket.on('send-message', (message) => {
@@ -296,7 +385,7 @@ app.prepare().then(() => {
         
         console.log('✅ Group message processed');
       } else {
-        // Direct message handling (existing code)
+        // Direct message handling
         const receiverOnline = onlineUsers.has(message.receiverId);
         
         const messageWithDelivery = {

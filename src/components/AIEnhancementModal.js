@@ -1,5 +1,4 @@
 // components/AIEnhancementModal.js
-
 'use client';
 
 import { useState, useEffect, useRef } from "react";
@@ -15,7 +14,41 @@ import {
   Type,
   Check,
   Copy,
+  ChevronLeft,
+  Wand2,
+  MessageSquare,
 } from "lucide-react";
+
+// ─── Card Color Palette (matches reference design) ─────────────────
+const CARD_PALETTES = [
+  { bg: '#FF8C78', track: '#c96b58', bar: '#1a0a08', text: '#1a0a08', sub: '#7a3028' },
+  { bg: '#FFB8C6', track: '#d98898', bar: '#1a0810', text: '#1a0810', sub: '#7a3050' },
+  { bg: '#7DCFCC', track: '#4eaaa7', bar: '#082020', text: '#082020', sub: '#1a5a58' },
+  { bg: '#F5E09A', track: '#c8b860', bar: '#1a1408', text: '#1a1408', sub: '#6a5020' },
+  { bg: '#A8D8FF', track: '#70b0e0', bar: '#081220', text: '#081220', sub: '#204870' },
+  { bg: '#B8E8B0', track: '#80c078', bar: '#081408', text: '#081408', sub: '#205820' },
+  { bg: '#E0C8F8', track: '#b090d0', bar: '#120820', text: '#120820', sub: '#503878' },
+  { bg: '#FFD4A0', track: '#d8a060', bar: '#1a0e04', text: '#1a0e04', sub: '#7a4818' },
+];
+
+const getCardPalette = (title = '') => {
+  const idx = (title.charCodeAt(0) || 0) % CARD_PALETTES.length;
+  return CARD_PALETTES[idx];
+};
+
+// ─── Quick Style Button Component ─────────────────────────────────
+const QuickStyleButton = ({ icon, label, onClick, disabled, palette }) => {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm text-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+    >
+      <span style={{ color: palette.text }}>{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
+};
 
 export default function AIEnhancementModal({
   isOpen,
@@ -29,6 +62,8 @@ export default function AIEnhancementModal({
 }) {
   const [prompt, setPrompt] = useState("");
   const [copied, setCopied] = useState(false);
+  const [showEnhanced, setShowEnhanced] = useState(false);
+  
   const modalRef = useRef(null);
   const promptInputRef = useRef(null);
 
@@ -46,6 +81,7 @@ export default function AIEnhancementModal({
     if (isOpen) {
       setPrompt("");
       setCopied(false);
+      setShowEnhanced(false);
       setTimeout(() => {
         promptInputRef.current?.focus();
       }, 100);
@@ -53,19 +89,10 @@ export default function AIEnhancementModal({
   }, [isOpen]);
 
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (modalRef.current && !modalRef.current.contains(event.target)) {
-        onClose();
-      }
+    if (enhancedText) {
+      setShowEnhanced(true);
     }
-
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isOpen, onClose]);
+  }, [enhancedText]);
 
   const handleQuickStyle = (stylePrompt) => {
     setPrompt(stylePrompt);
@@ -104,47 +131,62 @@ export default function AIEnhancementModal({
     }
   };
 
+  const handleClose = () => {
+    setPrompt("");
+    setCopied(false);
+    setShowEnhanced(false);
+    onClose();
+  };
+
   if (!isOpen) return null;
 
+  const palette = getCardPalette('AI Enhancement');
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[60] p-0 sm:p-4 animate-fade-in">
       <div
         ref={modalRef}
-        className="bg-white dark:bg-[#0c0c0c] rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-hidden shadow-2xl border border-purple-200 dark:border-none"
+        className="bg-white rounded-t-[2rem] sm:rounded-[2rem] w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl"
       >
         {/* Header */}
-        <div className="p-6 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-              <Sparkles size={20} className="text-purple-600 dark:text-purple-400" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-[#202124] dark:text-white">
-                AI Message Enhancement
-              </h3>
-              <p className="text-xs text-[#5f6368] dark:text-gray-400">
-                Transform your message with AI
-              </p>
-            </div>
-          </div>
+        <div className="flex items-center justify-between px-5 pt-6 pb-4 flex-shrink-0">
+         
+          <h2 className="text-lg font-bold text-gray-900">AI Enhancement</h2>
           <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+            onClick={handleClose}
+            className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors"
           >
-            <X size={20} className="text-[#5f6368] dark:text-gray-400" />
+            <X size={16} className="text-gray-700" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)] space-y-6">
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-6 min-h-0">
+          {/* Info Card */}
+          <div className="rounded-3xl p-5" style={{ backgroundColor: palette.bg }}>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/30 flex items-center justify-center">
+                <Wand2 size={24} style={{ color: palette.text }} />
+              </div>
+              <div>
+                <h3 className="text-xl font-extrabold" style={{ color: palette.text }}>
+                  Transform Your Message
+                </h3>
+                <p className="text-sm mt-1" style={{ color: palette.sub }}>
+                  Use AI to enhance your message
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Original Message */}
           {originalMessage && (
-            <div>
-              <label className="text-xs font-medium text-[#5f6368] dark:text-gray-400 mb-2 block">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 px-1">
                 Original Message
               </label>
-              <div className="p-4 bg-gray-50 dark:bg-[#101010] rounded-2xl  border-[#dadce0] dark:border-[#232529]">
-                <p className="text-[#202124] dark:text-white whitespace-pre-wrap break-words">
+              <div className="p-4 bg-gray-50 rounded-2xl  border-gray-200">
+                <p className="text-gray-700 whitespace-pre-wrap break-words text-sm">
                   {originalMessage}
                 </p>
               </div>
@@ -152,28 +194,27 @@ export default function AIEnhancementModal({
           )}
 
           {/* Quick Styles */}
-          <div>
-            <label className="text-xs font-medium text-[#5f6368] dark:text-gray-400 mb-3 block">
+          <div className="space-y-3">
+            <label className="text-sm font-medium text-gray-700 px-1">
               Quick Enhancements
             </label>
             <div className="flex flex-wrap gap-2">
               {quickStyles.map((style, index) => (
-                <button
+                <QuickStyleButton
                   key={index}
+                  icon={style.icon}
+                  label={style.label}
                   onClick={() => handleQuickStyle(style.prompt)}
                   disabled={isProcessing}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-[#101010] hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full text-sm text-[#202124] dark:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-transparent hover:border-purple-300 dark:hover:border-purple-700"
-                >
-                  {style.icon}
-                  <span>{style.label}</span>
-                </button>
+                  palette={palette}
+                />
               ))}
             </div>
           </div>
 
           {/* Custom Prompt */}
-          <div>
-            <label className="text-xs font-medium text-[#5f6368] dark:text-gray-400 mb-2 block">
+          <div className="space-y-2">
+            <label className="text-sm  font-medium text-gray-700 px-1">
               Custom Prompt
             </label>
             <textarea
@@ -181,12 +222,12 @@ export default function AIEnhancementModal({
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="E.g., Make this more enthusiastic, Add emojis, Write it like a professional, etc."
-              className="w-full px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:outline-none transition-all resize-none"
+              placeholder="E.g., Make this more enthusiastic, Add emojis, Write it like a professional..."
+              className="w-full px-5 py-4 bg-gray-50 border border-gray-100 text-gray-900 rounded-3xl focus:border-black focus:ring-1 focus:ring-black outline-none transition-all resize-none"
               rows={3}
               disabled={isProcessing}
             />
-            <p className="text-xs text-[#5f6368] dark:text-gray-400 mt-1">
+            <p className="text-xs text-gray-400 px-1">
               Press Ctrl+Enter to enhance
             </p>
           </div>
@@ -195,16 +236,16 @@ export default function AIEnhancementModal({
           <button
             onClick={handleCustomEnhance}
             disabled={isProcessing || (!originalMessage && !prompt)}
-            className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-200 dark:disabled:bg-[#232529] text-white disabled:text-gray-400 dark:disabled:text-gray-600 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2"
+            className="w-full py-4 bg-black hover:bg-gray-900 active:scale-[0.98] text-white rounded-2xl font-bold text-[15px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isProcessing ? (
               <>
-                <RefreshCw size={20} className="animate-spin" />
-                <span>Enhancing with AI...</span>
+                <RefreshCw size={18} className="animate-spin" />
+                <span>Enhancing...</span>
               </>
             ) : (
               <>
-                <Sparkles size={20} />
+                <Sparkles size={18} strokeWidth={2.5} />
                 <span>Enhance Message</span>
               </>
             )}
@@ -212,21 +253,21 @@ export default function AIEnhancementModal({
 
           {/* Error Message */}
           {error && (
-            <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl">
-              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+            <div className="p-4 bg-red-50 rounded-2xl animate-fade-in">
+              <p className="text-sm text-red-600 text-center font-medium">{error}</p>
             </div>
           )}
 
           {/* Enhanced Result */}
-          {enhancedText && (
-            <div className="border-t border-[#f1f3f4] dark:border-[#181A1E] pt-6">
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-medium text-[#5f6368] dark:text-gray-400">
+          {enhancedText && showEnhanced && (
+            <div className="space-y-3 animate-slide-up">
+              <div className="flex items-center justify-between px-1">
+                <label className="text-sm font-medium text-gray-700">
                   Enhanced Message
                 </label>
                 <button
                   onClick={handleCopyEnhanced}
-                  className="flex items-center gap-1 text-xs text-[#5f6368] dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
+                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   {copied ? (
                     <>
@@ -241,24 +282,28 @@ export default function AIEnhancementModal({
                   )}
                 </button>
               </div>
-              <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl border border-purple-200 dark:border-purple-900/30">
-                <p className="text-[#202124] dark:text-white whitespace-pre-wrap break-words mb-4">
-                  {enhancedText}
-                </p>
-                <div className="flex justify-end gap-2">
+
+              <div className="rounded-3xl p-5" style={{ backgroundColor: palette.bg }}>
+                <div className="bg-white/30 backdrop-blur-sm rounded-2xl p-4 mb-4">
+                  <p className="text-gray-900 whitespace-pre-wrap break-words text-sm">
+                    {enhancedText}
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
                   <button
                     onClick={handleApply}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm transition-colors flex items-center gap-2"
+                    className="flex-1 py-3 bg-black hover:bg-gray-900 text-white rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
                   >
-                    <Check size={16} />
-                    <span>Use This Message</span>
+                    <Check size={16} strokeWidth={2.5} />
+                    Use This Message
                   </button>
                   <button
                     onClick={() => {
+                      setShowEnhanced(false);
                       setPrompt("");
-                      onClose();
                     }}
-                    className="px-4 py-2 border border-[#dadce0] dark:border-[#232529] hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl text-sm transition-colors"
+                    className="flex-1 py-3 bg-white/30 hover:bg-white/40 text-gray-900 rounded-xl font-medium text-sm transition-all backdrop-blur-sm active:scale-[0.98]"
                   >
                     Discard
                   </button>
@@ -266,8 +311,39 @@ export default function AIEnhancementModal({
               </div>
             </div>
           )}
+
+          {/* Tip */}
+          <div className="flex items-start gap-2 p-3 bg-gray-50 rounded-2xl">
+            <MessageSquare size={16} className="text-gray-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-gray-400">
+              Tip: You can ask the AI to adjust tone, add emojis, fix grammar, or completely rewrite your message in a different style.
+            </p>
+          </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slide-up {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.2s ease-out;
+        }
+        .animate-slide-up {
+          animation: slide-up 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 }

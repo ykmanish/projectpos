@@ -1,14 +1,203 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { 
   X, Users, Copy, Check, Shield, ShieldCheck, UserPlus,
   UserMinus, Crown, Lock, MessageSquare, Settings, CircleMinus,
-  RefreshCw, Edit2, Save, LogOut, Trash2, AlertTriangle
+  RefreshCw, Edit2, Save, LogOut, Trash2, AlertTriangle,
+  ChevronLeft, MoreVertical, User, Mail, Calendar
 } from 'lucide-react';
 import { BeanHead } from 'beanheads';
 import Avatar from './Avatar';
+
+// ─── Card Color Palette (matches reference design) ─────────────────
+const CARD_PALETTES = [
+  { bg: '#FF8C78', track: '#c96b58', bar: '#1a0a08', text: '#1a0a08', sub: '#7a3028' },
+  { bg: '#FFB8C6', track: '#d98898', bar: '#1a0810', text: '#1a0810', sub: '#7a3050' },
+  { bg: '#7DCFCC', track: '#4eaaa7', bar: '#082020', text: '#082020', sub: '#1a5a58' },
+  { bg: '#F5E09A', track: '#c8b860', bar: '#1a1408', text: '#1a1408', sub: '#6a5020' },
+  { bg: '#A8D8FF', track: '#70b0e0', bar: '#081220', text: '#081220', sub: '#204870' },
+  { bg: '#B8E8B0', track: '#80c078', bar: '#081408', text: '#081408', sub: '#205820' },
+  { bg: '#E0C8F8', track: '#b090d0', bar: '#120820', text: '#120820', sub: '#503878' },
+  { bg: '#FFD4A0', track: '#d8a060', bar: '#1a0e04', text: '#1a0e04', sub: '#7a4818' },
+];
+
+const getCardPalette = (title = '') => {
+  const idx = (title.charCodeAt(0) || 0) % CARD_PALETTES.length;
+  return CARD_PALETTES[idx];
+};
+
+// Helper function to parse avatar (BeanHead config)
+const parseAvatar = (avatarData) => {
+  if (!avatarData) return null;
+  
+  try {
+    if (typeof avatarData === 'object') return avatarData;
+    const parsed = JSON.parse(avatarData);
+    return parsed;
+  } catch (e) {
+    console.error('Failed to parse avatar:', e);
+    return null;
+  }
+};
+
+// Helper function to get beanConfig from avatar
+const getBeanConfig = (avatar) => {
+  const parsed = parseAvatar(avatar);
+  
+  if (!parsed) return null;
+  
+  if (typeof parsed === 'object' && parsed.beanConfig) {
+    return parsed.beanConfig;
+  }
+  
+  if (typeof parsed === 'object' && (parsed.mask || parsed.eyes || parsed.mouth)) {
+    return parsed;
+  }
+  
+  return null;
+};
+
+// ─── Member Card Dropdown Menu Component ─────────────────────────
+const MemberCardDropdown = ({ member, currentUserId, isAdmin, isLastAdmin, onAction, onClose }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Don't show dropdown for current user or if not admin
+  if (member.userId === currentUserId || !isAdmin) return null;
+
+  const isMemberAdmin = member.role === 'admin';
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
+        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ml-2 hover:bg-black/10 transition-colors"
+      >
+        <MoreVertical size={16} className="text-gray-600" />
+      </button>
+
+      {isOpen && (
+        <div 
+          className="absolute top-full right-0 mt-1 w-48 bg-white rounded-2xl border border-gray-200 z-50 overflow-hidden animate-fade-in"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {isMemberAdmin ? (
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                onAction(member.userId, 'demote');
+              }}
+              className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700"
+              disabled={isLastAdmin}
+            >
+              <Shield size={14} className="text-gray-500" />
+              Demote to Member
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                setIsOpen(false);
+                onAction(member.userId, 'promote');
+              }}
+              className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50 transition-colors text-sm font-medium text-gray-700"
+            >
+              <ShieldCheck size={14} className="text-gray-500" />
+              Promote to Admin
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              onAction(member.userId, 'remove');
+            }}
+            className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-red-50 transition-colors text-sm font-medium text-red-600 border-t border-gray-100"
+          >
+            <CircleMinus size={14} className="text-red-500" />
+            Remove from Group
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Stacked Circular Avatars ───────────────────────────────────────
+const StackedAvatars = ({ members = [], max = 4 }) => {
+  const visible = members.slice(0, max);
+  const extra = members.length - max;
+  
+  return (
+    <div className="flex items-center">
+      {visible.map((member, index) => {
+        const beanConfig = getBeanConfig(member?.avatar);
+        
+        return (
+          <div
+            key={member.userId}
+            className="w-8 h-8 rounded-full border-2 border-white -ml-2 first:ml-0 overflow-hidden bg-gray-300 flex-shrink-0"
+            style={{ zIndex: index }}
+          >
+            {beanConfig ? (
+              <div className="w-full h-full bg-[#e8f0fe]">
+                <BeanHead {...beanConfig} />
+              </div>
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-gray-400 to-gray-700 flex items-center justify-center">
+                <span className="text-[10px] font-bold text-white">{member.userName?.charAt(0)}</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {extra > 0 && (
+        <div className="w-8 h-8 rounded-full border-2 border-white -ml-2 bg-gray-100 flex items-center justify-center text-[10px] font-bold text-gray-700">
+          +{extra}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Rounded Square Avatar ─────────────────────────────────────────
+const SquareAvatar = ({ member, size = 10, selected = true }) => {
+  const GRADIENTS = [
+    'from-purple-400 to-purple-600', 'from-blue-400 to-blue-600',
+    'from-pink-400 to-pink-600',     'from-orange-400 to-orange-600',
+    'from-green-400 to-green-600',   'from-red-400 to-red-600',
+    'from-yellow-400 to-yellow-500', 'from-teal-400 to-teal-600',
+  ];
+  const idx = (member?.userName?.charCodeAt(0) || 0) % GRADIENTS.length;
+  const beanConfig = getBeanConfig(member?.avatar);
+  
+  return (
+    <div className={`w-${size} h-${size} rounded-2xl overflow-hidden flex-shrink-0 transition-opacity ${!selected ? 'opacity-35' : ''}`}>
+      {beanConfig ? (
+        <div className="w-full h-full bg-[#e8f0fe]">
+          <BeanHead {...beanConfig} />
+        </div>
+      ) : (
+        <div className={`w-full h-full bg-gradient-to-br ${GRADIENTS[idx]} flex items-center justify-center`}>
+          <span className="text-white font-bold text-sm">{member?.userName?.charAt(0)}</span>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default function GroupInfoModal({ 
   isOpen, 
@@ -47,7 +236,6 @@ export default function GroupInfoModal({
     hat: 'none',
     hatColor: 'black',
     lashes: 'false',
-    lipColor: 'red',
     mask: true,
     faceMask: false,
     mouth: 'grin',
@@ -88,17 +276,11 @@ export default function GroupInfoModal({
   };
 
   const handleToggleSetting = async (setting, value) => {
-  if (!isAdmin) return;
-  setUpdating(true);
-  
-  // Call the parent's onUpdateSettings
-  await onUpdateSettings({ [setting]: value });
-  
-  // The parent component (GroupChatInterface) should handle updating groupData
-  // through the onGroupUpdate callback
-  
-  setUpdating(false);
-};
+    if (!isAdmin) return;
+    setUpdating(true);
+    await onUpdateSettings({ [setting]: value });
+    setUpdating(false);
+  };
 
   const handleMemberAction = async (targetUserId, action) => {
     if (!isAdmin) return;
@@ -127,6 +309,15 @@ export default function GroupInfoModal({
       day: 'numeric',
       year: 'numeric'
     });
+  };
+
+  const formatRelativeDate = (dateStr) => {
+    const d = new Date(dateStr);
+    const diffDays = Math.floor((new Date() - d) / 86400000);
+    if (diffDays === 0) return `Today, ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7)  return `${diffDays} days ago`;
+    return `${d.getDate()} ${d.toLocaleString('default', { month: 'short' })}, ${d.getFullYear()}`;
   };
 
   // Start edit mode
@@ -247,87 +438,77 @@ export default function GroupInfoModal({
     { id: 'invite', label: 'Invite', icon: UserPlus }
   ];
 
+  const palette = getCardPalette(group.groupName || group.name);
+
+  // Toast component for notifications
+  const Toast = ({ show, message, type = 'success' }) => {
+    if (!show) return null;
+    return (
+      <div className="px-5 flex-shrink-0 mb-2">
+        <div className={`px-4 py-3 bg-black rounded-2xl text-white text-sm flex items-center gap-2 animate-fade-in`}>
+          {type === 'success' ? <Check size={15} strokeWidth={2.5} /> : <AlertTriangle size={15} strokeWidth={2.5} />}
+          <span className="font-semibold">{message}</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur z-50 flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ duration: 0.2 }}
-        className="bg-white dark:bg-[#0c0c0c] rounded-[30px] max-w-2xl w-full max-h-[90vh] overflow-hidden transition-colors duration-300"
-      >
-        {/* Header */}
-        <div className="p-6 border-b border-[#f1f3f4] dark:border-[#181A1E]">
-          {!isEditMode ? (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-zinc-100 dark:bg-[#232529] flex items-center justify-center text-[#202124] dark:text-white font-semibold text-lg">
-                  {currentGroupAvatar?.beanConfig ? (
-                    <BeanHead {...currentGroupAvatar.beanConfig} />
-                  ) : (
-                    getGroupInitials(group.groupName || group.name)
-                  )}
-                </div>
-                <div>
-                  <h2 className="text-xl text-[#000000] dark:text-white small font-semibold">{group.groupName || group.name}</h2>
-                  <p className="text-sm text-[#5f6368] dark:text-gray-400">Created {formatDate(group.createdAt)}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {isAdmin && (
-                  <button
-                    onClick={handleStartEdit}
-                    className="p-2 bg-green-100 dark:bg-green-900/30 rounded-full text-green-600 dark:text-green-400 transition-colors hover:bg-green-200 dark:hover:bg-green-900/50"
-                    title="Edit group"
-                  >
-                    <Edit2 size={20} />
-                  </button>
-                )}
+    <>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+        <motion.div 
+          initial={{ opacity: 0, y: 100 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 100 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="bg-white rounded-t-[2rem] sm:rounded-[2rem] w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden -2xl"
+        >
+          {/* Edit Mode */}
+          {isEditMode ? (
+            <>
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 pt-6 pb-4 flex-shrink-0">
                 <button
-                  onClick={onClose} 
-                  className="p-2 bg-gray-100 dark:bg-[#101010] rounded-full transition-colors hover:bg-gray-200 dark:hover:bg-[#181A1E]"
+                  onClick={handleCancelEdit}
+                  className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors"
                 >
-                  <X size={20} className="text-[#202124] dark:text-white" />
+                  <ChevronLeft size={17} className="text-gray-700" />
                 </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-[#000000] dark:text-white">Edit Group</h2>
+                <h2 className="text-lg font-bold text-gray-900">Edit Group</h2>
                 <button
-                  onClick={handleCancelEdit} 
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+                  onClick={handleCancelEdit}
+                  className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors"
                 >
-                  <X size={20} className="text-[#202124] dark:text-white" />
+                  <X size={16} className="text-gray-700" />
                 </button>
               </div>
 
-              {/* Avatar Editor */}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-[#5f6368] dark:text-gray-400 mb-3">
-                    Group Avatar
-                  </label>
-                  
-                  {/* Avatar Preview */}
-                  <div className="flex items-center gap-4">
-                    <div className="w-20 h-20 rounded-full overflow-hidden bg-green-50 dark:bg-green-900/30 flex items-center justify-center border-2 border-green-200 dark:border-green-800">
+              <Toast show={updating} message="Saving..." type="success" />
+
+              {/* Edit Form */}
+              <div className="flex-1 overflow-y-auto px-5 space-y-6 pb-6">
+                {/* Avatar Preview Card */}
+                <div className="rounded-3xl p-5" style={{ backgroundColor: '#F5E09A' }}>
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-20 h-20 rounded-full overflow-hidden bg-green-50 flex items-center justify-center border-2 border-white">
                       <BeanHead {...beanConfig} />
                     </div>
-                    <button
-                      onClick={randomizeAvatar}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-900/30 hover:bg-green-100 dark:hover:bg-green-900/50 rounded-xl text-green-700 dark:text-green-400 font-medium transition-all"
-                    >
-                      <RefreshCw size={18} />
-                      Randomize
-                    </button>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 mb-1">Group Avatar</p>
+                      <button
+                        onClick={randomizeAvatar}
+                        className="flex items-center gap-2 px-4 py-2 bg-white/80 backdrop-blur-sm rounded-xl hover:bg-white transition-all text-sm font-medium text-gray-700"
+                      >
+                        <RefreshCw size={16} />
+                        Randomize
+                      </button>
+                    </div>
                   </div>
                 </div>
 
                 {/* Group Name */}
                 <div>
-                  <label className="block text-sm font-medium text-[#5f6368] dark:text-gray-400 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Group Name
                   </label>
                   <input
@@ -335,295 +516,305 @@ export default function GroupInfoModal({
                     value={editGroupName}
                     onChange={(e) => setEditGroupName(e.target.value)}
                     placeholder="Enter group name..."
-                    className="w-full px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
+                    className="w-full px-4 py-4 bg-gray-50  border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black/20 transition-all"
                     maxLength={50}
                   />
-                  <p className="text-xs text-[#5f6368] dark:text-gray-400 mt-1">{editGroupName.length}/50 characters</p>
+                  <p className="text-xs text-gray-400 mt-1 text-right">{editGroupName.length}/50</p>
                 </div>
 
                 {/* Description */}
                 <div>
-                  <label className="block text-sm font-medium text-[#5f6368] dark:text-gray-400 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Description
                   </label>
                   <textarea
                     value={editDescription}
                     onChange={(e) => setEditDescription(e.target.value)}
                     placeholder="What's this group about?"
-                    className="w-full px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none resize-none transition-all"
+                    className="w-full px-4 py-4 bg-gray-50  border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black/20 resize-none transition-all"
                     rows={3}
                     maxLength={200}
                   />
-                  <p className="text-xs text-[#5f6368] dark:text-gray-400 mt-1">{editDescription.length}/200 characters</p>
-                </div>
-
-                {/* Save/Cancel Buttons */}
-                <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={handleCancelEdit}
-                    className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] text-[#202124] dark:text-white rounded-xl hover:bg-gray-50 dark:hover:bg-[#101010] transition-colors font-medium"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSaveEdit}
-                    disabled={!editGroupName.trim() || updating}
-                    className="flex-1 px-4 py-3 bg-[#34A853] text-white rounded-xl hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-colors flex items-center justify-center gap-2 font-medium"
-                  >
-                    {updating ? (
-                      <>
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Saving...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Save size={18} />
-                        <span>Save Changes</span>
-                      </>
-                    )}
-                  </button>
+                  <p className="text-xs text-gray-400 mt-1 text-right">{editDescription.length}/200</p>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
 
-        {/* Only show tabs and content when NOT in edit mode */}
-        {!isEditMode && (
-          <>
-            {/* Tabs */}
-            <div className="flex p-2 gap-1 bg-gray-50/50 dark:bg-[#101010]/50">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
-                
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className="relative flex-1 py-3 rounded-xl font-medium transition-colors"
-                  >
-                    {isActive && (
-                      <motion.div
-                        layoutId="activeTab"
-                        className="absolute inset-0 bg-green-100 dark:bg-green-900/30 rounded-xl"
-                        transition={{ type: "spring", duration: 0.5, bounce: 0.2 }}
-                      />
-                    )}
-                    <span className={`relative z-10 flex items-center justify-center gap-2 text-sm ${
-                      isActive ? 'text-green-700 dark:text-green-400' : 'text-[#5f6368] dark:text-gray-400'
-                    }`}>
-                      <Icon size={18} />
-                      {tab.label} {tab.id === 'members' && `(${group.members?.length || 0})`}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+              {/* Save Button */}
+              <div className="px-5 pb-7 pt-4 flex-shrink-0">
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={!editGroupName.trim() || updating}
+                  className="w-full py-4 bg-black hover:bg-gray-900 active:scale-[0.98] text-white rounded-2xl font-bold text-[15px] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {updating ? (
+                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Save size={18} strokeWidth={2.5} />
+                      Save Changes
+                    </>
+                  )}
+                </button>
+              </div>
+            </>
+          ) : (
+            /* Normal Mode */
+            <>
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 pt-6 pb-4 flex-shrink-0">
+                {/* <button
+                  onClick={onClose}
+                  className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors"
+                >
+                  <ChevronLeft size={17} className="text-gray-700" />
+                </button> */}
+                <h2 className="text-lg font-bold text-gray-900">Group Info</h2>
+                <button
+                  onClick={onClose}
+                  className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200 transition-colors"
+                >
+                  <X size={16} className="text-gray-700" />
+                </button>
+              </div>
 
-            {/* Content */}
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-              {/* Members Tab */}
-              {activeTab === 'members' && (
-                <div className="space-y-6">
-                  {/* Admins */}
-                  <div>
-                    <h3 className="text-sm font-medium text-[#202124] dark:text-white mb-3 flex items-center gap-2">
-                      <Crown size={16} className="text-yellow-600" />
-                      Admins
-                    </h3>
-                    <div className="space-y-3">
-                      {admins.map(member => (
-                        <div 
-                          key={member.userId}
-                          className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#101010] rounded-xl hover:bg-gray-100 dark:hover:bg-[#181A1E] transition-colors"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Avatar userAvatar={member.avatar} name={member.userName} size="w-10 h-10" />
-                            <div>
-                              <p className="font-medium text-[#202124] dark:text-white">
-                                {member.userName}
-                                {member.userId === currentUserId && (
-                                  <span className="ml-2 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full">You</span>
-                                )}
-                              </p>
-                              <p className="text-xs text-[#5f6368] dark:text-gray-400">Joined {formatDate(member.joinedAt)}</p>
-                            </div>
-                          </div>
-                          
-                          {isAdmin && member.userId !== currentUserId && (
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handleMemberAction(member.userId, 'demote')}
-                                className="p-2 px-4 bg-yellow-100 dark:bg-yellow-900/30 flex items-center text-sm gap-2 rounded-full text-yellow-800 dark:text-yellow-400 hover:bg-yellow-200 dark:hover:bg-yellow-900/50 transition-colors"
-                                title="Demote to member"
-                              >
-                                <Shield size={18} />
-                                Demote
-                              </button>
-                              <button
-                                onClick={() => handleMemberAction(member.userId, 'remove')}
-                                className="p-2 px-4 bg-red-100 dark:bg-red-900/30 flex items-center gap-2 text-sm rounded-full text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
-                                title="Remove from group"
-                              >
-                                <CircleMinus size={18} />
-                                Remove
-                              </button>
-                            </div>
-                          )}
+              {/* Group Info Card */}
+              <div className="px-5 mb-4">
+                <div className="rounded-3xl p-5" style={{ backgroundColor: palette.bg }}>
+                  <div className="flex items-start gap-4">
+                    <div className="w-16 h-16 rounded-full overflow-hidden bg-white/30 flex-shrink-0">
+                      {currentGroupAvatar?.beanConfig ? (
+                        <BeanHead {...currentGroupAvatar.beanConfig} />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-2xl font-bold" style={{ color: palette.text }}>
+                          {getGroupInitials(group.groupName || group.name)}
                         </div>
-                      ))}
+                      )}
                     </div>
+                    <div className="flex-1">
+                      <h3 className="text-xl font-extrabold" style={{ color: palette.text }}>
+                        {group.groupName || group.name}
+                      </h3>
+                      <p className="text-sm mt-1 font-medium" style={{ color: palette.sub }}>
+                        Created {formatDate(group.createdAt)}
+                      </p>
+                      {group.description && (
+                        <p className="text-sm mt-2" style={{ color: palette.text }}>
+                          {group.description}
+                        </p>
+                      )}
+                    </div>
+                    {isAdmin && (
+                      <button
+                        onClick={handleStartEdit}
+                        className="w-9 h-9 rounded-full bg-white/30 flex items-center justify-center hover:bg-white/40 transition-colors"
+                      >
+                        <Edit2 size={16} style={{ color: palette.text }} />
+                      </button>
+                    )}
                   </div>
 
-                  {/* Members */}
-                  {members.length > 0 && (
+                  {/* Member Stats */}
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/30">
+                    <div className="flex items-center gap-2">
+                      <Users size={16} style={{ color: palette.sub }} />
+                      <span className="text-sm font-medium" style={{ color: palette.text }}>
+                        {group.members?.length || 0} members
+                      </span>
+                    </div>
+                    <StackedAvatars members={group.members || []} max={5} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex p-1 mx-5 mb-4 bg-gray-100 rounded-2xl">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                        isActive
+                          ? 'bg-white text-gray-900 -sm'
+                          : 'text-gray-400 hover:text-gray-600'
+                      }`}
+                    >
+                      <span className="flex items-center justify-center gap-2">
+                        <Icon size={16} />
+                        {tab.label} {tab.id === 'members' && `(${group.members?.length || 0})`}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-4 min-h-0">
+                {/* Members Tab */}
+                {activeTab === 'members' && (
+                  <div className="space-y-6">
+                    {/* Admins Section */}
                     <div>
-                      <h3 className="text-sm font-medium text-[#202124] dark:text-white mb-3 flex items-center gap-2">
-                        <Users size={16} className="text-[#5f6368] dark:text-gray-400" />
-                        Members
+                      <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+                        <Crown size={16} className="text-yellow-500" />
+                        Admins · {admins.length}
                       </h3>
-                      <div className="space-y-3">
-                        {members.map(member => (
-                          <div 
+                      <div className="space-y-2">
+                        {admins.map(member => (
+                          <div
                             key={member.userId}
-                            className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#101010] rounded-xl hover:bg-gray-100 dark:hover:bg-[#181A1E] transition-colors"
+                            className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-colors"
                           >
                             <div className="flex items-center gap-3">
-                              <Avatar userAvatar={member.avatar} name={member.userName} size="w-10 h-10" />
+                              <SquareAvatar member={member} size={10} />
                               <div>
-                                <p className="font-medium text-[#202124] dark:text-white">
+                                <p className="font-medium text-gray-900">
                                   {member.userName}
                                   {member.userId === currentUserId && (
-                                    <span className="ml-2 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full">You</span>
+                                    <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">You</span>
                                   )}
                                 </p>
-                                <p className="text-xs text-[#5f6368] dark:text-gray-400">Joined {formatDate(member.joinedAt)}</p>
+                                <p className="text-xs text-gray-400">{formatRelativeDate(member.joinedAt)}</p>
                               </div>
                             </div>
                             
-                            {isAdmin && member.userId !== currentUserId && (
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => handleMemberAction(member.userId, 'promote')}
-                                  className="p-2 bg-green-100 dark:bg-green-900/30 px-4 text-sm flex items-center gap-2 rounded-full text-green-800 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
-                                  title="Promote to admin"
-                                >
-                                  <ShieldCheck size={18} />
-                                  Promote
-                                </button>
-                                <button
-                                  onClick={() => handleMemberAction(member.userId, 'remove')}
-                                  className="p-2 bg-red-100 dark:bg-red-900/30 px-4 text-sm flex items-center gap-2 rounded-full text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
-                                  title="Remove from group"
-                                >
-                                  <CircleMinus size={18} />
-                                  Remove 
-                                </button>
-                              </div>
-                            )}
+                            <MemberCardDropdown
+                              member={member}
+                              currentUserId={currentUserId}
+                              isAdmin={isAdmin}
+                              isLastAdmin={isLastAdmin}
+                              onAction={handleMemberAction}
+                            />
                           </div>
                         ))}
                       </div>
                     </div>
-                  )}
 
-                  {/* Leave/Delete Group Section */}
-                  <div className="pt-6 border-t border-[#f1f3f4] dark:border-[#181A1E]">
-                    <div className="space-y-3">
-                      {/* Leave Group Button */}
+                    {/* Members Section */}
+                    {members.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+                          <Users size={16} className="text-gray-400" />
+                          Members · {members.length}
+                        </h3>
+                        <div className="space-y-2">
+                          {members.map(member => (
+                            <div
+                              key={member.userId}
+                              className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-colors"
+                            >
+                              <div className="flex items-center gap-3">
+                                <SquareAvatar member={member} size={10} />
+                                <div>
+                                  <p className="font-medium text-gray-900">
+                                    {member.userName}
+                                    {member.userId === currentUserId && (
+                                      <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">You</span>
+                                    )}
+                                  </p>
+                                  <p className="text-xs text-gray-400">{formatRelativeDate(member.joinedAt)}</p>
+                                </div>
+                              </div>
+                              
+                              <MemberCardDropdown
+                                member={member}
+                                currentUserId={currentUserId}
+                                isAdmin={isAdmin}
+                                isLastAdmin={isLastAdmin}
+                                onAction={handleMemberAction}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Leave/Delete Section */}
+                    <div className="pt-4 space-y-3">
+                      {/* Leave Group */}
                       {!showLeaveConfirm ? (
                         <button
                           onClick={() => setShowLeaveConfirm(true)}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded-xl hover:bg-orange-100 dark:hover:bg-orange-900/50 transition-colors font-medium"
+                          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-50 text-orange-700 rounded-2xl hover:bg-orange-100 transition-colors font-medium text-sm"
                         >
-                          <LogOut size={18} />
+                          <LogOut size={16} />
                           Leave Group
                         </button>
                       ) : (
-                        <div className="p-4 bg-orange-50 dark:bg-orange-900/30 rounded-3xl space-y-3">
+                        <div className="p-4 bg-orange-50 rounded-3xl space-y-3">
                           <div className="flex items-start gap-3">
-                            <AlertTriangle size={20} className="text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" />
+                            <AlertTriangle size={20} className="text-orange-600 flex-shrink-0 mt-0.5" />
                             <div>
-                              <p className="text-sm font-medium text-orange-800 dark:text-orange-300">Are you sure you want to leave?</p>
-                              <p className="text-xs text-orange-700 dark:text-orange-400 mt-1">
-                                You will no longer have access to this group's messages and content.
-                                {isLastAdmin && " As the last admin, if you leave, another member will be promoted to admin."}
+                              <p className="text-sm font-medium text-orange-800">Are you sure you want to leave?</p>
+                              <p className="text-xs text-orange-700 mt-1">
+                                You will no longer have access to this group's messages.
+                                {isLastAdmin && " As the last admin, another member will be promoted."}
                               </p>
                             </div>
                           </div>
                           <div className="flex gap-2">
                             <button
                               onClick={() => setShowLeaveConfirm(false)}
-                              className="flex-1 px-3 py-2 bg-white dark:bg-[#0c0c0c] text-orange-700 dark:text-orange-400 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900/50 transition-colors text-sm"
+                              className="flex-1 px-3 py-2 bg-white text-orange-700 rounded-xl hover:bg-orange-100 transition-colors text-sm font-medium"
                             >
                               Cancel
                             </button>
                             <button
                               onClick={handleLeaveGroup}
                               disabled={updating}
-                              className="flex-1 px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm flex items-center justify-center gap-2"
+                              className="flex-1 px-3 py-2 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition-colors text-sm font-medium flex items-center justify-center gap-2"
                             >
                               {updating ? (
-                                <>
-                                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                  <span>Leaving...</span>
-                                </>
+                                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                               ) : (
-                                <>
-                                  <LogOut size={16} />
-                                  <span>Leave</span>
-                                </>
+                                'Leave'
                               )}
                             </button>
                           </div>
                         </div>
                       )}
 
-                      {/* Delete Group Button - Only for admins */}
+                      {/* Delete Group - Admin only */}
                       {isAdmin && (
                         <>
                           {!showDeleteConfirm ? (
                             <button
                               onClick={() => setShowDeleteConfirm(true)}
-                              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors font-medium"
+                              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-700 rounded-2xl hover:bg-red-100 transition-colors font-medium text-sm"
                             >
-                              <Trash2 size={18} />
+                              <Trash2 size={16} />
                               Delete Group
                             </button>
                           ) : (
-                            <div className="p-4 bg-red-50 dark:bg-red-900/30 rounded-3xl space-y-3">
+                            <div className="p-4 bg-red-50 rounded-3xl space-y-3">
                               <div className="flex items-start gap-3">
-                                <AlertTriangle size={20} className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                                <AlertTriangle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
                                 <div>
-                                  <p className="text-sm font-medium text-red-800 dark:text-red-300">Delete this group?</p>
-                                  <p className="text-xs text-red-700 dark:text-red-400 mt-1">
-                                    This action cannot be undone. All messages and group data will be permanently deleted for everyone.
+                                  <p className="text-sm font-medium text-red-800">Delete this group?</p>
+                                  <p className="text-xs text-red-700 mt-1">
+                                    This action cannot be undone. All messages will be permanently deleted.
                                   </p>
                                 </div>
                               </div>
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => setShowDeleteConfirm(false)}
-                                  className="flex-1 px-3 py-2 bg-white dark:bg-[#0c0c0c] text-red-700 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors text-sm"
+                                  className="flex-1 px-3 py-2 bg-white text-red-700 rounded-xl hover:bg-red-100 transition-colors text-sm font-medium"
                                 >
                                   Cancel
                                 </button>
                                 <button
                                   onClick={handleDeleteGroup}
                                   disabled={updating}
-                                  className="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm flex items-center justify-center gap-2"
+                                  className="flex-1 px-3 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors text-sm font-medium flex items-center justify-center gap-2"
                                 >
                                   {updating ? (
-                                    <>
-                                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                      <span>Deleting...</span>
-                                    </>
+                                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                   ) : (
-                                    <>
-                                      <Trash2 size={16} />
-                                      <span>Delete</span>
-                                    </>
+                                    'Delete'
                                   )}
                                 </button>
                               </div>
@@ -633,112 +824,126 @@ export default function GroupInfoModal({
                       )}
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Settings Tab */}
-              {activeTab === 'settings' && (
-                <div className="space-y-6">
-                  {!isAdmin && (
-                    <div className="p-4 bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-xl text-sm">
-                      Only admins can change group settings
-                    </div>
-                  )}
-
+                {/* Settings Tab */}
+                {activeTab === 'settings' && (
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#101010] rounded-xl hover:bg-gray-100 dark:hover:bg-[#181A1E] transition-colors">
-                      <div className="flex items-center gap-3">
-                        <Lock size={20} className="text-[#5f6368] dark:text-gray-400" />
-                        <div>
-                          <p className="font-medium text-[#202124] dark:text-white">Admin Only Messaging</p>
-                          <p className="text-xs text-[#5f6368] dark:text-gray-400">Only admins can send messages</p>
-                        </div>
+                    {!isAdmin && (
+                      <div className="p-4 bg-yellow-50 rounded-2xl text-yellow-700 text-sm">
+                        Only admins can change group settings
                       </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={group.settings?.onlyAdminsCanMessage || false}
-                          onChange={(e) => handleToggleSetting('onlyAdminsCanMessage', e.target.checked)}
-                          disabled={!isAdmin || updating}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-gray-200 dark:bg-[#232529] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#34A853]"></div>
-                      </label>
-                    </div>
-
-                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-[#101010] rounded-xl hover:bg-gray-100 dark:hover:bg-[#181A1E] transition-colors">
-                      <div className="flex items-center gap-3">
-                        <UserPlus size={20} className="text-[#5f6368] dark:text-gray-400" />
-                        <div>
-                          <p className="font-medium text-[#202124] dark:text-white">Allow Member Invites</p>
-                          <p className="text-xs text-[#5f6368] dark:text-gray-400">Members can invite others with invite code</p>
-                        </div>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={group.settings?.allowMemberInvite || false}
-                          onChange={(e) => handleToggleSetting('allowMemberInvite', e.target.checked)}
-                          disabled={!isAdmin || updating}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-gray-200 dark:bg-[#232529] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#34A853]"></div>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Invite Tab */}
-              {activeTab === 'invite' && (
-                <div className="space-y-6">
-                  <div className="text-center p-6 bg-green-50 dark:bg-green-900/30 rounded-3xl">
-                    <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center mx-auto mb-4">
-                      <Users size={32} className="text-green-600 dark:text-green-400" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-[#202124] dark:text-white mb-2">Invite People</h3>
-                    <p className="text-sm text-[#5f6368] dark:text-gray-400 mb-4">
-                      Share this code with friends to join the group
-                    </p>
-                    
-                    <div className="flex items-center justify-center gap-3 mb-4">
-                      <div className="bg-green-500 text-white px-6 py-3 rounded-xl font-mono text-2xl tracking-widest">
-                        {group.inviteCode}
-                      </div>
-                      <button
-                        onClick={handleCopyInvite}
-                        className="p-3 bg-white dark:bg-[#0c0c0c] border border-[#dadce0] dark:border-[#232529] rounded-xl hover:bg-gray-50 dark:hover:bg-[#101010] transition-colors"
-                      >
-                        {copied ? <Check size={20} className="text-green-600" /> : <Copy size={20} className="text-[#202124] dark:text-white" />}
-                      </button>
-                    </div>
-
-                    {isAdmin && (
-                      <button
-                        onClick={onRegenerateInvite}
-                        disabled={updating}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#0c0c0c] border border-[#dadce0] dark:border-[#232529] text-[#202124] dark:text-white rounded-xl hover:bg-gray-50 dark:hover:bg-[#101010] text-sm transition-colors"
-                      >
-                        <RefreshCw size={16} />
-                        Generate New Code
-                      </button>
                     )}
-                  </div>
 
-                  <div className="p-4 bg-gray-50 dark:bg-[#101010] rounded-xl">
-                    <p className="text-xs text-[#5f6368] dark:text-gray-400">
-                      Anyone with this code can join the group. 
-                      {group.settings?.allowMemberInvite 
-                        ? ' Share it with friends you want to add.' 
-                        : ' Only admins can add members directly.'}
-                    </p>
+                    <div className="space-y-3">
+                      {/* Admin Only Messaging */}
+                      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-gray-200 flex items-center justify-center">
+                            <Lock size={18} className="text-gray-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">Admin Only Messaging</p>
+                            <p className="text-xs text-gray-400">Only admins can send messages</p>
+                          </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={group.settings?.onlyAdminsCanMessage || false}
+                            onChange={(e) => handleToggleSetting('onlyAdminsCanMessage', e.target.checked)}
+                            disabled={!isAdmin || updating}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-black"></div>
+                        </label>
+                      </div>
+
+                      {/* Allow Member Invites */}
+                      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-gray-200 flex items-center justify-center">
+                            <UserPlus size={18} className="text-gray-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">Allow Member Invites</p>
+                            <p className="text-xs text-gray-400">Members can invite others with invite code</p>
+                          </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={group.settings?.allowMemberInvite || false}
+                            onChange={(e) => handleToggleSetting('allowMemberInvite', e.target.checked)}
+                            disabled={!isAdmin || updating}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-black"></div>
+                        </label>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </motion.div>
-    </div>
+                )}
+
+                {/* Invite Tab */}
+                {activeTab === 'invite' && (
+                  <div className="space-y-4">
+                    <div className="text-center p-6 bg-gray-50 rounded-3xl">
+                      <div className="w-16 h-16 rounded-2xl bg-black/5 flex items-center justify-center mx-auto mb-4">
+                        <UserPlus size={32} className="text-gray-600" />
+                      </div>
+                      <h3 className="text-lg font-bold text-gray-900 mb-2">Invite People</h3>
+                      <p className="text-sm text-gray-400 mb-6">
+                        Share this code with friends to join the group
+                      </p>
+                      
+                      <div className="flex items-center justify-center gap-3 mb-4">
+                        <div className="bg-black text-white px-6 py-4 rounded-2xl font-mono text-2xl tracking-widest">
+                          {group.inviteCode}
+                        </div>
+                        <button
+                          onClick={handleCopyInvite}
+                          className="w-14 h-14 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 transition-colors flex items-center justify-center"
+                        >
+                          {copied ? <Check size={20} className="text-green-600" /> : <Copy size={20} className="text-gray-700" />}
+                        </button>
+                      </div>
+
+                      {isAdmin && (
+                        <button
+                          onClick={onRegenerateInvite}
+                          disabled={updating}
+                          className="inline-flex items-center gap-2 px-6 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 text-sm font-medium transition-colors"
+                        >
+                          <RefreshCw size={16} />
+                          Generate New Code
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="p-4 bg-gray-50 rounded-2xl">
+                      <p className="text-xs text-gray-400">
+                        Anyone with this code can join the group. 
+                        {group.settings?.allowMemberInvite 
+                          ? ' Share it with friends you want to add.' 
+                          : ' Only admins can add members directly.'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </motion.div>
+      </div>
+
+      <style jsx>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(-6px); }
+          to   { opacity: 1; transform: translateY(0);    }
+        }
+        .animate-fade-in { animation: fade-in 0.2s ease-out; }
+      `}</style>
+    </>
   );
 }

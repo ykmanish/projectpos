@@ -14,7 +14,9 @@ import {
   Shield,
   Image as ImageIcon,
   Video,
-  UserCircle, Clock, Info,
+  UserCircle,
+  Clock,
+  Info,
   Maximize2,
   MessageCircle,
   Check,
@@ -32,10 +34,18 @@ import {
   ArrowDown,
   XCircle,
   Reply,
+  ReceiptText,
   CornerDownRight,
   DollarSign,
   CheckCircle,
 } from "lucide-react";
+import LinkPreview from "./LinkPreview";
+import CodeBlock from "./CodeBlock";
+import {
+  parseMessageContent,
+  detectCode,
+  detectLanguage,
+} from "@/utils/codeUtils";
 import { BeanHead } from "beanheads";
 import EmojiPicker from "emoji-picker-react";
 import AttachmentPreviewModal from "./AttachmentPreviewModal";
@@ -56,7 +66,7 @@ import MessageSearch from "./MessageSearch";
 import ReplyPreview from "./ReplyPreview";
 import GIFPicker from "./GIFPicker";
 import SplitBillModal from "./SplitBillModal";
-import { getCurrencySymbol, getCurrencyFlag } from '@/constants/currencies';
+import { getCurrencySymbol, getCurrencyFlag } from "@/constants/currencies";
 
 export default function GroupChatInterface({
   group,
@@ -66,6 +76,7 @@ export default function GroupChatInterface({
   onMessageUpdate,
   onGroupUpdate,
 }) {
+  // ==================== ALL STATE DECLARATIONS ====================
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -86,6 +97,9 @@ export default function GroupChatInterface({
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
   const [isSearching, setIsSearching] = useState(false);
   const [highlightedText, setHighlightedText] = useState("");
+
+  // Code mode state
+  const [codeMode, setCodeMode] = useState(false);
 
   // Split Bill states
   const [showSplitBillModal, setShowSplitBillModal] = useState(false);
@@ -181,7 +195,92 @@ export default function GroupChatInterface({
   const { socket, isConnected, getUserOnlineStatus } = useSocket();
   const roomId = group.groupId;
 
-  // ==================== HELPER FUNCTIONS (Defined first) ====================
+  // ==================== HELPER FUNCTIONS ====================
+
+  const handleCodeModeToggle = () => {
+    setCodeMode(!codeMode);
+    if (!codeMode) {
+      // When turning on code mode, wrap existing text in triple backticks
+      if (newMessage.trim() && !newMessage.includes("```")) {
+        setNewMessage(`\`\`\`\n${newMessage}\n\`\`\``);
+      }
+    }
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+
+    // Get pasted text
+    const pastedText = e.clipboardData.getData("text");
+
+    // Check if the pasted text contains code indicators
+    const containsNewlines = pastedText.includes("\n");
+    const containsIndentation = /^[ \t]/.test(pastedText);
+    const containsSpecialChars = /[{}[\]()<>;=+\-*/&|!]/.test(pastedText);
+
+    // Heuristic: if it has multiple lines and code-like characters, treat as code
+    const looksLikeCode =
+      containsNewlines &&
+      (containsIndentation || containsSpecialChars || pastedText.length > 100);
+
+    if (looksLikeCode) {
+      // Detect language (simplified)
+      let language = "javascript"; // default
+
+      if (
+        pastedText.includes("def ") ||
+        (pastedText.includes("import ") && pastedText.includes(":"))
+      ) {
+        language = "python";
+      } else if (pastedText.includes("<div") || pastedText.includes("<html")) {
+        language = "html";
+      } else if (
+        pastedText.includes("{") &&
+        pastedText.includes("}") &&
+        pastedText.includes(":") &&
+        !pastedText.includes("function")
+      ) {
+        language = "css";
+      }
+
+      // Format as code block with language and proper line breaks
+      const formattedCode = `\`\`\`${language}\n${pastedText}\n\`\`\``;
+
+      // Insert at cursor position
+      const start = inputRef.current.selectionStart;
+      const end = inputRef.current.selectionEnd;
+      const currentValue = newMessage;
+      const newValue =
+        currentValue.substring(0, start) +
+        formattedCode +
+        currentValue.substring(end);
+
+      setNewMessage(newValue);
+
+      // Set cursor position after the inserted code
+      setTimeout(() => {
+        inputRef.current.selectionStart = start + formattedCode.length;
+        inputRef.current.selectionEnd = start + formattedCode.length;
+      }, 0);
+    } else {
+      // Regular paste - insert at cursor position
+      const start = inputRef.current.selectionStart;
+      const end = inputRef.current.selectionEnd;
+      const currentValue = newMessage;
+      const newValue =
+        currentValue.substring(0, start) +
+        pastedText +
+        currentValue.substring(end);
+
+      setNewMessage(newValue);
+
+      // Set cursor position after the inserted text
+      setTimeout(() => {
+        inputRef.current.selectionStart = start + pastedText.length;
+        inputRef.current.selectionEnd = start + pastedText.length;
+      }, 0);
+    }
+  };
 
   const getMemberName = (userId) => {
     const member = groupData.members?.find((m) => m.userId === userId);
@@ -279,442 +378,6 @@ export default function GroupChatInterface({
     }
     return message.content || "";
   };
-
-  const parseMessageContent = (content) => {
-    if (!content) return [];
-
-    const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
-    const parts = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = mentionRegex.exec(content)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push({
-          type: "text",
-          content: content.substring(lastIndex, match.index),
-        });
-      }
-
-      parts.push({
-        type: "mention",
-        name: match[1],
-        userId: match[2],
-        content: `@${match[1]}`,
-      });
-
-      lastIndex = mentionRegex.lastIndex;
-    }
-
-    if (lastIndex < content.length) {
-      parts.push({
-        type: "text",
-        content: content.substring(lastIndex),
-      });
-    }
-
-    return parts;
-  };
-
-  // Function to highlight text in content
-  const highlightText = (content, highlight) => {
-    if (!highlight.trim() || !content) {
-      return content;
-    }
-
-    const regex = new RegExp(
-      `(${highlight.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
-      "gi",
-    );
-    const parts = content.split(regex);
-
-    return parts.map((part, index) => {
-      if (regex.test(part)) {
-        return (
-          <mark
-            key={index}
-            className="bg-green-300 dark:bg-green-600 text-inherit px-0.5 rounded"
-          >
-            {part}
-          </mark>
-        );
-      }
-      return part;
-    });
-  };
-
-  // Bill interaction helpers
-  const handleOpenBill = (billId) => {
-    setShowSplitBillModal(true);
-    // You can pass the billId to the modal to open that specific bill
-    console.log('Opening bill:', billId);
-  };
-
-  const handleOpenBillDetails = (billId) => {
-    // Open bill details in a modal or navigate to bill details page
-    console.log('Opening bill details for:', billId);
-  };
-
-  // Refresh bill data manually
-  const refreshBillData = async (billId) => {
-    try {
-      const res = await fetch(`/api/chat/split-bill?groupId=${roomId}&billId=${billId}`);
-      const data = await res.json();
-      
-      if (data.success && data.bill) {
-        // Update the message with fresh bill data
-        updateBillMessageInState(data.bill);
-      }
-    } catch (error) {
-      console.error('Error refreshing bill data:', error);
-    }
-  };
-
-  // Helper function to update bill message in state
-  const updateBillMessageInState = (bill) => {
-    setMessages(prev => prev.map(msg => {
-      if (msg.billId === bill.id) {
-        const paidCount = bill.splits.filter(s => s.status === 'paid').length;
-        const totalCount = bill.splits.length;
-        const paidAmount = bill.splits
-          .filter(s => s.status === 'paid')
-          .reduce((sum, s) => sum + s.amount, 0);
-        const paidPercentage = bill.totalAmount > 0 ? (paidAmount / bill.totalAmount) * 100 : 0;
-        
-        // Get payer name
-        const paidByMember = bill.splits.find(s => s.userId === bill.paidBy);
-        const paidByName = paidByMember?.userName || 'Someone';
-
-        const currencySymbol = getCurrencySymbol(bill.currency || 'USD');
-        
-        // Create updated content
-        const updatedContent = `New Split Bill: ${bill.title}\n Total: ${currencySymbol}${bill.totalAmount?.toFixed(2) || '0.00'}\nPaid by: ${paidByName}\nPending payments: ${totalCount - paidCount} people\n\nUse /split to view or pay bills`;
-
-        return {
-          ...msg,
-          content: updatedContent,
-          billData: {
-            title: bill.title,
-            totalAmount: bill.totalAmount,
-            paidBy: bill.paidBy,
-            paidByName: paidByName,
-            paidCount,
-            totalCount,
-            pendingCount: totalCount - paidCount,
-            paidPercentage,
-            splits: bill.splits || []
-          }
-        };
-      }
-      return msg;
-    }));
-  };
-
-  // Update the renderMessageWithMentions function to handle bill messages specially
-const renderMessageWithMentions = (content, highlight, isBillMessage = false, billId = null, billCurrency = null, billData = null, billCancelled = false) => {
-  if (!content) return null;
-
-  if (isBillMessage) {
-    if (billCancelled) {
-      return (
-        <div className="bill-message-content w-72 lg:w-[20svw]">
-          <div className="rounded-[30px] p-5 w-full bg-gray-300 dark:bg-gray-700">
-            <div className="flex items-center gap-2 mb-2">
-              <XCircle size={20} className="text-red-500" />
-              <h3 className="text-xl font-extrabold text-gray-700 dark:text-gray-300">
-                Bill Cancelled
-              </h3>
-            </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              This bill has been cancelled
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    // Use billData directly from props if available
-    if (billData) {
-      console.log('📊 Rendering bill with data:', billData);
-      
-      const title = billData.title || 'Split Bill';
-      const currencySymbol = getCurrencySymbol(billCurrency || 'USD');
-      const total = `${currencySymbol}${billData.totalAmount?.toFixed(2) || '0.00'}`;
-      const paidBy = billData.paidByName || 'Someone';
-      const paidCount = billData.paidCount || 0;
-      const totalCount = billData.totalCount || 0;
-      const pendingCount = billData.pendingCount || 0;
-      const paidPercentage = billData.paidPercentage || 0;
-
-      // Get card palette based on title
-      const CARD_PALETTES = [
-        { bg: '#FF8C78', track: '#c96b58', bar: '#1a0a08', text: '#1a0a08', sub: '#7a3028' },
-        { bg: '#FFB8C6', track: '#d98898', bar: '#1a0810', text: '#1a0810', sub: '#7a3050' },
-        { bg: '#7DCFCC', track: '#4eaaa7', bar: '#082020', text: '#082020', sub: '#1a5a58' },
-        { bg: '#F5E09A', track: '#c8b860', bar: '#1a1408', text: '#1a1408', sub: '#6a5020' },
-        { bg: '#A8D8FF', track: '#70b0e0', bar: '#081220', text: '#081220', sub: '#204870' },
-        { bg: '#B8E8B0', track: '#80c078', bar: '#081408', text: '#081408', sub: '#205820' },
-        { bg: '#E0C8F8', track: '#b090d0', bar: '#120820', text: '#120820', sub: '#503878' },
-        { bg: '#FFD4A0', track: '#d8a060', bar: '#1a0e04', text: '#1a0e04', sub: '#7a4818' },
-      ];
-      
-      const paletteIdx = (title.charCodeAt(0) || 0) % CARD_PALETTES.length;
-      const palette = CARD_PALETTES[paletteIdx];
-
-      return (
-        <div className="bill-message-content w-72 lg:w-[20svw]">
-          {/* Bill Card */}
-          <div 
-            className="rounded-[30px] p-5 w-full"
-            style={{ backgroundColor: palette.bg }}
-          >
-            {/* Row 1: Title */}
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-xl font-extrabold leading-tight" style={{ color: palette.text }}>
-                  {title}
-                </h3>
-                <p className="text-xs mt-1 font-medium" style={{ color: palette.sub }}>
-                  Split Bill
-                </p>
-              </div>
-            </div>
-
-            {/* Row 2: Total and Paid By */}
-            <div className="flex items-end justify-between mb-5">
-              <div>
-                <p className="text-xs font-semibold mb-1" style={{ color: palette.sub }}>Total</p>
-                <p className="text-2xl font-extrabold tracking-tight" style={{ color: palette.text }}>
-                  {total}
-                </p>
-              </div>
-              
-              {/* Paid by indicator */}
-              <div className="text-right">
-                <p className="text-xs font-semibold mb-2" style={{ color: palette.sub }}>Paid by</p>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-bold" style={{ color: palette.text }}>
-                    {paidBy}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-           
-
-            {/* Pending indicator */}
-            {pendingCount > 0 ? (
-              <div className="mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Clock size={14} style={{ color: palette.sub }} />
-                  <span className="text-xs font-medium" style={{ color: palette.sub }}>
-                    {pendingCount} pending 
-                  </span>
-                </div>
-                
-                {/* View Bill Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenBill(billId);
-                  }}
-                  className="text-xs font-bold px-3 py-1.5 rounded-full transition-all hover:scale-105 active:scale-95"
-                  style={{ 
-                    backgroundColor: palette.text,
-                    color: palette.bg
-                  }}
-                >
-                  View Details
-                </button>
-              </div>
-            ) : (
-              /* Fully paid indicator */
-              <div className="mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle size={14} style={{ color: palette.text }} />
-                  <span className="text-xs font-bold" style={{ color: palette.text }}>
-                    Fully Paid
-                  </span>
-                </div>
-                <span className="text-xs font-medium" style={{ color: palette.sub }}>
-                  ✓ Settled
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    // Parse bill details from content if billData is not available
-    let title = 'Split Bill';
-    let total = '';
-    let paidBy = '';
-    let paidCount = 0;
-    let totalCount = 0;
-    let pendingCount = 0;
-    let paidPercentage = 0;
-    
-    // Fallback to parsing from content string
-    const titleMatch = content.match(/New Split Bill: ([^\n]+)/);
-    const totalMatch = content.match(/Total: ([^\n]+)/);
-    const paidByMatch = content.match(/Paid by: ([^\n]+)/);
-    const pendingMatch = content.match(/Pending payments: ([^ people]+)/);
-    
-    title = titleMatch ? titleMatch[1] : 'Split Bill';
-    total = totalMatch ? totalMatch[1] : '';
-    paidBy = paidByMatch ? paidByMatch[1] : '';
-    pendingCount = pendingMatch ? parseInt(pendingMatch[1]) : 0;
-    
-    // Calculate counts based on actual data if available
-    totalCount = pendingCount + 1;
-    paidCount = 1; // The payer has paid
-
-    // Get currency symbol
-    const currencySymbol = billCurrency ? getCurrencySymbol(billCurrency) : '$';
-    
-    // Ensure counts are accurate
-    totalCount = Math.max(totalCount, paidCount + pendingCount);
-    
-    // Calculate paid percentage if not provided
-    if (!paidPercentage && totalCount > 0) {
-      paidPercentage = (paidCount / totalCount) * 100;
-    }
-
-    // Get card palette based on title
-    const CARD_PALETTES = [
-      { bg: '#FF8C78', track: '#c96b58', bar: '#1a0a08', text: '#1a0a08', sub: '#7a3028' },
-      { bg: '#FFB8C6', track: '#d98898', bar: '#1a0810', text: '#1a0810', sub: '#7a3050' },
-      { bg: '#7DCFCC', track: '#4eaaa7', bar: '#082020', text: '#082020', sub: '#1a5a58' },
-      { bg: '#F5E09A', track: '#c8b860', bar: '#1a1408', text: '#1a1408', sub: '#6a5020' },
-      { bg: '#A8D8FF', track: '#70b0e0', bar: '#081220', text: '#081220', sub: '#204870' },
-      { bg: '#B8E8B0', track: '#80c078', bar: '#081408', text: '#081408', sub: '#205820' },
-      { bg: '#E0C8F8', track: '#b090d0', bar: '#120820', text: '#120820', sub: '#503878' },
-      { bg: '#FFD4A0', track: '#d8a060', bar: '#1a0e04', text: '#1a0e04', sub: '#7a4818' },
-    ];
-    
-    const paletteIdx = (title.charCodeAt(0) || 0) % CARD_PALETTES.length;
-    const palette = CARD_PALETTES[paletteIdx];
-
-    return (
-      <div className="bill-message-content w-72 lg:w-[20svw]">
-        {/* Bill Card */}
-        <div 
-          className="rounded-[30px] p-5 w-full"
-          style={{ backgroundColor: palette.bg }}
-        >
-          {/* Row 1: Title */}
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h3 className="text-xl font-extrabold leading-tight" style={{ color: palette.text }}>
-                {title}
-              </h3>
-              <p className="text-xs mt-1 font-medium" style={{ color: palette.sub }}>
-                Split Bill
-              </p>
-            </div>
-          </div>
-
-          {/* Row 2: Total and Paid By */}
-          <div className="flex items-end justify-between mb-5">
-            <div>
-              <p className="text-xs font-semibold mb-1" style={{ color: palette.sub }}>Total</p>
-              <p className="text-2xl font-extrabold tracking-tight" style={{ color: palette.text }}>
-                {total || `${currencySymbol}0.00`}
-              </p>
-            </div>
-            
-            {/* Paid by indicator */}
-            <div className="text-right">
-              <p className="text-xs font-semibold mb-2" style={{ color: palette.sub }}>Paid by</p>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-bold" style={{ color: palette.text }}>
-                  {paidBy || 'Someone'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          
-          
-
-          {/* Pending indicator */}
-          {pendingCount > 0 ? (
-            <div className="mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
-              {/* <div className="flex items-center gap-1.5">
-                <Clock size={14} style={{ color: palette.sub }} />
-                <span className="text-xs font-medium" style={{ color: palette.sub }}>
-                  {pendingCount} pending 
-                </span>
-              </div> */}
-              
-              {/* View Bill Button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleOpenBill(billId);
-                }}
-                className="text-xs font-bold px-3 py-1.5 rounded-full transition-all hover:scale-105 active:scale-95"
-                style={{ 
-                  backgroundColor: palette.text,
-                  color: palette.bg
-                }}
-              >
-                View Details
-              </button>
-            </div>
-          ) : (
-            /* Fully paid indicator */
-            <div className="mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <CheckCircle size={14} style={{ color: palette.text }} />
-                <span className="text-xs font-bold" style={{ color: palette.text }}>
-                  Fully Paid
-                </span>
-              </div>
-              <span className="text-xs font-medium" style={{ color: palette.sub }}>
-                ✓ Settled
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Regular message rendering with mention parsing
-  const parts = parseMessageContent(content);
-
-  return parts.map((part, index) => {
-    if (part.type === "mention") {
-      const isCurrentUser = part.userId === currentUserId;
-      return (
-        <span
-          key={index}
-          className={`inline-flex items-center px-2 py-0.5 rounded-lg font-medium mx-0.5 text-sm ${
-            isCurrentUser
-              ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800"
-              : "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800"
-          }`}
-          title={`Mention: ${part.name}`}
-        >
-          @{part.name}
-        </span>
-      );
-    }
-
-    // Apply highlighting to text parts
-    if (highlight && part.content) {
-      return (
-        <span key={index}>{highlightText(part.content, highlight)}</span>
-      );
-    }
-
-    return <span key={index}>{part.content}</span>;
-  });
-};
-
-
 
   // Updated message status rendering for groups
   const renderMessageStatus = (message) => {
@@ -821,645 +484,6 @@ const renderMessageWithMentions = (content, highlight, isBillMessage = false, bi
       </div>
     );
   };
-
-  // ==================== USE EFFECTS ====================
-
-  // Initialize encryption
-  useEffect(() => {
-    if (group?.groupId && currentUserId) {
-      initializeGroupEncryption();
-    }
-  }, [currentUserId, group?.groupId]);
-
-  // Monitor online status of group members
-  useEffect(() => {
-    if (groupData?.members) {
-      const online = new Set();
-      groupData.members.forEach((member) => {
-        const status = getUserOnlineStatus(member.userId);
-        if (status.online) {
-          online.add(member.userId);
-        }
-      });
-      setOnlineMembers(online);
-    }
-  }, [groupData?.members, getUserOnlineStatus]);
-
-  // Click outside handler for dropdown
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowDropdown(false);
-      }
-      if (
-        emojiPickerRef.current &&
-        !emojiPickerRef.current.contains(event.target)
-      ) {
-        setShowEmojiPicker(false);
-      }
-      if (
-        attachmentPickerRef.current &&
-        !attachmentPickerRef.current.contains(event.target)
-      ) {
-        setShowAttachments(false);
-      }
-      if (
-        gifPickerRef.current &&
-        !gifPickerRef.current.contains(event.target)
-      ) {
-        setShowGIFPicker(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
-
-  // Decrypt all messages when groupKey is available
-  useEffect(() => {
-    if (groupKey && messages.length > 0) {
-      decryptAllMessages();
-    }
-  }, [groupKey, messages]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, joinNotifications]);
-
-  useEffect(() => {
-    const attachments = [];
-    messages.forEach((msg) => {
-      if (msg.attachments && msg.attachments.length > 0) {
-        msg.attachments.forEach((att) => {
-          attachments.push({
-            ...att,
-            messageId: msg.timestamp,
-            senderId: msg.senderId,
-          });
-        });
-      }
-    });
-    setAllAttachments(attachments);
-  }, [messages]);
-
-useEffect(() => {
-  if (!socket || !isConnected || !currentUserId || !group?.groupId) {
-    setRoomJoined(false);
-    return;
-  }
-
-  console.log("🔌 Setting up group chat for room:", roomId);
-  socket.emit("join-chat", {
-    roomId,
-    userId: currentUserId,
-    groupMembers: groupData.members,
-  });
-
-  const onJoinedRoom = ({ roomId: joinedRoom, success }) => {
-    if (success && joinedRoom === roomId) {
-      console.log("✅ Successfully joined group room:", roomId);
-      setRoomJoined(true);
-      fetchMessages();
-      markMessagesAsRead();
-    }
-  };
-
-  const onMemberJoined = (data) => {
-    console.log("👋 Member joined group:", data);
-
-    // Add join notification
-    const notification = {
-      id: `join-${data.timestamp}`,
-      type: "join",
-      userId: data.userId,
-      userName: data.userName,
-      timestamp: data.timestamp,
-    };
-
-    setJoinNotifications((prev) => [...prev, notification]);
-
-    // Update group data with new member
-    setGroupData((prev) => {
-      if (!prev) return prev;
-
-      // Check if member already exists
-      const memberExists = prev.members?.some(
-        (m) => m.userId === data.userId,
-      );
-      if (memberExists) return prev;
-
-      const newMember = {
-        userId: data.userId,
-        userName: data.userName,
-        username: data.username,
-        avatar: data.avatar,
-        role: "member",
-        joinedAt: data.timestamp,
-      };
-
-      const updatedMembers = [...(prev.members || []), newMember];
-
-      return {
-        ...prev,
-        members: updatedMembers,
-      };
-    });
-
-    // Remove notification after 5 seconds
-    setTimeout(() => {
-      setJoinNotifications((prev) =>
-        prev.filter((n) => n.id !== notification.id),
-      );
-    }, 5000);
-
-    // Important: Re-fetch messages for the new member to get decryption keys
-    if (data.userId === currentUserId) {
-      console.log("🔄 This user just joined, re-initializing encryption...");
-      initializeGroupEncryption().then(() => {
-        fetchMessages();
-      });
-    }
-  };
-
-  const onGroupSettingsUpdated = (data) => {
-    console.log("⚙️ Group settings updated via socket:", data);
-    if (data.roomId === roomId) {
-      setGroupData((prev) => ({
-        ...prev,
-        settings: {
-          ...prev.settings,
-          ...data.settings,
-        },
-      }));
-
-      if (data.settings.slowMode) {
-        setSlowModeSettings(data.settings.slowMode);
-        updateLocalSlowMode(data.settings.slowMode);
-      }
-    }
-  };
-
- const onMessage = (message) => {
-  if (message.roomId === roomId) {
-    const userJoinTime = groupData.members?.find(
-      (m) => m.userId === currentUserId,
-    )?.joinedAt;
-    
-    if (userJoinTime && message.timestamp > userJoinTime) {
-      // Handle encryption if needed
-      if (message.encryptedContent && groupKey) {
-        let encryptedData = message.encryptedContent;
-        if (typeof encryptedData === "string") {
-          try {
-            encryptedData = JSON.parse(encryptedData);
-          } catch {
-            encryptedData = { encrypted: encryptedData, iv: "" };
-          }
-        }
-
-        encryptionService
-          .decryptMessage(encryptedData, groupKey)
-          .then((decrypted) => {
-            setDecryptedMessages((prev) =>
-              new Map(prev).set(message.timestamp, decrypted),
-            );
-          })
-          .catch((error) => {
-            console.error("Decryption error:", error);
-            setDecryptedMessages((prev) =>
-              new Map(prev).set(
-                message.timestamp,
-                message.content || "[Decryption failed]",
-              ),
-            );
-          });
-      }
-
-      setMessages((prev) => {
-        const exists = prev.some(
-          (m) =>
-            m.timestamp === message.timestamp &&
-            m.senderId === message.senderId,
-        );
-        if (exists) return prev;
-        
-        // Make sure to preserve all message properties including billId and billData
-        return [...prev, message];
-      });
-    }
-
-    if (message.senderId !== currentUserId) {
-      setTimeout(() => markMessagesAsRead(), 500);
-    }
-
-    if (onMessageUpdate) {
-      onMessageUpdate(message);
-    }
-  }
-};
-
-  const onMessageUpdated = (data) => {
-    console.log("📝 Message updated:", data);
-    if (data.roomId === roomId) {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.timestamp === data.timestamp && msg.senderId === data.senderId
-            ? { ...msg, ...data }
-            : msg,
-        ),
-      );
-      setDecryptedMessages((prev) => {
-        const newMap = new Map(prev);
-        newMap.delete(data.timestamp);
-        return newMap;
-      });
-    }
-  };
-
-  const onMessageDeleted = (data) => {
-    console.log("🗑️ Message deleted:", data);
-    if (data.roomId === roomId) {
-      if (data.deleteForEveryone) {
-        const deletedContent = data.deletedByAdmin
-          ? `This message was deleted by admin (${data.deletedByName})`
-          : "This message was deleted";
-
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.timestamp === data.timestamp && msg.senderId === data.senderId
-              ? {
-                  ...msg,
-                  deleted: true,
-                  deletedBy: data.deletedBy,
-                  deletedByAdmin: data.deletedByAdmin,
-                  deletedByName: data.deletedByName,
-                  content: deletedContent,
-                  attachments: [],
-                }
-              : msg,
-          ),
-        );
-        setDecryptedMessages((prev) => {
-          const newMap = new Map(prev);
-          newMap.delete(data.timestamp);
-          return newMap;
-        });
-      } else {
-        setMessages((prev) =>
-          prev.filter(
-            (msg) =>
-              !(
-                msg.timestamp === data.timestamp &&
-                msg.senderId === data.senderId
-              ),
-          ),
-        );
-        setDecryptedMessages((prev) => {
-          const newMap = new Map(prev);
-          newMap.delete(data.timestamp);
-          return newMap;
-        });
-      }
-    }
-  };
-
-  const onMessageReaction = (data) => {
-    console.log("😊 Message reaction:", data);
-    if (data.roomId === roomId) {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.timestamp === data.timestamp &&
-          msg.senderId === data.messageOwnerId
-            ? { ...msg, reactions: data.reactions }
-            : msg,
-        ),
-      );
-    }
-  };
-
-  const onMessageRead = (data) => {
-    console.log("✓✓ Group messages marked as read:", data);
-    if (data.roomId === roomId && data.userId !== currentUserId) {
-      setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.senderId === currentUserId) {
-            const readBy = msg.readBy || [];
-            if (!readBy.includes(data.userId)) {
-              readBy.push(data.userId);
-            }
-            return { ...msg, readBy, read: readBy.length > 0 };
-          }
-          return msg;
-        }),
-      );
-    }
-  };
-
-  const onMessageDelivered = (data) => {
-    console.log("✓ Group messages delivered:", data);
-    if (data.roomId === roomId && data.isGroupMessage) {
-      setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.senderId === currentUserId && !msg.delivered) {
-            return { ...msg, delivered: true, deliveredAt: data.deliveredAt };
-          }
-          return msg;
-        }),
-      );
-    }
-  };
-
-  const onUserCameOnline = (data) => {
-    console.log("👤 User came online in group:", data);
-    if (data.roomId === roomId) {
-      setOnlineMembers((prev) => new Set(prev).add(data.userId));
-
-      // Update delivery status for messages sent to this user
-      setMessages((prev) =>
-        prev.map((msg) => {
-          // For messages sent to the group, they're considered delivered when any member is online
-          if (msg.senderId === currentUserId && !msg.delivered) {
-            return { ...msg, delivered: true, deliveredAt: data.timestamp };
-          }
-          return msg;
-        }),
-      );
-    }
-  };
-
-  const onUserWentOffline = (data) => {
-    console.log("👤 User went offline:", data);
-    if (data.userId && data.roomId === roomId) {
-      setOnlineMembers((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(data.userId);
-        return newSet;
-      });
-    }
-  };
-
-  const onCheckUndelivered = (data) => {
-    console.log("🔍 Check undelivered messages:", data);
-    if (data.roomId === roomId) {
-      // Request status of undelivered messages
-      if (socket && isConnected) {
-        socket.emit("get-undelivered-status", {
-          roomId,
-          userId: currentUserId,
-          isGroupMessage: true,
-        });
-      }
-    }
-  };
-
-  const onTyping = ({ userId, isTyping }) => {
-    if (userId !== currentUserId) {
-      setGroupTyping((prev) => {
-        if (isTyping) {
-          return [...new Set([...prev, userId])];
-        } else {
-          return prev.filter((id) => id !== userId);
-        }
-      });
-    }
-  };
-
-  const onOnline = ({ userId, online, lastSeen }) => {
-    if (userId) {
-      setOnlineMembers((prev) => {
-        if (online) {
-          return new Set(prev).add(userId);
-        } else {
-          const newSet = new Set(prev);
-          newSet.delete(userId);
-          return newSet;
-        }
-      });
-    }
-  };
-
-  // ====== BILL MESSAGE UPDATE LISTENERS ======
-  const onBillUpdated = (data) => {
-    console.log('💰 Bill updated:', data);
-    if (data.roomId === roomId) {
-      // Refresh the bill modal if it's open
-      if (showSplitBillModal) {
-        refreshBillData(data.bill.id);
-      }
-      
-      // Update the bill message in the chat
-      if (data.bill) {
-        updateBillMessageInState(data.bill);
-      }
-    }
-  };
-
-  const onBillMessageUpdated = (data) => {
-    console.log('💰 Bill message updated in chat:', data);
-    if (data.roomId === roomId && data.billData) {
-      setMessages(prev => {
-        return prev.map(msg => {
-          if (msg.billId === data.billId) {
-            // Calculate updated stats
-            const paidCount = data.billData.paidCount || 0;
-            const totalCount = data.billData.totalCount || 0;
-            const pendingCount = data.billData.pendingCount || (totalCount - paidCount);
-            const paidPercentage = data.billData.paidPercentage || (totalCount > 0 ? (paidCount / totalCount) * 100 : 0);
-            
-            const currencySymbol = getCurrencySymbol(data.billData.currency || 'USD');
-
-            // Create updated content
-            const updatedContent = `New Split Bill: ${data.billData.title}\n Total: ${currencySymbol}${data.billData.totalAmount?.toFixed(2) || '0.00'}\nPaid by: ${data.billData.paidByName || 'Someone'}\nPending payments: ${pendingCount} people\n\nUse /split to view or pay bills`;
-
-            return {
-              ...msg,
-              content: updatedContent,
-              billData: {
-                title: data.billData.title,
-                totalAmount: data.billData.totalAmount,
-                paidBy: data.billData.paidBy,
-                paidByName: data.billData.paidByName || 'Someone',
-                paidCount,
-                totalCount,
-                pendingCount,
-                paidPercentage,
-                splits: data.billData.splits || []
-              }
-            };
-          }
-          return msg;
-        });
-      });
-    }
-  };
-
-  const onBillCreated = (data) => {
-    console.log('💰 New bill created:', data);
-    if (data.roomId === roomId) {
-      // The message will be added via the regular message handler
-      // But you might want to refresh the bill modal if it's open
-      if (showSplitBillModal) {
-        refreshBillData(data.bill.id);
-      }
-    }
-  };
-
-  const onBillCancelled = (data) => {
-    console.log('🚫 Bill cancelled:', data);
-    if (data.roomId === roomId) {
-      setMessages(prev => prev.map(msg => {
-        if (msg.billId === data.billId) {
-          return {
-            ...msg,
-            billCancelled: true,
-            cancelledBy: data.cancelledBy,
-            cancelledAt: data.cancelledAt
-          };
-        }
-        return msg;
-      }));
-    }
-  };
-
-  const onBillDirectUpdate = (data) => {
-    console.log('💰 Direct bill update received:', data);
-    if (data.roomId === roomId && data.bill) {
-      // Update the bill message in the chat
-      const bill = data.bill;
-      const paidCount = bill.splits?.filter(s => s.status === 'paid').length || 0;
-      const totalCount = bill.splits?.length || 0;
-      const paidAmount = bill.splits
-        ?.filter(s => s.status === 'paid')
-        .reduce((sum, s) => sum + s.amount, 0) || 0;
-      const paidPercentage = bill.totalAmount > 0 ? (paidAmount / bill.totalAmount) * 100 : 0;
-      
-      // Get payer name
-      const paidByMember = bill.splits?.find(s => s.userId === bill.paidBy);
-      const paidByName = paidByMember?.userName || 'Someone';
-
-      const currencySymbol = getCurrencySymbol(bill.currency || 'USD');
-
-      setMessages(prev => prev.map(msg => {
-        if (msg.billId === data.billId) {
-          // Create updated content
-          const updatedContent = `New Split Bill: ${bill.title}\n Total: ${currencySymbol}${bill.totalAmount?.toFixed(2) || '0.00'}\nPaid by: ${paidByName}\nPending payments: ${totalCount - paidCount} people\n\nUse /split to view or pay bills`;
-
-          return {
-            ...msg,
-            content: updatedContent,
-            billData: {
-              title: bill.title,
-              totalAmount: bill.totalAmount,
-              paidBy: bill.paidBy,
-              paidByName: paidByName,
-              paidCount,
-              totalCount,
-              pendingCount: totalCount - paidCount,
-              paidPercentage,
-              splits: bill.splits || []
-            }
-          };
-        }
-        return msg;
-      }));
-    }
-  };
-
-  // ====== BILL DELETION LISTENERS ======
-  const onBillMessageDeleted = (data) => {
-    console.log('🗑️ Bill message deleted:', data);
-    if (data.roomId === roomId) {
-      // Remove the bill message from chat
-      setMessages(prev => prev.filter(msg => msg.billId !== data.billId));
-    }
-  };
-
-  const onBillDeleted = (data) => {
-    console.log('💰 Bill deleted:', data);
-    if (data.roomId === roomId) {
-      // Remove the bill message from chat
-      setMessages(prev => prev.filter(msg => msg.billId !== data.billId));
-    }
-  };
-
-  // Register all socket event listeners
-  socket.on("joined-room", onJoinedRoom);
-  socket.on("member-joined", onMemberJoined);
-  socket.on("group-settings-updated", onGroupSettingsUpdated);
-  socket.on("receive-message", onMessage);
-  socket.on("message-updated", onMessageUpdated);
-  socket.on("message-deleted", onMessageDeleted);
-  socket.on("message-reaction", onMessageReaction);
-  socket.on("message-read", onMessageRead);
-  socket.on("message-delivered", onMessageDelivered);
-  socket.on("user-came-online", onUserCameOnline);
-  socket.on("user-went-offline", onUserWentOffline);
-  socket.on("check-undelivered-messages", onCheckUndelivered);
-  socket.on("user-typing", onTyping);
-  socket.on("user-online", onOnline);
-  socket.on("user-status-change", onOnline);
-  
-  // Register bill message listeners
-  socket.on("bill-updated", onBillUpdated);
-  socket.on("bill-message-updated", onBillMessageUpdated);
-  socket.on("bill-created", onBillCreated);
-  socket.on("bill-cancelled", onBillCancelled);
-  socket.on("bill-direct-update", onBillDirectUpdate);
-  
-  // Register bill deletion listeners
-  socket.on("bill-message-deleted", onBillMessageDeleted);
-  socket.on("bill-deleted", onBillDeleted);
-
-  fetchMessages();
-
-  return () => {
-    console.log("🧹 Cleaning up group chat listeners");
-    socket.off("joined-room", onJoinedRoom);
-    socket.off("member-joined", onMemberJoined);
-    socket.off("group-settings-updated", onGroupSettingsUpdated);
-    socket.off("receive-message", onMessage);
-    socket.off("message-updated", onMessageUpdated);
-    socket.off("message-deleted", onMessageDeleted);
-    socket.off("message-reaction", onMessageReaction);
-    socket.off("message-read", onMessageRead);
-    socket.off("message-delivered", onMessageDelivered);
-    socket.off("user-came-online", onUserCameOnline);
-    socket.off("user-went-offline", onUserWentOffline);
-    socket.off("check-undelivered-messages", onCheckUndelivered);
-    socket.off("user-typing", onTyping);
-    socket.off("user-online", onOnline);
-    socket.off("user-status-change", onOnline);
-    
-    // Remove bill message listeners
-    socket.off("bill-updated", onBillUpdated);
-    socket.off("bill-message-updated", onBillMessageUpdated);
-    socket.off("bill-created", onBillCreated);
-    socket.off("bill-cancelled", onBillCancelled);
-    socket.off("bill-direct-update", onBillDirectUpdate);
-    
-    // Remove bill deletion listeners
-    socket.off("bill-message-deleted", onBillMessageDeleted);
-    socket.off("bill-deleted", onBillDeleted);
-
-    socket.emit("leave-chat", { roomId, userId: currentUserId });
-    setRoomJoined(false);
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-  };
-}, [
-  socket,
-  isConnected,
-  group?.groupId,
-  currentUserId,
-  roomId,
-  groupKey,
-  groupData.members,
-  showSplitBillModal,
-]);
 
   // ==================== ASYNC FUNCTIONS ====================
 
@@ -1691,6 +715,619 @@ useEffect(() => {
 
     setUploading(false);
     return uploadedAttachments;
+  };
+
+  // ==================== BILL FUNCTIONS ====================
+
+  // Helper function to update bill message in state
+ // Helper function to update bill message in state (around line 300-350)
+const updateBillMessageInState = (bill) => {
+  setMessages((prev) =>
+    prev.map((msg) => {
+      if (msg.billId === bill.id) {
+        const paidCount = bill.splits?.filter(
+          (s) => s.status === "paid"
+        ).length || 0;
+        const totalCount = bill.splits?.length || 0;
+        
+        // Get payer name
+        const paidByMember = bill.splits?.find(
+          (s) => s.userId === bill.paidBy
+        );
+        const paidByName = paidByMember?.userName || "Someone";
+
+        const currencySymbol = getCurrencySymbol(bill.currency || "USD");
+
+        // Create updated content
+        const updatedContent = `New Split Bill: ${bill.title}\n Total: ${currencySymbol}${bill.totalAmount?.toFixed(2) || "0.00"}\nPaid by: ${paidByName}\nPending payments: ${totalCount - paidCount} people\n\nUse /split to view or pay bills`;
+
+        return {
+          ...msg,
+          content: updatedContent,
+          billData: {
+            ...bill,
+            title: bill.title,
+            totalAmount: bill.totalAmount,
+            paidBy: bill.paidBy,
+            paidByName: paidByName,
+            paidCount,
+            totalCount,
+            pendingCount: totalCount - paidCount,
+            paidPercentage: bill.totalAmount > 0 ? (paidCount / totalCount) * 100 : 0,
+            splits: bill.splits || [],
+          },
+        };
+      }
+      return msg;
+    }),
+  );
+};
+
+  // Refresh bill data manually
+  const refreshBillData = async (billId) => {
+    try {
+      const res = await fetch(
+        `/api/chat/split-bill?groupId=${roomId}&billId=${billId}`,
+      );
+      const data = await res.json();
+
+      if (data.success && data.bill) {
+        // Update the message with fresh bill data
+        updateBillMessageInState(data.bill);
+      }
+    } catch (error) {
+      console.error("Error refreshing bill data:", error);
+    }
+  };
+
+  const handleOpenBill = (billId) => {
+    setShowSplitBillModal(true);
+    console.log("Opening bill:", billId);
+  };
+
+  const handleOpenBillDetails = (billId) => {
+    console.log("Opening bill details for:", billId);
+  };
+
+  // ==================== MESSAGE CONTENT COMPONENT ====================
+
+  // Update the MessageContent component (around line 750-800)
+  const MessageContent = ({
+    message,
+    content,
+    highlightedText,
+    formatTime,
+    renderMessageStatus,
+    isOwn,
+  }) => {
+    const [showFullContent, setShowFullContent] = useState(false);
+
+    // Function to extract URLs from text
+    const extractUrlsFromText = (text) => {
+      if (!text) return [];
+      const urlPattern =
+        /(https?:\/\/[^\s]+)|(www\.[^\s]+\.[^\s]+)|([^\s]+\.[^\s]+\.[^\s]+\/[^\s]*)/gi;
+      const matches = text.match(urlPattern) || [];
+      return matches.map((url) => {
+        if (url.startsWith("www.")) return `https://${url}`;
+        if (!url.startsWith("http") && url.includes("."))
+          return `https://${url}`;
+        return url;
+      });
+    };
+
+    // Function to validate URL
+    const isValidUrl = (string) => {
+      try {
+        new URL(string);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    // Function to highlight text
+    const highlightText = (text, highlight) => {
+      if (!highlight.trim() || !text) {
+        return text;
+      }
+
+      const regex = new RegExp(
+        `(${highlight.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+        "gi",
+      );
+      const parts = text.split(regex);
+
+      return parts.map((part, index) => {
+        if (regex.test(part)) {
+          return (
+            <mark
+              key={index}
+              className="bg-green-300 dark:bg-green-600 text-inherit px-0.5 rounded"
+            >
+              {part}
+            </mark>
+          );
+        }
+        return part;
+      });
+    };
+
+    // Check if content has code blocks
+    const hasCodeBlocks = content.includes("```") || detectCode(content);
+    const shouldShowFullContent = showFullContent || hasCodeBlocks;
+
+    const renderMessageContent = (text) => {
+      if (!text) return null;
+
+      // Always parse the FULL content
+      const parts = parseMessageContent(text);
+
+      if (!shouldShowFullContent && text.length > 300) {
+        // For truncated view without code blocks
+        let charCount = 0;
+        const visibleParts = [];
+        let reachedLimit = false;
+
+        for (const part of parts) {
+          if (reachedLimit) break;
+
+          if (part.type === "text" && part.content) {
+            const remainingChars = 300 - charCount;
+            if (remainingChars <= 0) {
+              reachedLimit = true;
+              break;
+            }
+
+            if (part.content.length > remainingChars) {
+              // Show partial text with ellipsis
+              visibleParts.push({
+                ...part,
+                content: part.content.substring(0, remainingChars) + "...",
+              });
+              reachedLimit = true;
+            } else {
+              visibleParts.push(part);
+              charCount += part.content.length;
+            }
+          } else {
+            // For non-text parts, skip in truncated view
+            reachedLimit = true;
+          }
+        }
+
+        // Render the visible parts
+        return visibleParts.map((part, index) => {
+          if (part.type === "inline-code") {
+            return (
+              <code
+                key={`inline-${index}`}
+                className="px-1.5 py-0.5 bg-gray-100 dark:bg-[#1a1a1a] text-pink-600 dark:text-pink-400 rounded-md font-mono text-sm border border-gray-200 dark:border-[#232529]"
+              >
+                {part.code}
+              </code>
+            );
+          }
+
+          // For text parts, render with links and highlighting
+          if (part.content) {
+            return (
+              <span key={`text-${index}`} className="break-words">
+                {renderTextWithLinks(part.content, index)}
+              </span>
+            );
+          }
+
+          return null;
+        });
+      } else {
+        // Show full content - render all parts EXCEPT code blocks
+        return parts.map((part, index) => {
+          if (part.type === "code-block") {
+            // Don't render code blocks here - they're handled separately
+            return null;
+          }
+
+          if (part.type === "inline-code") {
+            return (
+              <code
+                key={`inline-${index}`}
+                className="px-1.5 py-0.5 bg-gray-100 dark:bg-[#1a1a1a] text-pink-600 dark:text-pink-400 rounded-md font-mono text-sm border border-gray-200 dark:border-[#232529]"
+              >
+                {part.code}
+              </code>
+            );
+          }
+
+          // For text parts, render with links and highlighting
+          if (part.content) {
+            return (
+              <span key={`text-${index}`} className="break-words">
+                {renderTextWithLinks(part.content, index)}
+              </span>
+            );
+          }
+
+          return null;
+        });
+      }
+    };
+
+    // Function to render text with clickable links
+    // Helper function to render text with clickable links (for code block messages)
+const renderTextWithLinks = (text, keyPrefix) => {
+  if (!text) return null;
+
+  const urlPattern =
+    /(https?:\/\/[^\s]+)|(www\.[^\s]+\.[^\s]+)|([^\s]+\.[^\s]+\.[^\s]+\/[^\s]*)/gi;
+  const parts = text.split(urlPattern);
+  const matches = text.match(urlPattern) || [];
+
+  const isValidUrl = (string) => {
+    try {
+      new URL(string);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const highlightText = (text, highlight) => {
+    if (!highlight.trim() || !text) {
+      return text;
+    }
+
+    const regex = new RegExp(
+      `(${highlight.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+      "gi",
+    );
+    const textParts = text.split(regex);
+
+    return textParts.map((part, idx) => {
+      if (regex.test(part)) {
+        return (
+          <mark
+            key={idx}
+            className="bg-green-300 dark:bg-green-600 text-inherit px-0.5 rounded"
+          >
+            {part}
+          </mark>
+        );
+      }
+      return part;
+    });
+  };
+
+  let result = [];
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+
+    // Check if this part is a URL
+    let isUrl = false;
+    let url = part;
+
+    if (matches.includes(part)) {
+      isUrl = true;
+    } else if (part && (part.startsWith("http") || part.includes("."))) {
+      if (part.startsWith("www.")) {
+        url = `https://${part}`;
+      } else if (!part.startsWith("http") && part.includes(".")) {
+        url = `https://${part}`;
+      }
+      isUrl = isValidUrl(url);
+    }
+
+    if (isUrl && part) {
+      result.push(
+        <a
+          key={`${keyPrefix}-url-${i}`}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 dark:text-blue-400 hover:underline break-all"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>,
+      );
+    } else if (part) {
+      if (highlightedText) {
+        result.push(
+          <span key={`${keyPrefix}-text-${i}`}>
+            {highlightText(part, highlightedText)}
+          </span>,
+        );
+      } else {
+        result.push(<span key={`${keyPrefix}-text-${i}`}>{part}</span>);
+      }
+    }
+  }
+
+  return result;
+};
+
+    const urls = extractUrlsFromText(content);
+    const hasUrls = urls.length > 0;
+
+    return (
+      <div className="message-content-wrapper">
+        {/* Message content without code blocks */}
+        <div className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+          {renderMessageContent(content)}
+          {message.edited && !message.deleted && (
+            <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">
+              (edited)
+            </span>
+          )}
+        </div>
+
+        {/* Show more/less button for long messages */}
+        {content.length > 300 && !hasCodeBlocks && (
+          <button
+            onClick={() => setShowFullContent(!showFullContent)}
+            className="text-xs text-blue-600 dark:text-blue-400 mt-2 hover:underline focus:outline-none"
+          >
+            {showFullContent ? "Show less" : "Show more"}
+          </button>
+        )}
+
+        {/* Link previews */}
+        {hasUrls && urls.length > 0 && !message.deleted && (
+          <div className="mt-2 space-y-2">
+            <LinkPreview
+              key={`preview-${urls[0]}-${message.timestamp}`}
+              url={urls[0]}
+            />
+            {urls.length > 1 && (
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                +{urls.length - 1} more link{urls.length - 1 > 1 ? "s" : ""}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Time and status */}
+        <div className="flex items-center justify-end gap-1 mt-2">
+          <p
+            className={`text-[10px] ${isOwn ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"}`}
+          >
+            {formatTime(message.timestamp)}
+          </p>
+          {renderMessageStatus(message)}
+        </div>
+      </div>
+    );
+  };
+
+  // Helper function to render bill messages
+  const renderBillMessage = (content, billId, billCurrency, billData) => {
+    console.log("🎨 Rendering bill message with data:", billData);
+
+    if (!billData) {
+      console.log("❌ No bill data provided, trying to parse from content");
+
+      // Try to parse from content
+      if (content) {
+        const titleMatch = content.match(/New Split Bill: (.*?)(?:\n|$)/);
+        const totalMatch = content.match(/Total: .*?(\d+\.?\d*)/);
+        const paidByMatch = content.match(/Paid by: (.*?)(?:\n|$)/);
+        const pendingMatch = content.match(/Pending payments: (\d+)/);
+
+        const title = titleMatch ? titleMatch[1] : "Split Bill";
+        const totalAmount = totalMatch ? parseFloat(totalMatch[1]) : 0;
+        const paidByName = paidByMatch ? paidByMatch[1] : "Someone";
+        const pendingCount = pendingMatch ? parseInt(pendingMatch[1]) : 0;
+
+        return (
+          <div className="bill-message-content w-72 lg:w-[20svw]">
+            <div className="rounded-[30px] p-5 w-full bg-gray-200 dark:bg-gray-800">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {title}
+              </p>
+              <p className="text-lg font-bold">${totalAmount.toFixed(2)}</p>
+              <p className="text-xs">Paid by: {paidByName}</p>
+              <p className="text-xs">{pendingCount} pending</p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="bill-message-content w-72 lg:w-[20svw]">
+          <div className="rounded-[30px] p-5 w-full bg-gray-200 dark:bg-gray-800">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Loading bill details...
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Extract data with fallbacks
+    const title = billData.title || "Split Bill";
+    const currencySymbol = getCurrencySymbol(
+      billCurrency || billData.currency || "USD",
+    );
+    const totalAmount = billData.totalAmount || 0;
+    const total = `${currencySymbol}${totalAmount.toFixed(2)}`;
+    const paidByName = billData.paidByName || "Someone";
+    const pendingCount = billData.pendingCount || 0;
+    const paidCount = billData.paidCount || 0;
+    const totalCount = billData.totalCount || billData.splits?.length || 0;
+
+    console.log("💰 Bill details:", {
+      title,
+      total,
+      paidByName,
+      pendingCount,
+      paidCount,
+      totalCount,
+    });
+
+    const CARD_PALETTES = [
+      {
+        bg: "#FF8C78",
+        track: "#c96b58",
+        bar: "#1a0a08",
+        text: "#1a0a08",
+        sub: "#7a3028",
+      },
+      {
+        bg: "#FFB8C6",
+        track: "#d98898",
+        bar: "#1a0810",
+        text: "#1a0810",
+        sub: "#7a3050",
+      },
+      {
+        bg: "#7DCFCC",
+        track: "#4eaaa7",
+        bar: "#082020",
+        text: "#082020",
+        sub: "#1a5a58",
+      },
+      {
+        bg: "#F5E09A",
+        track: "#c8b860",
+        bar: "#1a1408",
+        text: "#1a1408",
+        sub: "#6a5020",
+      },
+      {
+        bg: "#A8D8FF",
+        track: "#70b0e0",
+        bar: "#081220",
+        text: "#081220",
+        sub: "#204870",
+      },
+      {
+        bg: "#B8E8B0",
+        track: "#80c078",
+        bar: "#081408",
+        text: "#081408",
+        sub: "#205820",
+      },
+      {
+        bg: "#E0C8F8",
+        track: "#b090d0",
+        bar: "#120820",
+        text: "#120820",
+        sub: "#503878",
+      },
+      {
+        bg: "#FFD4A0",
+        track: "#d8a060",
+        bar: "#1a0e04",
+        text: "#1a0e04",
+        sub: "#7a4818",
+      },
+    ];
+
+    const paletteIdx = (title.charCodeAt(0) || 0) % CARD_PALETTES.length;
+    const palette = CARD_PALETTES[paletteIdx];
+
+    return (
+      <div className="bill-message-content w-72 lg:w-[20svw]">
+        <div
+          className="rounded-[30px] p-5 w-full"
+          style={{ backgroundColor: palette.bg }}
+        >
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h3
+                className="text-xl font-extrabold leading-tight"
+                style={{ color: palette.text }}
+              >
+                {title}
+              </h3>
+              <p
+                className="text-xs mt-1 font-medium"
+                style={{ color: palette.sub }}
+              >
+                Split Bill
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-end justify-between mb-5">
+            <div>
+              <p
+                className="text-xs font-semibold mb-1"
+                style={{ color: palette.sub }}
+              >
+                Total
+              </p>
+              <p
+                className="text-2xl font-extrabold tracking-tight"
+                style={{ color: palette.text }}
+              >
+                {total}
+              </p>
+            </div>
+
+            <div className="text-right">
+              <p
+                className="text-xs font-semibold mb-2"
+                style={{ color: palette.sub }}
+              >
+                Paid by
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="text-sm font-bold"
+                  style={{ color: palette.text }}
+                >
+                  {paidByName}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {pendingCount > 0 ? (
+            <div className="mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenBill(billId);
+                }}
+                className="text-xs font-bold px-3 py-1.5 rounded-full transition-all hover:scale-105 active:scale-95"
+                style={{
+                  backgroundColor: palette.text,
+                  color: palette.bg,
+                }}
+              >
+                View Details
+              </button>
+              <span
+                className="text-xs font-medium"
+                style={{ color: palette.text }}
+              >
+                {pendingCount} pending
+              </span>
+            </div>
+          ) : (
+            <div className="mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <CheckCircle size={14} style={{ color: palette.text }} />
+                <span
+                  className="text-xs font-bold"
+                  style={{ color: palette.text }}
+                >
+                  Fully Paid
+                </span>
+              </div>
+              <span
+                className="text-xs font-medium"
+                style={{ color: palette.sub }}
+              >
+                ✓ Settled
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   // ==================== EVENT HANDLERS ====================
@@ -2782,115 +2419,677 @@ useEffect(() => {
   };
 
   // Handle bill creation success
- // Handle bill creation success
-// Handle bill creation success
+  // In the handleBillCreated function (around line 560-570)
 const handleBillCreated = async (bill) => {
-  // Create an encrypted message about the bill
-  const now = new Date().toISOString();
-
-  // Get currency symbol
-  const currencySymbol = getCurrencySymbol(bill.currency || 'USD');
-
-  // Calculate accurate counts
-  const paidCount = bill.splits?.filter(s => s.status === 'paid').length || 0;
-  const totalCount = bill.splits?.length || 0;
-  const pendingCount = totalCount - paidCount;
+  console.log('💰 Bill created with data from API:', bill);
   
-  // Calculate paid percentage
-  const paidAmount = bill.splits
-    ?.filter(s => s.status === 'paid')
-    .reduce((sum, s) => sum + s.amount, 0) || 0;
-  const paidPercentage = bill.totalAmount ? (paidAmount / bill.totalAmount) * 100 : 0;
-
-  // Get payer name
-  const paidByName = bill.splits?.find(s => s.userId === bill.paidBy)?.userName || 
-                     getMemberName(bill.paidBy);
-
-  const billMessage = `New Split Bill: ${bill.title}\n Total: ${currencySymbol}${bill.totalAmount?.toFixed(2) || '0.00'}\nPaid by: ${paidByName}\nPending payments: ${pendingCount} people\n\nUse /split to view or pay bills`;
-
-  let contentForDB = billMessage;
-  let encryptedContent = null;
-
-  if (encryptionReady && groupKey) {
-    try {
-      encryptedContent = await encryptionService.encryptMessage(
-        billMessage,
-        groupKey,
-      );
-      contentForDB = null;
-    } catch (error) {
-      console.error("❌ Encryption failed for bill message:", error);
-    }
-  }
-
-  // CRITICAL: Make sure bill.id is properly set
-  const messageData = {
-    roomId,
-    senderId: currentUserId,
-    senderName: getMemberName(currentUserId),
-    receiverId: "group",
-    isGroupMessage: true,
-    content: contentForDB,
-    encryptedContent: encryptedContent,
-    attachments: [],
-    replyTo: null,
-    timestamp: now,
-    delivered: false,
-    deliveredAt: null,
-    read: false,
-    readBy: [currentUserId],
-    reactions: [],
-    isEncrypted: !!encryptedContent,
-    // These two properties are CRITICAL for bill messages
-    billId: bill.id,  // This MUST be set
-    billCurrency: bill.currency,
-    // Store bill data for the UI
-    billData: {
-      title: bill.title,
-      totalAmount: bill.totalAmount,
-      paidBy: bill.paidBy,
-      paidByName: paidByName,
-      paidCount,
-      totalCount,
-      pendingCount,
-      paidPercentage,
-      splits: bill.splits
-    }
-  };
-
-  // Create local message with decrypted content
-  const localMessage = {
-    ...messageData,
-    content: billMessage, // Use decrypted content for local display
-  };
-
-  // Add to messages state
-  setMessages(prev => [...prev, localMessage]);
-
-  if (encryptedContent && groupKey) {
-    setDecryptedMessages((prev) => new Map(prev).set(now, billMessage));
-  }
-
-  // Send via socket
+  // The API already saved the message to the database and will emit socket events
+  // So we don't need to create another message here
+  // Just fetch messages to ensure we have the latest
+  await fetchMessages();
+  
+  // Also emit a direct socket event to ensure real-time update
   if (socket && isConnected) {
-    socket.emit("send-message", messageData);
-  }
-
-  // Save to database
-  try {
-    await fetch("/api/chat/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(messageData),
+    socket.emit("bill-created", {
+      roomId: roomId,
+      bill: bill,
+      timestamp: new Date().toISOString()
     });
-  } catch (error) {
-    console.error('Error saving message to database:', error);
-  }
-
-  if (onMessageUpdate) {
-    onMessageUpdate(localMessage);
   }
 };
+
+  // ==================== USE EFFECTS ====================
+
+  // Initialize encryption
+  useEffect(() => {
+    if (group?.groupId && currentUserId) {
+      initializeGroupEncryption();
+    }
+  }, [group?.groupId, currentUserId]);
+
+  // Monitor online status of group members
+  useEffect(() => {
+    if (groupData?.members) {
+      const online = new Set();
+      groupData.members.forEach((member) => {
+        const status = getUserOnlineStatus(member.userId);
+        if (status.online) {
+          online.add(member.userId);
+        }
+      });
+      setOnlineMembers(online);
+    }
+  }, [groupData?.members, getUserOnlineStatus]);
+
+  // Click outside handler for dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target)
+      ) {
+        setShowEmojiPicker(false);
+      }
+      if (
+        attachmentPickerRef.current &&
+        !attachmentPickerRef.current.contains(event.target)
+      ) {
+        setShowAttachments(false);
+      }
+      if (
+        gifPickerRef.current &&
+        !gifPickerRef.current.contains(event.target)
+      ) {
+        setShowGIFPicker(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Decrypt all messages when groupKey is available
+  useEffect(() => {
+    if (groupKey && messages.length > 0) {
+      decryptAllMessages();
+    }
+  }, [groupKey, messages]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, joinNotifications]);
+
+  useEffect(() => {
+    const attachments = [];
+    messages.forEach((msg) => {
+      if (msg.attachments && msg.attachments.length > 0) {
+        msg.attachments.forEach((att) => {
+          attachments.push({
+            ...att,
+            messageId: msg.timestamp,
+            senderId: msg.senderId,
+          });
+        });
+      }
+    });
+    setAllAttachments(attachments);
+  }, [messages]);
+
+  // Main socket connection useEffect
+  useEffect(() => {
+    if (!socket || !isConnected || !currentUserId || !group?.groupId) {
+      setRoomJoined(false);
+      return;
+    }
+
+    console.log("🔌 Setting up group chat for room:", roomId);
+    socket.emit("join-chat", {
+      roomId,
+      userId: currentUserId,
+      groupMembers: groupData.members,
+    });
+
+    // ==================== SOCKET EVENT HANDLERS ====================
+
+    const onJoinedRoom = ({ roomId: joinedRoom, success }) => {
+      if (success && joinedRoom === roomId) {
+        console.log("✅ Successfully joined group room:", roomId);
+        setRoomJoined(true);
+        fetchMessages();
+        markMessagesAsRead();
+      }
+    };
+
+    const onMemberJoined = (data) => {
+      console.log("👋 Member joined group:", data);
+
+      // Add join notification
+      const notification = {
+        id: `join-${data.timestamp}`,
+        type: "join",
+        userId: data.userId,
+        userName: data.userName,
+        timestamp: data.timestamp,
+      };
+
+      setJoinNotifications((prev) => [...prev, notification]);
+
+      // Update group data with new member
+      setGroupData((prev) => {
+        if (!prev) return prev;
+
+        // Check if member already exists
+        const memberExists = prev.members?.some(
+          (m) => m.userId === data.userId,
+        );
+        if (memberExists) return prev;
+
+        const newMember = {
+          userId: data.userId,
+          userName: data.userName,
+          username: data.username,
+          avatar: data.avatar,
+          role: "member",
+          joinedAt: data.timestamp,
+        };
+
+        const updatedMembers = [...(prev.members || []), newMember];
+
+        return {
+          ...prev,
+          members: updatedMembers,
+        };
+      });
+
+      // Remove notification after 5 seconds
+      setTimeout(() => {
+        setJoinNotifications((prev) =>
+          prev.filter((n) => n.id !== notification.id),
+        );
+      }, 5000);
+
+      // Important: Re-fetch messages for the new member to get decryption keys
+      if (data.userId === currentUserId) {
+        console.log("🔄 This user just joined, re-initializing encryption...");
+        initializeGroupEncryption().then(() => {
+          fetchMessages();
+        });
+      }
+    };
+
+    const onGroupSettingsUpdated = (data) => {
+      console.log("⚙️ Group settings updated via socket:", data);
+      if (data.roomId === roomId) {
+        setGroupData((prev) => ({
+          ...prev,
+          settings: {
+            ...prev.settings,
+            ...data.settings,
+          },
+        }));
+
+        if (data.settings.slowMode) {
+          setSlowModeSettings(data.settings.slowMode);
+          updateLocalSlowMode(data.settings.slowMode);
+        }
+      }
+    };
+
+    const onMessage = (message) => {
+      if (message.roomId === roomId) {
+        const userJoinTime = groupData.members?.find(
+          (m) => m.userId === currentUserId,
+        )?.joinedAt;
+
+        if (userJoinTime && message.timestamp > userJoinTime) {
+          // Check if message already exists (prevent duplicates)
+          setMessages((prev) => {
+            const exists = prev.some(
+              (m) =>
+                m.timestamp === message.timestamp &&
+                m.senderId === message.senderId,
+            );
+
+            if (exists) {
+              console.log("⏭️ Skipping duplicate message:", message.timestamp);
+              return prev;
+            }
+
+            // Handle encryption if needed
+            if (message.encryptedContent && groupKey) {
+              let encryptedData = message.encryptedContent;
+              if (typeof encryptedData === "string") {
+                try {
+                  encryptedData = JSON.parse(encryptedData);
+                } catch {
+                  encryptedData = { encrypted: encryptedData, iv: "" };
+                }
+              }
+
+              encryptionService
+                .decryptMessage(encryptedData, groupKey)
+                .then((decrypted) => {
+                  setDecryptedMessages((prev) =>
+                    new Map(prev).set(message.timestamp, decrypted),
+                  );
+                })
+                .catch((error) => {
+                  console.error("Decryption error:", error);
+                  setDecryptedMessages((prev) =>
+                    new Map(prev).set(
+                      message.timestamp,
+                      message.content || "[Decryption failed]",
+                    ),
+                  );
+                });
+            }
+
+            console.log("📩 Adding new message:", message.timestamp);
+            return [...prev, message];
+          });
+
+          if (message.senderId !== currentUserId) {
+            setTimeout(() => markMessagesAsRead(), 500);
+          }
+
+          if (onMessageUpdate) {
+            onMessageUpdate(message);
+          }
+        }
+      }
+    };
+
+    const onMessageUpdated = (data) => {
+      console.log("📝 Message updated:", data);
+      if (data.roomId === roomId) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.timestamp === data.timestamp && msg.senderId === data.senderId
+              ? { ...msg, ...data }
+              : msg,
+          ),
+        );
+        setDecryptedMessages((prev) => {
+          const newMap = new Map(prev);
+          newMap.delete(data.timestamp);
+          return newMap;
+        });
+      }
+    };
+
+    const onMessageDeleted = (data) => {
+      console.log("🗑️ Message deleted:", data);
+      if (data.roomId === roomId) {
+        if (data.deleteForEveryone) {
+          const deletedContent = data.deletedByAdmin
+            ? `This message was deleted by admin (${data.deletedByName})`
+            : "This message was deleted";
+
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.timestamp === data.timestamp && msg.senderId === data.senderId
+                ? {
+                    ...msg,
+                    deleted: true,
+                    deletedBy: data.deletedBy,
+                    deletedByAdmin: data.deletedByAdmin,
+                    deletedByName: data.deletedByName,
+                    content: deletedContent,
+                    attachments: [],
+                  }
+                : msg,
+            ),
+          );
+          setDecryptedMessages((prev) => {
+            const newMap = new Map(prev);
+            newMap.delete(data.timestamp);
+            return newMap;
+          });
+        } else {
+          setMessages((prev) =>
+            prev.filter(
+              (msg) =>
+                !(
+                  msg.timestamp === data.timestamp &&
+                  msg.senderId === data.senderId
+                ),
+            ),
+          );
+          setDecryptedMessages((prev) => {
+            const newMap = new Map(prev);
+            newMap.delete(data.timestamp);
+            return newMap;
+          });
+        }
+      }
+    };
+
+    const onMessageReaction = (data) => {
+      console.log("😊 Message reaction:", data);
+      if (data.roomId === roomId) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.timestamp === data.timestamp &&
+            msg.senderId === data.messageOwnerId
+              ? { ...msg, reactions: data.reactions }
+              : msg,
+          ),
+        );
+      }
+    };
+
+    const onMessageRead = (data) => {
+      console.log("✓✓ Group messages marked as read:", data);
+      if (data.roomId === roomId && data.userId !== currentUserId) {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.senderId === currentUserId) {
+              const readBy = msg.readBy || [];
+              if (!readBy.includes(data.userId)) {
+                readBy.push(data.userId);
+              }
+              return { ...msg, readBy, read: readBy.length > 0 };
+            }
+            return msg;
+          }),
+        );
+      }
+    };
+
+    const onMessageDelivered = (data) => {
+      console.log("✓ Group messages delivered:", data);
+      if (data.roomId === roomId && data.isGroupMessage) {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.senderId === currentUserId && !msg.delivered) {
+              return { ...msg, delivered: true, deliveredAt: data.deliveredAt };
+            }
+            return msg;
+          }),
+        );
+      }
+    };
+
+    const onUserCameOnline = (data) => {
+      console.log("👤 User came online in group:", data);
+      if (data.roomId === roomId) {
+        setOnlineMembers((prev) => new Set(prev).add(data.userId));
+
+        // Update delivery status for messages sent to this user
+        setMessages((prev) =>
+          prev.map((msg) => {
+            // For messages sent to the group, they're considered delivered when any member is online
+            if (msg.senderId === currentUserId && !msg.delivered) {
+              return { ...msg, delivered: true, deliveredAt: data.timestamp };
+            }
+            return msg;
+          }),
+        );
+      }
+    };
+
+    const onUserWentOffline = (data) => {
+      console.log("👤 User went offline:", data);
+      if (data.userId && data.roomId === roomId) {
+        setOnlineMembers((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(data.userId);
+          return newSet;
+        });
+      }
+    };
+
+    const onCheckUndelivered = (data) => {
+      console.log("🔍 Check undelivered messages:", data);
+      if (data.roomId === roomId) {
+        // Request status of undelivered messages
+        if (socket && isConnected) {
+          socket.emit("get-undelivered-status", {
+            roomId,
+            userId: currentUserId,
+            isGroupMessage: true,
+          });
+        }
+      }
+    };
+
+    const onTyping = ({ userId, isTyping }) => {
+      if (userId !== currentUserId) {
+        setGroupTyping((prev) => {
+          if (isTyping) {
+            return [...new Set([...prev, userId])];
+          } else {
+            return prev.filter((id) => id !== userId);
+          }
+        });
+      }
+    };
+
+    const onOnline = ({ userId, online, lastSeen }) => {
+      if (userId) {
+        setOnlineMembers((prev) => {
+          if (online) {
+            return new Set(prev).add(userId);
+          } else {
+            const newSet = new Set(prev);
+            newSet.delete(userId);
+            return newSet;
+          }
+        });
+      }
+    };
+
+    // ====== BILL MESSAGE UPDATE LISTENERS ======
+    const onBillUpdated = (data) => {
+      console.log("💰 Bill updated:", data);
+      if (data.roomId === roomId) {
+        // Refresh the bill modal if it's open
+        if (showSplitBillModal) {
+          refreshBillData(data.bill.id);
+        }
+
+        // Update the bill message in the chat
+        if (data.bill) {
+          updateBillMessageInState(data.bill);
+        }
+      }
+    };
+
+    const onBillMessageUpdated = (data) => {
+      console.log("💰 Bill message updated in chat:", data);
+      if (data.roomId === roomId && data.billData) {
+        setMessages((prev) => {
+          return prev.map((msg) => {
+            if (msg.billId === data.billId) {
+              // Calculate updated stats
+              const paidCount = data.billData.paidCount || 0;
+              const totalCount = data.billData.totalCount || 0;
+              const pendingCount =
+                data.billData.pendingCount || totalCount - paidCount;
+              const paidPercentage =
+                data.billData.paidPercentage ||
+                (totalCount > 0 ? (paidCount / totalCount) * 100 : 0);
+
+              const currencySymbol = getCurrencySymbol(
+                data.billData.currency || "USD",
+              );
+
+              // Create updated content
+              const updatedContent = `New Split Bill: ${data.billData.title}\nTotal: ${currencySymbol}${data.billData.totalAmount?.toFixed(2) || "0.00"}\nPaid by: ${data.billData.paidByName || "Someone"}\nPending payments: ${pendingCount} people\n\nUse /split to view or pay bills`;
+
+              return {
+                ...msg,
+                content: updatedContent,
+                billData: {
+                  ...data.billData,
+                  paidCount,
+                  totalCount,
+                  pendingCount,
+                  paidPercentage,
+                },
+              };
+            }
+            return msg;
+          });
+        });
+      }
+    };
+
+   const onBillCreated = (data) => {
+  console.log("💰 New bill created:", data);
+  if (data.roomId === roomId) {
+    // The message will be added via the regular message handler
+    // But we need to fetch messages to ensure we have it
+    fetchMessages();
+    
+    // Also add a temporary notification for better UX
+    const notification = {
+      id: `bill-${data.timestamp}`,
+      type: "bill",
+      billId: data.bill?.id,
+      userName: data.bill?.paidByName || "Someone",
+      timestamp: data.timestamp,
+    };
+    
+    setJoinNotifications((prev) => [...prev, notification]);
+    
+    // Remove notification after 3 seconds
+    setTimeout(() => {
+      setJoinNotifications((prev) =>
+        prev.filter((n) => n.id !== notification.id),
+      );
+    }, 3000);
+  }
+};
+
+    const onBillCancelled = (data) => {
+      console.log("🚫 Bill cancelled:", data);
+      if (data.roomId === roomId) {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.billId === data.billId) {
+              return {
+                ...msg,
+                billCancelled: true,
+                cancelledBy: data.cancelledBy,
+                cancelledAt: data.cancelledAt,
+              };
+            }
+            return msg;
+          }),
+        );
+      }
+    };
+
+   const onBillDirectUpdate = (data) => {
+  console.log("💰 Direct bill update received:", data);
+  if (data.roomId === roomId && data.bill) {
+    // Update the bill message in the chat
+    updateBillMessageInState(data.bill);
+  }
+};
+
+const onBillMessageImmediate = (data) => {
+  console.log("💰 Immediate bill message:", data);
+  if (data.roomId === roomId && data.message) {
+    // Add the message directly without waiting for API
+    setMessages((prev) => {
+      // Check if message already exists
+      const exists = prev.some(
+        (m) => m.timestamp === data.message.timestamp
+      );
+      
+      if (exists) {
+        return prev;
+      }
+      
+      return [...prev, data.message];
+    });
+  }
+};
+
+    // ====== BILL DELETION LISTENERS ======
+    const onBillMessageDeleted = (data) => {
+      console.log("🗑️ Bill message deleted:", data);
+      if (data.roomId === roomId) {
+        // Remove the bill message from chat
+        setMessages((prev) => prev.filter((msg) => msg.billId !== data.billId));
+      }
+    };
+
+    const onBillDeleted = (data) => {
+      console.log("💰 Bill deleted:", data);
+      if (data.roomId === roomId) {
+        // Remove the bill message from chat
+        setMessages((prev) => prev.filter((msg) => msg.billId !== data.billId));
+      }
+    };
+
+    // ==================== REGISTER ALL EVENT LISTENERS ====================
+
+    // Register all socket event listeners
+    socket.on("joined-room", onJoinedRoom);
+    socket.on("member-joined", onMemberJoined);
+    socket.on("group-settings-updated", onGroupSettingsUpdated);
+    socket.on("receive-message", onMessage);
+    socket.on("message-updated", onMessageUpdated);
+    socket.on("message-deleted", onMessageDeleted);
+    socket.on("message-reaction", onMessageReaction);
+    socket.on("message-read", onMessageRead);
+    socket.on("message-delivered", onMessageDelivered);
+    socket.on("user-came-online", onUserCameOnline);
+    socket.on("user-went-offline", onUserWentOffline);
+    socket.on("check-undelivered-messages", onCheckUndelivered);
+    socket.on("user-typing", onTyping);
+    socket.on("user-online", onOnline);
+    socket.on("user-status-change", onOnline);
+
+    // Register bill message listeners
+    socket.on("bill-updated", onBillUpdated);
+    socket.on("bill-message-updated", onBillMessageUpdated);
+    socket.on("bill-created", onBillCreated);
+    socket.on("bill-cancelled", onBillCancelled);
+    socket.on("bill-direct-update", onBillDirectUpdate);
+
+    // Register bill deletion listeners
+    socket.on("bill-message-deleted", onBillMessageDeleted);
+    socket.on("bill-deleted", onBillDeleted);
+
+    // ==================== CLEANUP ====================
+    return () => {
+      console.log("🧹 Cleaning up group chat listeners");
+      socket.off("joined-room", onJoinedRoom);
+      socket.off("member-joined", onMemberJoined);
+      socket.off("group-settings-updated", onGroupSettingsUpdated);
+      socket.off("receive-message", onMessage);
+      socket.off("message-updated", onMessageUpdated);
+      socket.off("message-deleted", onMessageDeleted);
+      socket.off("message-reaction", onMessageReaction);
+      socket.off("message-read", onMessageRead);
+      socket.off("message-delivered", onMessageDelivered);
+      socket.off("user-came-online", onUserCameOnline);
+      socket.off("user-went-offline", onUserWentOffline);
+      socket.off("check-undelivered-messages", onCheckUndelivered);
+      socket.off("user-typing", onTyping);
+      socket.off("user-online", onOnline);
+      socket.off("user-status-change", onOnline);
+
+      // Remove bill message listeners
+      socket.off("bill-updated", onBillUpdated);
+      socket.off("bill-message-updated", onBillMessageUpdated);
+      socket.off("bill-created", onBillCreated);
+      socket.off("bill-cancelled", onBillCancelled);
+      socket.off("bill-direct-update", onBillDirectUpdate);
+
+      // Remove bill deletion listeners
+      socket.off("bill-message-deleted", onBillMessageDeleted);
+      socket.off("bill-deleted", onBillDeleted);
+
+      socket.emit("leave-chat", { roomId, userId: currentUserId });
+      setRoomJoined(false);
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, [
+    socket,
+    isConnected,
+    group?.groupId,
+    currentUserId,
+    roomId,
+    groupKey,
+    groupData?.members,
+    showSplitBillModal,
+    onMessageUpdate,
+    updateLocalSlowMode,
+    slowModeSettings,
+  ]);
 
   // Group messages by date
   const groupedMessages = messages.reduce((groups, message) => {
@@ -3407,72 +3606,131 @@ const handleBillCreated = async (bill) => {
                             )}
 
                           {/* Text content with highlighting */}
-                          {hasTextContent && (
-                            <div
-                              className={`rounded-2xl p-3 ${
-                                msg.deleted
-                                  ? msg.deletedByAdmin
-                                    ? "bg-zinc-100 dark:bg-zinc-500/20 italic text-zinc-700 dark:text-zinc-400 border-amber-200 dark:border-amber-800"
-                                    : "bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400"
-                                  : isBillMessage
-                                    ? "p-0 bg-transparent" // Remove background for bill messages since card has its own
-                                    : isOwn
-                                      ? "bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none"
-                                      : "bg-white dark:bg-[#101010] dark:text-white  border-[#dadce0] dark:border-[#232529] rounded-tl-none"
-                              }`}
-                            >
-                              {isBillMessage ? (
-                                renderMessageWithMentions(
-                                  messageContent,
-                                  highlightedText,
-                                  true,
-                                  msg.billId,
-                                  msg.billCurrency,
-                                  msg.billData,
-                                  msg.billCancelled // Pass the cancelled flag
-                                )
-                              ) : (
-                                <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
-                                  {msg.deleted ? (
-                                    msg.deletedByAdmin ? (
-                                      <span>
-                                        This message was deleted by admin
-                                        <span className="font-semibold ml-1">
-                                          ({msg.deletedByName || "Admin"})
-                                        </span>
-                                      </span>
-                                    ) : (
-                                      msg.content || "This message was deleted"
-                                    )
-                                  ) : (
-                                    renderMessageWithMentions(
-                                      messageContent,
-                                      highlightedText,
-                                      false
-                                    )
-                                  )}
-                                  {msg.edited && !msg.deleted && (
-                                    <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">
-                                      (edited)
-                                    </span>
-                                  )}
-                                </p>
-                              )}
-                              
-                              {/* Time and status inside text bubble */}
-                              {!isBillMessage && (
-                                <div className="flex items-center justify-end gap-1 mt-2">
-                                  <p
-                                    className={`text-[10px] ${isOwn ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"}`}
-                                  >
-                                    {formatTime(msg.timestamp)}
-                                  </p>
-                                  {renderMessageStatus(msg)}
-                                </div>
-                              )}
-                            </div>
-                          )}
 
+                          {/* Text content with highlighting */}
+  
+{/* Text content with highlighting */}
+{hasTextContent && (
+  // Check if this is a bill message first (keep existing bill logic)
+  isBillMessage ? (
+    // Bill message - keep as is
+    msg.billCancelled ? (
+      <div className="bill-message-content w-72 lg:w-[20svw]">
+        <div className="rounded-[30px] p-5 w-full bg-gray-300 dark:bg-gray-700">
+          <div className="flex items-center gap-2 mb-2">
+            <XCircle size={20} className="text-red-500" />
+            <h3 className="text-xl font-extrabold text-gray-700 dark:text-gray-300">
+              Bill Cancelled
+            </h3>
+          </div>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            This bill has been cancelled
+          </p>
+        </div>
+      </div>
+    ) : (
+      <div className="bill-message-wrapper">
+        {renderBillMessage(
+          messageContent,
+          msg.billId,
+          msg.billCurrency,
+          msg.billData
+        )}
+      </div>
+    )
+  ) : (
+    // Check if this message contains a code block
+    (() => {
+      // Parse the message to check for code blocks
+      const parts = parseMessageContent(messageContent);
+      const hasCodeBlock = parts.some(part => part.type === "code-block");
+      
+      // If it has a code block, render it with code blocks outside the bubble
+      if (hasCodeBlock) {
+        return (
+          <div className="w-full">
+            {parts.map((part, index) => {
+              if (part.type === "code-block") {
+                // Code block - render outside bubble (like images)
+                return (
+                  <div key={`code-${index}`} className="my-2">
+                    <CodeBlock
+                      code={part.code}
+                      language={part.language || "javascript"}
+                    />
+                  </div>
+                );
+              } else if (part.type === "inline-code") {
+                // Inline code - render inside text
+                return (
+                  <span key={`inline-${index}`}>
+                    <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-[#1a1a1a] text-pink-600 dark:text-pink-400 rounded-md font-mono text-sm border border-gray-200 dark:border-[#232529]">
+                      {part.code}
+                    </code>
+                  </span>
+                );
+              } else if (part.content) {
+                // Text content - render in bubble
+                return (
+                  <div
+                    key={`text-${index}`}
+                    className={`rounded-2xl p-3 mb-2 ${
+                      msg.deleted
+                        ? msg.deletedByAdmin
+                          ? "bg-zinc-100 dark:bg-zinc-500/20 italic text-zinc-700 dark:text-zinc-400 border-amber-200 dark:border-amber-800"
+                          : "bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400"
+                        : isOwn
+                          ? "bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none"
+                          : "bg-white dark:bg-[#101010] dark:text-white border-[#dadce0] dark:border-[#232529] rounded-tl-none"
+                    }`}
+                  >
+                    <div className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                      {renderTextWithLinks(part.content, index)}
+                    </div>
+                    {/* Only show time and status on the last text bubble if there are multiple */}
+                    {index === parts.length - 1 && (
+                      <div className="flex items-center justify-end gap-1 mt-2">
+                        <p className={`text-[10px] ${isOwn ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"}`}>
+                          {formatTime(msg.timestamp)}
+                        </p>
+                        {renderMessageStatus(msg)}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              return null;
+            })}
+          </div>
+        );
+      } else {
+        // Regular message without code blocks - keep in single bubble
+        return (
+          <div
+            className={`rounded-2xl p-3 ${
+              msg.deleted
+                ? msg.deletedByAdmin
+                  ? "bg-zinc-100 dark:bg-zinc-500/20 italic text-zinc-700 dark:text-zinc-400 border-amber-200 dark:border-amber-800"
+                  : "bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400"
+                : isOwn
+                  ? "bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none"
+                  : "bg-white dark:bg-[#101010] dark:text-white border-[#dadce0] dark:border-[#232529] rounded-tl-none"
+            }`}
+          >
+            <MessageContent
+              message={msg}
+              content={messageContent}
+              highlightedText={highlightedText}
+              formatTime={formatTime}
+              renderMessageStatus={renderMessageStatus}
+              isOwn={isOwn}
+            />
+          </div>
+        );
+      }
+    })()
+  )
+)}
                           {/* Reactions */}
                           {msg.reactions && msg.reactions.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1 px-2">
@@ -3621,7 +3879,7 @@ const handleBillCreated = async (bill) => {
                   className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-lg transition-colors"
                 >
                   <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                    <DollarSign
+                    <ReceiptText
                       size={16}
                       className="text-green-600 dark:text-green-400"
                     />
@@ -3818,6 +4076,7 @@ const handleBillCreated = async (bill) => {
             <input
               ref={inputRef}
               type="text"
+              onPaste={handlePaste}
               value={editingMessage ? editText : newMessage}
               onChange={
                 editingMessage
@@ -4088,6 +4347,138 @@ const handleBillCreated = async (bill) => {
             opacity: 0.7;
             background-color: rgba(59, 130, 246, 0.1);
           }
+        }
+
+        code {
+          font-family: "Fira Code", "Courier New", monospace;
+        }
+
+        .inline-code {
+          @apply px-1.5 py-0.5 bg-gray-100 dark:bg-[#1a1a1a] rounded-md font-mono text-sm;
+        }
+
+        /* Line clamp utilities */
+        .line-clamp-1 {
+          display: -webkit-box;
+          -webkit-line-clamp: 1;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
+        .line-clamp-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
+        pre,
+        code {
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        /* Better code block styling */
+        .syntax-highlighter {
+          background: transparent !important;
+        }
+
+        /* Ensure line breaks are preserved in text */
+        .whitespace-pre-wrap {
+          white-space: pre-wrap !important;
+          word-break: break-word;
+        }
+
+        /* Style for inline code */
+        code:not([class*="language-"]) {
+          background-color: #f3f4f6;
+          padding: 0.2rem 0.4rem;
+          border-radius: 0.375rem;
+          font-size: 0.875rem;
+          color: #e83e8c;
+        }
+
+        .dark code:not([class*="language-"]) {
+          background-color: #1f2937;
+          color: #f472b6;
+        }
+
+        /* Ensure message container has max width */
+        .max-w-[70%] {
+          max-width: 70%;
+          min-width: 200px;
+        }
+
+        /* For very long code lines */
+        .overflow-x-auto {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        /* Custom scrollbar for code blocks */
+        .overflow-x-auto::-webkit-scrollbar {
+          height: 8px;
+        }
+
+        .overflow-x-auto::-webkit-scrollbar-track {
+          background: #1a1a1a;
+          border-radius: 4px;
+        }
+
+        .overflow-x-auto::-webkit-scrollbar-thumb {
+          background: #444;
+          border-radius: 4px;
+        }
+
+        .overflow-x-auto::-webkit-scrollbar-thumb:hover {
+          background: #555;
+        }
+
+        /* Dark mode scrollbar */
+        .dark .overflow-x-auto::-webkit-scrollbar-track {
+          background: #2d2d2d;
+        }
+
+        .dark .overflow-x-auto::-webkit-scrollbar-thumb {
+          background: #666;
+        }
+
+        /* Ensure code block doesn't overflow parent */
+        .code-block-wrapper {
+          max-width: 100%;
+          overflow: hidden;
+        }
+
+        /* For inline code */
+        code:not([class*="language-"]) {
+          max-width: 100%;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        /* Ensure code blocks don't overflow their containers */
+        .max-w-full {
+          max-width: 100%;
+          width: 100%;
+        }
+
+        .overflow-x-auto {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        /* For the message container */
+        .max-w-[70%] {
+          max-width: min(70%, 600px);
+        }
+
+        /* Ensure bill message is visible */
+        .bill-message-wrapper {
+          display: block;
+          width: 100%;
+          margin: 0;
+          padding: 0;
         }
       `}</style>
     </>

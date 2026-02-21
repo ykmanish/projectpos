@@ -11,6 +11,8 @@ import {
   Info,
   Shield,
   AlertTriangle,
+  Pin,
+  PinOff,
 } from "lucide-react";
 
 const EMOJI_REACTIONS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
@@ -25,9 +27,11 @@ export default function MessageContextMenu({
   onCopy,
   onMessageInfo,
   onReply,
+  onPin,
   isOwnMessage,
   isCurrentUserAdmin,
   adminName,
+  isPinned = false,
 }) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showAdminDeleteConfirm, setShowAdminDeleteConfirm] = useState(false);
@@ -88,6 +92,12 @@ export default function MessageContextMenu({
     handleAction(() => onDelete(true));
   };
 
+  const handlePinClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleAction(onPin);
+  };
+
   const canDeleteForEveryone = () => {
     if (!isOwnMessage && !isCurrentUserAdmin) return false;
     if (isOwnMessage) {
@@ -101,8 +111,8 @@ export default function MessageContextMenu({
   };
 
   const getMenuStyle = () => {
-    const menuWidth = 220;
-    const menuHeight = showAdminDeleteConfirm ? 200 : 350;
+    const menuWidth = 240;
+    const menuHeight = showAdminDeleteConfirm ? 200 : 400;
     
     let left = position.x;
     let top = position.y;
@@ -199,14 +209,14 @@ export default function MessageContextMenu({
       {/* Context Menu */}
       <div
         ref={menuRef}
-        className="fixed z-50 bg-white dark:bg-[#0c0c0c] rounded-2xl -2xl  border-[#dadce0] dark:border-[#232529] py-2 min-w-[220px] max-w-[90vw] animate-in fade-in zoom-in-95 duration-100"
+        className="fixed z-50 bg-white dark:bg-[#0c0c0c] rounded-2xl -2xl  border-[#dadce0] dark:border-[#232529] py-2 min-w-[240px] max-w-[90vw] animate-in fade-in zoom-in-95 duration-100"
         style={getMenuStyle()}
       >
         {/* Emoji Reactions */}
         {!showEmojiPicker ? (
           <>
             {/* Reply Option */}
-            
+           
 
             <button
               onClick={handleReactClick}
@@ -217,6 +227,25 @@ export default function MessageContextMenu({
               <Smile size={18} className="text-[#5f6368] dark:text-gray-400" />
               <span className="text-sm text-[#202124] dark:text-white">React</span>
             </button>
+
+            {/* Pin/Unpin Option */}
+            {!message.deleted && (
+              <button
+                onClick={handlePinClick}
+                className={`w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#101010] flex items-center gap-3 transition-colors text-left ${
+                  isPinned ? 'text-blue-600' : ''
+                }`}
+              >
+                {isPinned ? (
+                  <PinOff size={18} className="text-blue-600" />
+                ) : (
+                  <Pin size={18} className="text-[#5f6368] dark:text-gray-400" />
+                )}
+                <span className="text-sm text-[#202124] dark:text-white">
+                  {isPinned ? 'Unpin Message' : 'Pin Message'}
+                </span>
+              </button>
+            )}
           </>
         ) : (
           <>
@@ -261,7 +290,7 @@ export default function MessageContextMenu({
         {message.content && !message.deleted && (
           <button
             onClick={() => handleAction(() => onCopy(message.content))}
-            className="w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#101010] flex items-center gap-3 transition-colors text-left"
+                       className="w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#101010] flex items-center gap-3 transition-colors text-left"
           >
             <Copy size={18} className="text-[#5f6368] dark:text-gray-400" />
             <span className="text-sm text-[#202124] dark:text-white">Copy</span>
@@ -272,7 +301,7 @@ export default function MessageContextMenu({
         {isOwnMessage && message.content && !message.deleted && (
           <button
             onClick={() => handleAction(onEdit)}
-                        className="w-full px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center gap-3 transition-colors text-left"
+            className="w-full px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center gap-3 transition-colors text-left"
           >
             <Edit size={18} className="text-blue-600 dark:text-blue-400" />
             <span className="text-sm text-[#202124] dark:text-white">Edit</span>

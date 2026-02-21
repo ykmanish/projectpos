@@ -27,11 +27,9 @@ export async function GET(request) {
 
     let query = { 
       groupId,
-      // Exclude cancelled bills - only show active or settled bills
       status: { $ne: 'cancelled' }
     };
     
-    // If specific bill is requested
     if (billId) {
       query.id = billId;
       const bill = await bills.findOne(query);
@@ -41,7 +39,6 @@ export async function GET(request) {
       });
     }
 
-    // Get all bills for the group, sorted by newest first
     const groupBills = await bills
       .find(query)
       .sort({ createdAt: -1 })
@@ -61,6 +58,9 @@ export async function GET(request) {
     );
   }
 }
+
+// POST - Create a new split bill
+// app/api/chat/split-bill/route.js - Update the POST method
 
 // POST - Create a new split bill
 export async function POST(request) {
@@ -87,6 +87,7 @@ export async function POST(request) {
     const db = client.db('positivity');
     const bills = db.collection('splitBills');
     const groups = db.collection('groups');
+    const messages = db.collection('messages');
 
     // Check if group exists
     const group = await groups.findOne({ groupId });
@@ -99,41 +100,111 @@ export async function POST(request) {
 
     // Generate unique bill ID
     const id = `BILL_${generateBillId()}_${Date.now()}`;
+    const now = new Date().toISOString();
 
     const bill = {
       id,
       groupId,
       title: billTitle,
-      totalAmount,
+      totalAmount: parseFloat(totalAmount),
       currency,
       paidBy,
       splits: splits.map(split => ({
         ...split,
+        userId: split.userId,
+        userName: split.userName,
+        amount: parseFloat(split.amount),
         currency: split.currency || currency,
         status: split.userId === paidBy ? 'paid' : 'pending',
-        updatedAt: new Date().toISOString()
+        updatedAt: now
       })),
       createdBy,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
       status: 'active'
     };
 
     const result = await bills.insertOne(bill);
+
+    // Calculate stats for chat message
+    const paidCount = bill.splits.filter(s => s.status === 'paid').length;
+    const totalCount = bill.splits.length;
+    const paidAmount = bill.splits
+      .filter(s => s.status === 'paid')
+      .reduce((sum, s) => sum + s.amount, 0);
+    const paidPercentage = totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0;
+
+    // Get payer name
+    const paidByMember = bill.splits.find(s => s.userId === paidBy);
+    const paidByName = paidByMember?.userName || 'Someone';
+
+    const currencySymbol = getCurrencySymbol(currency);
+
+    // Create the bill message content
+    const billMessage = `New Split Bill: ${billTitle}\nTotal: ${currencySymbol}${totalAmount.toFixed(2)}\nPaid by: ${paidByName}\nPending payments: ${totalCount - paidCount} people\n\nUse /split to view or pay bills`;
+
+    // Create message data for chat with complete bill data
+    const messageData = {
+      roomId: groupId,
+      senderId: createdBy,
+      senderName: paidByName,
+      receiverId: "group",
+      isGroupMessage: true,
+      content: billMessage,
+      encryptedContent: null,
+      attachments: [],
+      replyTo: null,
+      timestamp: now,
+      delivered: false,
+      deliveredAt: null,
+      read: false,
+      readBy: [createdBy],
+      reactions: [],
+      isEncrypted: false,
+      billId: id,
+      billCurrency: currency,
+      billData: {
+        id: id,
+        title: billTitle,
+        totalAmount: parseFloat(totalAmount),
+        paidBy: paidBy,
+        paidByName: paidByName,
+        paidCount: paidCount,
+        totalCount: totalCount,
+        pendingCount: totalCount - paidCount,
+        paidPercentage: paidPercentage,
+        splits: bill.splits,
+        currency: currency,
+        createdAt: now,
+        createdBy: createdBy,
+        status: 'active'
+      },
+      billCreatedAt: now,
+      billCreatedBy: createdBy,
+      billStatus: 'active'
+    };
+
+    // Save the message to database
+    await messages.insertOne(messageData);
 
     // Update group's last activity
     await groups.updateOne(
       { groupId },
       { 
         $set: { 
-          lastActivity: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          lastActivity: now,
+          updatedAt: now
         },
         $inc: { totalBills: 1 }
       }
     );
 
-    console.log('✅ Split bill created:', id, 'Currency:', currency);
+    console.log('✅ Split bill created and message saved:', id);
+
+    // Emit socket event for real-time update (if socket.io is available)
+    // This should be handled by your socket server separately
+    // The socket server should listen for database changes or you can call it from here
+    // For now, we'll just return the bill and let the frontend handle it
 
     return NextResponse.json({
       success: true,
@@ -174,6 +245,7 @@ export async function PUT(request) {
     const client = await clientPromise;
     const db = client.db('positivity');
     const bills = db.collection('splitBills');
+    const messages = db.collection('messages');
 
     // Find the bill
     const existingBill = await bills.findOne({ id: billId });
@@ -192,20 +264,25 @@ export async function PUT(request) {
       );
     }
 
+    const now = new Date().toISOString();
+
     // Prepare updated bill
     const updatedBill = {
       ...existingBill,
       title: billTitle,
-      totalAmount,
+      totalAmount: parseFloat(totalAmount),
       currency,
       paidBy,
       splits: splits.map(split => ({
         ...split,
+        userId: split.userId,
+        userName: split.userName,
+        amount: parseFloat(split.amount),
         currency: split.currency || currency,
-        status: split.userId === paidBy ? 'paid' : split.status || 'pending',
-        updatedAt: new Date().toISOString()
+        status: split.userId === paidBy ? 'paid' : (split.status || 'pending'),
+        updatedAt: now
       })),
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
       updatedBy
     };
 
@@ -220,65 +297,54 @@ export async function PUT(request) {
 
     const finalBill = await bills.findOne({ id: billId });
 
-    // ========== UPDATE CHAT MESSAGE WITH LATEST BILL DATA ==========
-    try {
-      const messages = db.collection('messages');
-      
-      // Find the original bill message
-      const originalMessage = await messages.findOne({
+    // Calculate updated stats
+    const paidCount = finalBill.splits.filter(s => s.status === 'paid').length;
+    const totalCount = finalBill.splits.length;
+    const paidAmount = finalBill.splits
+      .filter(s => s.status === 'paid')
+      .reduce((sum, s) => sum + s.amount, 0);
+    const paidPercentage = finalBill.totalAmount > 0 ? (paidAmount / finalBill.totalAmount) * 100 : 0;
+
+    // Get payer name
+    const paidByMember = finalBill.splits.find(s => s.userId === finalBill.paidBy);
+    const paidByName = paidByMember?.userName || 'Someone';
+
+    const currencySymbol = getCurrencySymbol(finalBill.currency || 'USD');
+
+    // Create updated bill message content
+    const updatedBillMessage = `New Split Bill: ${finalBill.title}\nTotal: ${currencySymbol}${finalBill.totalAmount.toFixed(2)}\nPaid by: ${paidByName}\nPending payments: ${totalCount - paidCount} people\n\nUse /split to view or pay bills`;
+
+    // Update the message in database with complete bill data
+    await messages.updateOne(
+      { 
         roomId: groupId,
-        billId: billId
-      });
-
-      if (originalMessage) {
-        // Calculate updated stats
-        const paidCount = finalBill.splits.filter(s => s.status === 'paid').length;
-        const totalCount = finalBill.splits.length;
-        const paidAmount = finalBill.splits
-          .filter(s => s.status === 'paid')
-          .reduce((sum, s) => sum + s.amount, 0);
-        const paidPercentage = finalBill.totalAmount > 0 ? (paidAmount / finalBill.totalAmount) * 100 : 0;
-
-        // Get payer name
-        const paidByMember = finalBill.splits.find(s => s.userId === finalBill.paidBy);
-        const paidByName = paidByMember?.userName || 'Someone';
-
-        const currencySymbol = getCurrencySymbol(finalBill.currency || 'USD');
-
-        // Create updated bill message content
-        const updatedBillMessage = `New Split Bill: ${finalBill.title}\n Total: ${currencySymbol}${finalBill.totalAmount.toFixed(2)}\nPaid by: ${paidByName}\nPending payments: ${totalCount - paidCount} people\n\nUse /split to view or pay bills`;
-
-        // Update the message in database
-        await messages.updateOne(
-          { 
-            roomId: groupId,
-            billId: billId 
+        billId: billId 
+      },
+      {
+        $set: {
+          content: updatedBillMessage,
+          billData: {
+            id: finalBill.id,
+            title: finalBill.title,
+            totalAmount: finalBill.totalAmount,
+            paidBy: finalBill.paidBy,
+            paidByName: paidByName,
+            paidCount,
+            totalCount,
+            pendingCount: totalCount - paidCount,
+            paidPercentage,
+            splits: finalBill.splits,
+            currency: finalBill.currency,
+            createdAt: finalBill.createdAt,
+            createdBy: finalBill.createdBy,
+            status: finalBill.status
           },
-          {
-            $set: {
-              content: updatedBillMessage,
-              billData: {
-                title: finalBill.title,
-                totalAmount: finalBill.totalAmount,
-                paidBy: finalBill.paidBy,
-                paidByName: paidByName,
-                paidCount,
-                totalCount,
-                pendingCount: totalCount - paidCount,
-                paidPercentage,
-                splits: finalBill.splits
-              },
-              updatedAt: new Date().toISOString()
-            }
-          }
-        );
-
-        console.log('📝 Chat message updated for bill edit:', billId);
+          billCurrency: finalBill.currency,
+          billStatus: finalBill.status,
+          updatedAt: now
+        }
       }
-    } catch (msgError) {
-      console.error('Error updating chat message:', msgError);
-      // Don't fail the whole request if message update fails
-    }
+    );
 
     console.log('✅ Split bill updated:', billId);
 
@@ -312,6 +378,7 @@ export async function PATCH(request) {
     const client = await clientPromise;
     const db = client.db('positivity');
     const bills = db.collection('splitBills');
+    const messages = db.collection('messages');
 
     // Find the bill
     const bill = await bills.findOne({ id: billId });
@@ -322,13 +389,15 @@ export async function PATCH(request) {
       );
     }
 
+    const now = new Date().toISOString();
+
     // Update the specific split
     const updatedSplits = bill.splits.map(split => {
       if (split.userId === splitUserId) {
         return {
           ...split,
           status,
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         };
       }
       return split;
@@ -344,72 +413,63 @@ export async function PATCH(request) {
         $set: {
           splits: updatedSplits,
           status: billStatus,
-          updatedAt: new Date().toISOString()
+          updatedAt: now
         }
       }
     );
 
     const updatedBill = await bills.findOne({ id: billId });
 
-    // ========== UPDATE CHAT MESSAGE WITH LATEST BILL DATA ==========
-    try {
-      const messages = db.collection('messages');
-      
-      // Find the original bill message
-      const originalMessage = await messages.findOne({
+    // Calculate updated stats
+    const paidCount = updatedBill.splits.filter(s => s.status === 'paid').length;
+    const totalCount = updatedBill.splits.length;
+    const paidAmount = updatedBill.splits
+      .filter(s => s.status === 'paid')
+      .reduce((sum, s) => sum + s.amount, 0);
+    const paidPercentage = updatedBill.totalAmount > 0 ? (paidAmount / updatedBill.totalAmount) * 100 : 0;
+
+    // Get payer name
+    const paidByMember = updatedBill.splits.find(s => s.userId === updatedBill.paidBy);
+    const paidByName = paidByMember?.userName || 'Someone';
+
+    const currencySymbol = getCurrencySymbol(updatedBill.currency || 'USD');
+
+    // Create updated bill message content
+    const updatedBillMessage = `New Split Bill: ${updatedBill.title}\nTotal: ${currencySymbol}${updatedBill.totalAmount.toFixed(2)}\nPaid by: ${paidByName}\nPending payments: ${totalCount - paidCount} people\n\nUse /split to view or pay bills`;
+
+    // Update the message in database with complete bill data
+    await messages.updateOne(
+      { 
         roomId: groupId,
-        billId: billId
-      });
-
-      if (originalMessage) {
-        // Calculate updated stats
-        const paidCount = updatedBill.splits.filter(s => s.status === 'paid').length;
-        const totalCount = updatedBill.splits.length;
-        const paidAmount = updatedBill.splits
-          .filter(s => s.status === 'paid')
-          .reduce((sum, s) => sum + s.amount, 0);
-        const paidPercentage = updatedBill.totalAmount > 0 ? (paidAmount / updatedBill.totalAmount) * 100 : 0;
-
-        // Get payer name
-        const paidByMember = updatedBill.splits.find(s => s.userId === updatedBill.paidBy);
-        const paidByName = paidByMember?.userName || 'Someone';
-
-        const currencySymbol = getCurrencySymbol(updatedBill.currency || 'USD');
-
-        // Create updated bill message content
-        const updatedBillMessage = `New Split Bill: ${updatedBill.title}\n Total: ${currencySymbol}${updatedBill.totalAmount.toFixed(2)}\nPaid by: ${paidByName}\nPending payments: ${totalCount - paidCount} people\n\nUse /split to view or pay bills`;
-
-        // Update the message in database
-        await messages.updateOne(
-          { 
-            roomId: groupId,
-            billId: billId 
+        billId: billId 
+      },
+      {
+        $set: {
+          content: updatedBillMessage,
+          billData: {
+            id: updatedBill.id,
+            title: updatedBill.title,
+            totalAmount: updatedBill.totalAmount,
+            paidBy: updatedBill.paidBy,
+            paidByName: paidByName,
+            paidCount,
+            totalCount,
+            pendingCount: totalCount - paidCount,
+            paidPercentage,
+            splits: updatedBill.splits,
+            currency: updatedBill.currency,
+            createdAt: updatedBill.createdAt,
+            createdBy: updatedBill.createdBy,
+            status: updatedBill.status
           },
-          {
-            $set: {
-              content: updatedBillMessage,
-              billData: {
-                title: updatedBill.title,
-                totalAmount: updatedBill.totalAmount,
-                paidBy: updatedBill.paidBy,
-                paidByName: paidByName,
-                paidCount,
-                totalCount,
-                pendingCount: totalCount - paidCount,
-                paidPercentage,
-                splits: updatedBill.splits
-              },
-              updatedAt: new Date().toISOString()
-            }
-          }
-        );
-
-        console.log('📝 Chat message updated for bill:', billId);
+          billCurrency: updatedBill.currency,
+          billStatus: updatedBill.status,
+          updatedAt: now
+        }
       }
-    } catch (msgError) {
-      console.error('Error updating chat message:', msgError);
-      // Don't fail the whole request if message update fails
-    }
+    );
+
+    console.log('✅ Split bill updated:', billId);
 
     return NextResponse.json({
       success: true,
@@ -443,7 +503,7 @@ export async function DELETE(request) {
     const client = await clientPromise;
     const db = client.db('positivity');
     const bills = db.collection('splitBills');
-    const groups = db.collection('groups');
+    const messages = db.collection('messages');
 
     // Find the bill
     const bill = await bills.findOne({ id: billId });
@@ -465,28 +525,22 @@ export async function DELETE(request) {
     // HARD DELETE - completely remove from database
     await bills.deleteOne({ id: billId });
 
-    // ========== UPDATE CHAT MESSAGE TO REMOVE BILL REFERENCE ==========
-    try {
-      const messages = db.collection('messages');
-      
-      // Either mark as deleted or remove the bill reference
-      await messages.updateOne(
-        { 
-          roomId: groupId,
-          billId: billId 
-        },
-        {
-          $set: {
-            billDeleted: true,
-            deletedBy: userId,
-            deletedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }
+    // Update the message to show it's deleted
+    await messages.updateOne(
+      { 
+        roomId: groupId,
+        billId: billId 
+      },
+      {
+        $set: {
+          billDeleted: true,
+          billCancelled: true,
+          cancelledBy: userId,
+          cancelledAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         }
-      );
-    } catch (msgError) {
-      console.error('Error updating deleted bill message:', msgError);
-    }
+      }
+    );
 
     console.log('✅ Bill permanently deleted:', billId);
 

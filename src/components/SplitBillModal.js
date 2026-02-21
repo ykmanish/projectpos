@@ -559,127 +559,108 @@ export default function SplitBillModal({
     }));
   };
 
-  const handleSubmit = async () => {
-    if (!billTitle.trim()) return setError('Please enter a bill title');
-    if (!totalAmount || parseFloat(totalAmount) <= 0) return setError('Please enter a valid amount');
-    const selected = participants.filter(p => p.selected);
-    if (selected.length === 0) return setError('Please select at least one participant');
-    const splits = calculateSplits();
-    if (!splits) return;
+  // components/SplitBillModal.js (partial - only the handleSubmit function needs to be updated)
 
-    setLoading(true); setError('');
-    
-    try {
-      let res;
-      let data;
+// components/SplitBillModal.js - Update the handleSubmit function
 
-      if (editingBill) {
-        // Update existing bill
-        res = await fetch('/api/chat/split-bill', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            billId: editingBill.id,
-            groupId: group.groupId,
-            billTitle,
-            totalAmount: parseFloat(totalAmount),
-            currency,
-            paidBy,
-            splits,
-            updatedBy: currentUserId
-          })
-        });
-        data = await res.json();
-        
-        if (data.success) {
-          // Update bill in local state
-          setBills(prev => prev.map(b => b.id === editingBill.id ? data.bill : b));
-          
-          // Emit socket event for bill update - this will update the chat message
-          if (socket && isConnected) {
-            // First, emit bill-deleted for the old bill message
-            socket.emit('bill-message-deleted', {
-              billId: editingBill.id,
-              roomId: roomId || group.groupId,
-              deletedBy: currentUserId,
-              deletedByName: group.members?.find(m => m.userId === currentUserId)?.userName || 'Someone',
-              timestamp: new Date().toISOString()
-            });
+const handleSubmit = async () => {
+  if (!billTitle.trim()) return setError('Please enter a bill title');
+  if (!totalAmount || parseFloat(totalAmount) <= 0) return setError('Please enter a valid amount');
+  const selected = participants.filter(p => p.selected);
+  if (selected.length === 0) return setError('Please select at least one participant');
+  const splits = calculateSplits();
+  if (!splits) return;
 
-            // Then emit bill-created for the updated bill (the chat will create a new message)
-            socket.emit('bill-created', {
-              bill: data.bill,
-              roomId: roomId || group.groupId,
-              createdBy: currentUserId,
-              timestamp: new Date().toISOString()
-            });
+  setLoading(true); setError('');
+  
+  try {
+    let res;
+    let data;
 
-            // Also emit a direct bill-updated event
-            socket.emit('bill-updated', {
-              bill: data.bill,
-              roomId: roomId || group.groupId,
-              updatedBy: currentUserId,
-              timestamp: new Date().toISOString()
-            });
-          }
-          
-          triggerSuccess('Bill updated successfully!');
-        }
-      } else {
-        // Create new bill
-        res = await fetch('/api/chat/split-bill', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            groupId: group.groupId,
-            billTitle,
-            totalAmount: parseFloat(totalAmount),
-            currency,
-            paidBy,
-            splits,
-            createdBy: currentUserId
-          })
-        });
-        data = await res.json();
-        
-        if (data.success) {
-          await onSave(data.bill);
-          
-          // Emit socket event for new bill
-          if (socket && isConnected) {
-            socket.emit('bill-created', {
-              bill: data.bill,
-              roomId: roomId || group.groupId,
-              createdBy: currentUserId,
-              timestamp: new Date().toISOString()
-            });
-          }
-          
-          triggerSuccess('Bill created successfully!');
-        }
-      }
-
+    if (editingBill) {
+      // Update existing bill
+      res = await fetch('/api/chat/split-bill', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          billId: editingBill.id,
+          groupId: group.groupId,
+          billTitle,
+          totalAmount: parseFloat(totalAmount),
+          currency,
+          paidBy,
+          splits,
+          updatedBy: currentUserId
+        })
+      });
+      data = await res.json();
+      
       if (data.success) {
-        // Reset form
-        setBillTitle('');
-        setTotalAmount('');
-        setCurrency('USD');
-        setPaidBy(currentUserId);
-        setCustomAmounts({});
-        setEditingBill(null);
-        setError('');
-        await fetchBills();
-        setActiveTab('history');
-      } else {
-        setError(data.error || (editingBill ? 'Failed to update bill' : 'Failed to create bill'));
+        // Update bill in local state
+        setBills(prev => prev.map(b => b.id === editingBill.id ? data.bill : b));
+        
+        // Emit socket event for bill update
+        if (socket && isConnected) {
+          socket.emit('bill-updated', {
+            bill: data.bill,
+            roomId: roomId || group.groupId,
+            updatedBy: currentUserId,
+            timestamp: new Date().toISOString()
+          });
+        }
+        
+        triggerSuccess('Bill updated successfully!');
       }
-    } catch (e) {
-      console.error(e);
-      setError(editingBill ? 'Failed to update bill' : 'Failed to create bill');
-    } finally {
-      setLoading(false);
+    } else {
+      // Create new bill - the API will now handle creating the chat message
+      res = await fetch('/api/chat/split-bill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId: group.groupId,
+          billTitle,
+          totalAmount: parseFloat(totalAmount),
+          currency,
+          paidBy,
+          splits,
+          createdBy: currentUserId
+        })
+      });
+      data = await res.json();
+      
+      if (data.success) {
+        // Just pass the bill data to onSave for local state
+        // The chat message will be created by the API, so we don't emit socket here
+        await onSave(data.bill);
+        
+        // Don't emit bill-created socket event here - the API already created the message
+        // and will handle any necessary socket emissions
+        
+        triggerSuccess('Bill created successfully!');
+      }
     }
-  };
+
+    if (data.success) {
+      // Reset form
+      setBillTitle('');
+      setTotalAmount('');
+      setCurrency('USD');
+      setPaidBy(currentUserId);
+      setCustomAmounts({});
+      setEditingBill(null);
+      setError('');
+      await fetchBills();
+      setActiveTab('history');
+    } else {
+      setError(data.error || (editingBill ? 'Failed to update bill' : 'Failed to create bill'));
+    }
+  } catch (e) {
+    console.error(e);
+    setError(editingBill ? 'Failed to update bill' : 'Failed to create bill');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Update split status function
   const updateSplitStatus = async (billId, splitUserId, status) => {

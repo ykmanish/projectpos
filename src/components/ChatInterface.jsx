@@ -30,9 +30,14 @@ import {
   CornerDownRight,
   Trash2,
   Eraser,
-  AlertTriangle
+  AlertTriangle,
+  Code
 } from "lucide-react";
 import { BeanHead } from "beanheads";
+import LinkPreview from './LinkPreview';
+import CodeBlock from './CodeBlock';
+import { parseMessageContent, detectCode, detectLanguage } from '@/utils/codeUtils';
+import { extractUrls, enhancedUrlRegex, isValidUrl } from '../utils/urlUtils';
 import EmojiPicker from 'emoji-picker-react';
 import AttachmentPreviewModal from "./AttachmentPreviewModal";
 import PreSendAttachmentPreview from "./PreSendAttachmentPreview";
@@ -70,6 +75,9 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
   const [isSearching, setIsSearching] = useState(false);
   const [highlightedText, setHighlightedText] = useState("");
+  
+  // Code mode state
+  const [codeMode, setCodeMode] = useState(false);
   
   // Confirmation modals
   const [showDeleteChatConfirm, setShowDeleteChatConfirm] = useState(false);
@@ -367,6 +375,92 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     setShowMessageInfo(true);
   };
 
+  // Code mode toggle
+  const handleCodeModeToggle = () => {
+    setCodeMode(!codeMode);
+    if (!codeMode) {
+      // When turning on code mode, wrap existing text in triple backticks
+      if (newMessage.trim() && !newMessage.includes("```")) {
+        setNewMessage(`\`\`\`\n${newMessage}\n\`\`\``);
+      }
+    }
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+
+    // Get pasted text
+    const pastedText = e.clipboardData.getData("text");
+
+    // Check if the pasted text contains code indicators
+    const containsNewlines = pastedText.includes("\n");
+    const containsIndentation = /^[ \t]/.test(pastedText);
+    const containsSpecialChars = /[{}[\]()<>;=+\-*/&|!]/.test(pastedText);
+
+    // Heuristic: if it has multiple lines and code-like characters, treat as code
+    const looksLikeCode =
+      containsNewlines &&
+      (containsIndentation || containsSpecialChars || pastedText.length > 100);
+
+    if (looksLikeCode) {
+      // Detect language (simplified)
+      let language = "javascript"; // default
+
+      if (
+        pastedText.includes("def ") ||
+        (pastedText.includes("import ") && pastedText.includes(":"))
+      ) {
+        language = "python";
+      } else if (pastedText.includes("<div") || pastedText.includes("<html")) {
+        language = "html";
+      } else if (
+        pastedText.includes("{") &&
+        pastedText.includes("}") &&
+        pastedText.includes(":") &&
+        !pastedText.includes("function")
+      ) {
+        language = "css";
+      }
+
+      // Format as code block with language and proper line breaks
+      const formattedCode = `\`\`\`${language}\n${pastedText}\n\`\`\``;
+
+      // Insert at cursor position
+      const start = inputRef.current.selectionStart;
+      const end = inputRef.current.selectionEnd;
+      const currentValue = newMessage;
+      const newValue =
+        currentValue.substring(0, start) +
+        formattedCode +
+        currentValue.substring(end);
+
+      setNewMessage(newValue);
+
+      // Set cursor position after the inserted code
+      setTimeout(() => {
+        inputRef.current.selectionStart = start + formattedCode.length;
+        inputRef.current.selectionEnd = start + formattedCode.length;
+      }, 0);
+    } else {
+      // Regular paste - insert at cursor position
+      const start = inputRef.current.selectionStart;
+      const end = inputRef.current.selectionEnd;
+      const currentValue = newMessage;
+      const newValue =
+        currentValue.substring(0, start) +
+        pastedText +
+        currentValue.substring(end);
+
+      setNewMessage(newValue);
+
+      // Set cursor position after the inserted text
+      setTimeout(() => {
+        inputRef.current.selectionStart = start + pastedText.length;
+        inputRef.current.selectionEnd = start + pastedText.length;
+      }, 0);
+    }
+  };
+
   // Reply feature functions
   const handleReplyToMessage = (message) => {
     setReplyingToMessage(message);
@@ -390,6 +484,248 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         messageElement.classList.remove("highlight-reply-message");
       }, 2000);
     }
+  };
+
+  // MessageContent component - enhanced with code block support
+  const MessageContent = ({ message, content, highlightedText, formatTime, renderMessageStatus, isOwn }) => {
+    const [showFullContent, setShowFullContent] = useState(false);
+
+    // Function to validate URL
+    const isValidUrl = (string) => {
+      try {
+        new URL(string);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    // Function to highlight text
+    const highlightText = (text, highlight) => {
+      if (!highlight.trim() || !text) {
+        return text;
+      }
+
+      const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      const parts = text.split(regex);
+
+      return parts.map((part, index) => {
+        if (regex.test(part)) {
+          return (
+            <mark
+              key={index}
+              className="bg-green-300 dark:bg-green-600 text-inherit px-0.5 rounded"
+            >
+              {part}
+            </mark>
+          );
+        }
+        return part;
+      });
+    };
+
+    // Function to render text with clickable links
+    const renderTextWithLinks = (text) => {
+      if (!text) return null;
+      
+      const urlPattern = /(https?:\/\/[^\s]+)|(www\.[^\s]+\.[^\s]+)|([^\s]+\.[^\s]+\.[^\s]+\/[^\s]*)/gi;
+      const parts = text.split(urlPattern);
+      const matches = text.match(urlPattern) || [];
+      
+      let result = [];
+      
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        
+        // Check if this part is a URL
+        let isUrl = false;
+        let url = part;
+        
+        if (matches.includes(part)) {
+          isUrl = true;
+        } else if (part && (part.startsWith('http') || part.includes('.'))) {
+          // Try to construct a URL
+          if (part.startsWith('www.')) {
+            url = `https://${part}`;
+          } else if (!part.startsWith('http') && part.includes('.')) {
+            url = `https://${part}`;
+          }
+          isUrl = isValidUrl(url);
+        }
+        
+        if (isUrl && part) {
+          result.push(
+            <a
+              key={`url-${i}`}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 dark:text-blue-400 hover:underline break-all"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {part}
+            </a>
+          );
+        } else if (part) {
+          if (highlightedText) {
+            const highlighted = highlightText(part, highlightedText);
+            // If highlightText returns an array, we need to handle it properly
+            if (Array.isArray(highlighted)) {
+              result.push(...highlighted.map((item, idx) => (
+                <span key={`text-${i}-${idx}`}>{item}</span>
+              )));
+            } else {
+              result.push(<span key={`text-${i}`}>{highlighted}</span>);
+            }
+          } else {
+            result.push(<span key={`text-${i}`}>{part}</span>);
+          }
+        }
+      }
+      
+      return result;
+    };
+
+    // Extract URLs from content
+    const extractUrls = (text) => {
+      if (!text) return [];
+      const urlPattern = /(https?:\/\/[^\s]+)|(www\.[^\s]+\.[^\s]+)|([^\s]+\.[^\s]+\.[^\s]+\/[^\s]*)/gi;
+      const matches = text.match(urlPattern) || [];
+      return matches.map(url => {
+        if (url.startsWith('www.')) return `https://${url}`;
+        if (!url.startsWith('http') && url.includes('.')) return `https://${url}`;
+        return url;
+      });
+    };
+
+    // Parse the message content to detect code blocks
+    const parts = parseMessageContent(content);
+    const hasCodeBlock = parts.some(part => part.type === "code-block");
+    const urls = extractUrls(content);
+    const hasUrls = urls.length > 0;
+
+    // If it has code blocks, render them specially
+    if (hasCodeBlock) {
+      return (
+        <div className="w-full">
+          {parts.map((part, index) => {
+            if (part.type === "code-block") {
+              // Code block - render with syntax highlighting
+              return (
+                <div key={`code-${index}`} className="my-2">
+                  <CodeBlock
+                    code={part.code}
+                    language={part.language || "javascript"}
+                  />
+                </div>
+              );
+            } else if (part.type === "inline-code") {
+              // Inline code - render inside text
+              return (
+                <span key={`inline-${index}`}>
+                  <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-[#1a1a1a] text-pink-600 dark:text-pink-400 rounded-md font-mono text-sm border border-gray-200 dark:border-[#232529]">
+                    {part.code}
+                  </code>
+                </span>
+              );
+            } else if (part.content) {
+              // Text content - render with links and highlighting
+              const shouldTruncate = part.content.length > 300 && !showFullContent;
+              const displayContent = shouldTruncate ? part.content.substring(0, 300) + '...' : part.content;
+              
+              return (
+                <div key={`text-${index}`} className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                  {renderTextWithLinks(displayContent)}
+                </div>
+              );
+            }
+            return null;
+          })}
+
+          {/* Show more/less button for long messages with code */}
+          {content.length > 300 && (
+            <button
+              onClick={() => setShowFullContent(!showFullContent)}
+              className="text-xs text-blue-600 dark:text-blue-400 mt-2 hover:underline focus:outline-none"
+            >
+              {showFullContent ? 'Show less' : 'Show more'}
+            </button>
+          )}
+
+          {/* Link previews */}
+          {hasUrls && urls.length > 0 && !message.deleted && (
+            <div className="mt-2 space-y-2">
+              <LinkPreview 
+                key={`preview-${urls[0]}-${message.timestamp}`}
+                url={urls[0]} 
+              />
+              {urls.length > 1 && (
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  +{urls.length - 1} more link{urls.length - 1 > 1 ? 's' : ''}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Time and status */}
+          <div className="flex items-center justify-end gap-1 mt-2">
+            <p className={`text-[10px] ${isOwn ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
+              {formatTime(message.timestamp)}
+            </p>
+            {renderMessageStatus(message)}
+          </div>
+        </div>
+      );
+    }
+
+    // Regular message without code blocks
+    const shouldTruncate = content.length > 300 && !showFullContent;
+    const displayContent = shouldTruncate ? content.substring(0, 300) + '...' : content;
+
+    return (
+      <div>
+        {/* Text content with links */}
+        <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+          {renderTextWithLinks(displayContent)}
+          {message.edited && !message.deleted && (
+            <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">(edited)</span>
+          )}
+        </p>
+
+        {/* Show more/less button for long messages */}
+        {content.length > 300 && (
+          <button
+            onClick={() => setShowFullContent(!showFullContent)}
+            className="text-xs text-blue-600 dark:text-blue-400 mt-1 hover:underline"
+          >
+            {showFullContent ? 'Show less' : 'Show more'}
+          </button>
+        )}
+
+        {/* Link previews */}
+        {hasUrls && urls.length > 0 && !message.deleted && (
+          <div className="mt-2 space-y-2">
+            <LinkPreview 
+              key={`preview-${urls[0]}-${message.timestamp}`}
+              url={urls[0]} 
+            />
+            {urls.length > 1 && (
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                +{urls.length - 1} more link{urls.length - 1 > 1 ? 's' : ''}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Time and status */}
+        <div className="flex items-center justify-end gap-1 mt-1">
+          <p className={`text-[10px] ${isOwn ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
+            {formatTime(message.timestamp)}
+          </p>
+          {renderMessageStatus(message)}
+        </div>
+      </div>
+    );
   };
 
   // Handle Delete Chat
@@ -993,30 +1329,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     } catch (error) {
       console.error('Error marking messages as read:', error);
     }
-  };
-
-  // Function to highlight text in content
-  const highlightText = (content, highlight) => {
-    if (!highlight.trim() || !content) {
-      return content;
-    }
-
-    const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    const parts = content.split(regex);
-
-    return parts.map((part, index) => {
-      if (regex.test(part)) {
-        return (
-          <mark
-            key={index}
-            className="bg-green-300 dark:bg-green-600 text-inherit px-0.5 rounded"
-          >
-            {part}
-          </mark>
-        );
-      }
-      return part;
-    });
   };
 
   // Search functionality
@@ -2006,111 +2318,109 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                       <div
                         className={`max-w-[70%] transition-all duration-200 ease-out mb-2`}
                       >
-                          {/* {!isOwn && showAvatar && (
+                          {!isOwn && showAvatar && (
                             <div className="flex items-center gap-2 mb-1 ml-1">
                               {renderAvatar(friend.avatar, friend.userName, "w-6 h-6")}
                               <span className="text-xs text-[#5f6368] dark:text-gray-400">{friend.userName}</span>
                             </div>
-                          )} */}
+                          )}
                           
                           {/* Reply preview if this message is a reply */}
                           {msg.replyTo && renderReplyPreview(msg.replyTo)}
                           
                           {/* Media attachments - including GIFs */}
-                         {msg.attachments && msg.attachments.length > 0 && !msg.deleted && (
-  <div className={`space-y-2 ${hasTextContent ? 'mb-2' : ''}`}>
-    {msg.attachments.map((att, idx) => {
-      const globalIndex = allAttachments.findIndex(
-        a => a.url === att.url && a.messageId === msg.timestamp
-      );
-      
-      return (
-        <div key={idx} className="relative group">
-          {att.type === 'image' ? (
-            <div className="relative">
-              <img
-                src={att.url}
-                alt="Attachment"
-                className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                onClick={() => handleAttachmentClick(att, globalIndex)}
-              />
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                <button
-                  onClick={() => handleAttachmentClick(att, globalIndex)}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                >
-                  <Maximize2 size={20} />
-                </button>
-              </div>
-              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
-                {formatTime(msg.timestamp)}
-                <span className="ml-1">{renderMessageStatus(msg)}</span>
-              </div>
-            </div>
-          ) : att.type === 'video' ? (
-            <div className="relative">
-              <video
-                src={att.url}
-                className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer"
-                onClick={() => handleAttachmentClick(att, globalIndex)}
-              />
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-                <button
-                  onClick={() => handleAttachmentClick(att, globalIndex)}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-                >
-                  <Maximize2 size={20} />
-                </button>
-              </div>
-              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
-                <span>{formatTime(msg.timestamp)}</span>
-                {renderMessageStatus(msg)}
-              </div>
-            </div>
-         ) : att.type === 'gif' ? (
-  <div className="flex flex-col group/gif relative">
-    <div className="relative">
-      <img
-        src={att.url}
-        alt={att.name || 'GIF'}
-        className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-        onClick={() => handleAttachmentClick(att, globalIndex)}
-        loading="lazy"
-        // GIF playback control attributes
-        data-play-count="0"
-        data-is-paused="true"
-        onMouseEnter={handleGifHoverStart}
-        onMouseLeave={handleGifHoverEnd}
-      />
-      <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
-        GIF
-      </div>
-      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
-        <button
-          onClick={() => handleAttachmentClick(att, globalIndex)}
-          className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
-        >
-          <Maximize2 size={20} />
-        </button>
-      </div>
-    </div>
-    {/* Time and status below GIF */}
-    <div className="flex items-center justify-end gap-1 mt-1 px-1">
-      <span className="text-[10px] text-gray-500 dark:text-gray-400">
-        {formatTime(msg.timestamp)}
-      </span>
-      {renderMessageStatus(msg)}
-    </div>
-  </div>
-
-          ) : null}
-        </div>
-      );
-    })}
-  </div>
-)}
+                          {msg.attachments && msg.attachments.length > 0 && !msg.deleted && (
+                            <div className={`space-y-2 ${hasTextContent ? 'mb-2' : ''}`}>
+                              {msg.attachments.map((att, idx) => {
+                                const globalIndex = allAttachments.findIndex(
+                                  a => a.url === att.url && a.messageId === msg.timestamp
+                                );
+                                
+                                return (
+                                  <div key={idx} className="relative group">
+                                    {att.type === 'image' ? (
+                                      <div className="relative">
+                                        <img
+                                          src={att.url}
+                                          alt="Attachment"
+                                          className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                          onClick={() => handleAttachmentClick(att, globalIndex)}
+                                        />
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                                          <button
+                                            onClick={() => handleAttachmentClick(att, globalIndex)}
+                                            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                                          >
+                                            <Maximize2 size={20} />
+                                          </button>
+                                        </div>
+                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                                          {formatTime(msg.timestamp)}
+                                          <span className="ml-1">{renderMessageStatus(msg)}</span>
+                                        </div>
+                                      </div>
+                                    ) : att.type === 'video' ? (
+                                      <div className="relative">
+                                        <video
+                                          src={att.url}
+                                          className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer"
+                                          onClick={() => handleAttachmentClick(att, globalIndex)}
+                                        />
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                                          <button
+                                            onClick={() => handleAttachmentClick(att, globalIndex)}
+                                            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                                          >
+                                            <Maximize2 size={20} />
+                                          </button>
+                                        </div>
+                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
+                                          <span>{formatTime(msg.timestamp)}</span>
+                                          {renderMessageStatus(msg)}
+                                        </div>
+                                      </div>
+                                    ) : att.type === 'gif' ? (
+                                      <div className="flex flex-col group/gif relative">
+                                        <div className="relative">
+                                          <img
+                                            src={att.url}
+                                            alt={att.name || 'GIF'}
+                                            className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                            onClick={() => handleAttachmentClick(att, globalIndex)}
+                                            loading="lazy"
+                                            data-play-count="0"
+                                            data-is-paused="true"
+                                            onMouseEnter={handleGifHoverStart}
+                                            onMouseLeave={handleGifHoverEnd}
+                                          />
+                                          <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                                            GIF
+                                          </div>
+                                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
+                                            <button
+                                              onClick={() => handleAttachmentClick(att, globalIndex)}
+                                              className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                                            >
+                                              <Maximize2 size={20} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                        {/* Time and status below GIF */}
+                                        <div className="flex items-center justify-end gap-1 mt-1 px-1">
+                                          <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                                            {formatTime(msg.timestamp)}
+                                          </span>
+                                          {renderMessageStatus(msg)}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                           
-                          {/* Text content with highlighting */}
+                          {/* Text content with highlighting and code block support */}
                           {hasTextContent && (
                             <div
                               className={`rounded-2xl p-3 ${
@@ -2121,23 +2431,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                                   : 'bg-white dark:bg-[#101010] border-[#dadce0] dark:text-white dark:border-[#232529] rounded-tl-none'
                               }`}
                             >
-                              <p className="text-sm whitespace-pre-wrap break-words">
-                                {msg.deleted ? (
-                                  msg.content
-                                ) : (
-                                  highlightedText ? highlightText(messageContent, highlightedText) : messageContent
-                                )}
-                                {msg.edited && !msg.deleted && (
-                                  <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">(edited)</span>
-                                )}
-                              </p>
-                              {/* Time and status inside text bubble */}
-                              <div className="flex items-center justify-end gap-1 mt-1">
-                                <p className={`text-[10px] ${isOwn ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                                  {formatTime(msg.timestamp)}
-                                </p>
-                                {renderMessageStatus(msg)}
-                              </div>
+                              {msg.deleted ? (
+                                <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                              ) : (
+                                <MessageContent
+                                  message={msg}
+                                  content={messageContent}
+                                  highlightedText={highlightedText}
+                                  formatTime={formatTime}
+                                  renderMessageStatus={renderMessageStatus}
+                                  isOwn={isOwn}
+                                />
+                              )}
                             </div>
                           )}
                           
@@ -2259,6 +2564,16 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               {newMessage.trim() && (
                 <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
               )}
+            </button>
+
+            {/* Code Mode Button */}
+            <button
+              onClick={handleCodeModeToggle}
+              className={`p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors ${codeMode ? 'bg-green-100 dark:bg-green-900/30' : ''}`}
+              title="Code Mode"
+              disabled={!isConnected || !roomJoined || !canSendMessages}
+            >
+              <Code size={20} className={codeMode ? 'text-green-600 dark:text-green-400' : 'text-[#5f6368] dark:text-gray-400'} />
             </button>
 
             {/* Attachment Button */}
@@ -2383,6 +2698,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             <input
               ref={inputRef}
               type="text"
+              onPaste={handlePaste}
               value={editingMessage ? editText : newMessage}
               onChange={editingMessage ? (e) => setEditText(e.target.value) : handleInputChange}
               onKeyPress={(e) => {
@@ -2400,7 +2716,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               placeholder={
                 !canSendMessages 
                   ? getBlockMessage()
-                  : (!isConnected ? "Connecting..." : !roomJoined ? "Joining chat..." : "Type a message... (✨ for AI, 📷 for GIF)")
+                  : (!isConnected ? "Connecting..." : !roomJoined ? "Joining chat..." : codeMode ? "Type your code here... (```auto-detected)" : "Type a message... (✨ for AI, 📷 for GIF, </> for code)")
               }
               className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
               disabled={!isConnected || !roomJoined || uploading || !canSendMessages}
@@ -2610,30 +2926,65 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
-          /* GIF playback states */
-img[data-is-paused="true"] {
-  /* Optional: slight grayscale when paused */
-  filter: saturate(0.8);
-  transition: filter 0.3s ease;
-}
-
-img[data-is-paused="false"] {
-  filter: saturate(1);
-}
-
-img[data-play-count="3"]::after {
-  content: '⏸️';
-  position: absolute;
-  bottom: 4px;
-  right: 4px;
-  background: rgba(0,0,0,0.7);
-  color: white;
-  font-size: 10px;
-  padding: 2px 4px;
-  border-radius: 8px;
-  font-family: sans-serif;
-}
-
+        
+        /* GIF playback states */
+        img[data-is-paused="true"] {
+          filter: saturate(0.8);
+          transition: filter 0.3s ease;
+        }
+        
+        img[data-is-paused="false"] {
+          filter: saturate(1);
+        }
+        
+        a {
+          text-decoration: none;
+        }
+        
+        a:hover {
+          text-decoration: underline;
+        }
+        
+        /* Ensure links in messages are properly styled */
+        .message-content a {
+          color: #1a73e8;
+          word-break: break-all;
+        }
+        
+        .dark .message-content a {
+          color: #8ab4f8;
+        }
+        
+        /* Line clamp utilities */
+        .line-clamp-1 {
+          display: -webkit-box;
+          -webkit-line-clamp: 1;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        
+        .line-clamp-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        
+        /* Ensure code blocks don't overflow */
+        .max-w-[70%] {
+          max-width: min(70%, 600px);
+        }
+        
+        /* Better inline code styling */
+        code {
+          font-family: 'Fira Code', 'Courier New', monospace;
+        }
+        
+        /* Ensure line breaks are preserved in text */
+        .whitespace-pre-wrap {
+          white-space: pre-wrap !important;
+          word-break: break-word;
+        }
       `}</style>
     </>
   );

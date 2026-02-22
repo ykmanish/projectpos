@@ -5,12 +5,281 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/context/UserContext';
-import { Calendar, Check, X, RefreshCw, Eye, EyeOff, Save, Sun, Moon, Monitor, Palette } from 'lucide-react';
+import { Calendar, Check, X, RefreshCw, Eye, EyeOff, Save, Sun, Moon, Monitor, Palette, Activity, GitCommit, TrendingUp } from 'lucide-react';
 import { BeanHead } from 'beanheads'; // Correct named import
+
+// GitHub-style Contribution Graph Component with LARGER CELLS
+function ContributionGraph({ userId }) {
+  const [contributions, setContributions] = useState([]);
+  const [yearlyData, setYearlyData] = useState({});
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [totalContributions, setTotalContributions] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [hoveredCell, setHoveredCell] = useState(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+
+  // Month labels
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  
+  // Day labels
+  const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+  useEffect(() => {
+    if (userId) {
+      fetchContributions();
+    }
+  }, [userId, selectedYear]);
+
+  const fetchContributions = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/user/contributions?userId=${userId}&year=${selectedYear}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setContributions(data.contributions || []);
+        setYearlyData(data.yearlyData || {});
+        setTotalContributions(data.totalContributions || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching contributions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Generate the last 52 weeks (364 days) of data
+  const generateYearData = () => {
+    const yearData = [];
+    const startDate = new Date(selectedYear, 0, 1); // Jan 1 of selected year
+    
+    // Create a map of contribution dates for quick lookup
+    const contributionMap = {};
+    contributions.forEach(c => {
+      const dateKey = new Date(c.date).toISOString().split('T')[0];
+      contributionMap[dateKey] = c.count;
+    });
+
+    // Generate 52 weeks (364 days) of data
+    for (let week = 0; week < 52; week++) {
+      const weekData = [];
+      for (let day = 0; day < 7; day++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + (week * 7) + day);
+        
+        // Only include dates within the selected year
+        if (currentDate.getFullYear() === selectedYear) {
+          const dateStr = currentDate.toISOString().split('T')[0];
+          const count = contributionMap[dateStr] || 0;
+          
+          weekData.push({
+            date: currentDate,
+            count,
+            dayOfWeek: day,
+            weekOfYear: week
+          });
+        } else {
+          weekData.push(null); // Empty cell for dates outside the year
+        }
+      }
+      yearData.push(weekData);
+    }
+    
+    return yearData;
+  };
+
+  const yearData = generateYearData();
+
+  // Get color intensity based on contribution count
+  const getContributionColor = (count) => {
+    if (count === 0) return 'bg-[#ebedf0] dark:bg-[#161b22]';
+    if (count === 1) return 'bg-[#9be9a8] dark:bg-[#0e4429]';
+    if (count === 2) return 'bg-[#40c463] dark:bg-[#006d32]';
+    if (count === 3) return 'bg-[#30a14e] dark:bg-[#26a641]';
+    return 'bg-[#216e39] dark:bg-[#39d353]';
+  };
+
+  const handleCellHover = (cellData, event, weekIndex, dayIndex) => {
+    if (!cellData) return;
+    
+    const rect = event.currentTarget.getBoundingClientRect();
+    setTooltipPos({
+      x: rect.left + rect.width / 2,
+      y: rect.top - 10
+    });
+    
+    setHoveredCell({
+      date: cellData.date,
+      count: cellData.count,
+      weekIndex,
+      dayIndex
+    });
+  };
+
+  const formatDate = (date) => {
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const availableYears = [2024, 2025, 2026];
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <RefreshCw className="w-8 h-8 text-green-500 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl p-8 border-[#dadce0] dark:border-[#181A1E] transition-colors duration-300">
+      {/* Header with year selector */}
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-3">
+          {/* <Activity className="w-6 h-6 text-[#23A269]" /> */}
+          <h2 className="text-2xl small font-semibold text-[#000000] dark:text-white">
+            Contribution Activity
+          </h2>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-[#5f6368]" />
+            <span className="text-lg font-semibold text-[#23A269]">
+              {totalContributions}
+            </span>
+            <span className="text-sm text-[#5f6368]">contributions in {selectedYear}</span>
+          </div>
+          
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+            className="px-3 py-2 bg-[#F8F9FA] dark:bg-[#101010] border border-[#dadce0] dark:border-[#232529] rounded-xl text-sm focus:ring-2 focus:ring-[#1a73e8] focus:outline-none"
+          >
+            {availableYears.map(year => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Contribution Graph - GitHub Style with LARGER CELLS */}
+      <div className="relative overflow-x-auto pb-4">
+        {/* Month labels */}
+        <div className="flex ml-12 mb-3 text-xs text-[#5f6368] dark:text-gray-400 font-medium">
+          {months.map((month, i) => {
+            // Calculate position for month labels (roughly every 4 weeks)
+            const position = (i * 4.3);
+            return (
+              <div key={i} style={{ marginLeft: i === 0 ? '0' : `${position}px` }} className="flex-1">
+                {month}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex">
+          {/* Day labels - with more spacing for larger cells */}
+          <div className="flex flex-col mr-3 text-xs text-[#5f6368] dark:text-gray-400 font-medium">
+            {days.map((day, i) => (
+              <div key={i} className="h-[22px] mb-[4px] flex items-center justify-end pr-2">
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Contribution grid - LARGER CELLS (22x22 instead of 10x10) */}
+          <div className="flex gap-[4px] flex-1">
+            {yearData.map((week, weekIndex) => (
+              <div key={weekIndex} className="flex flex-col gap-[4px] flex-1">
+                {week.map((cellData, dayIndex) => {
+                  if (!cellData) {
+                    return (
+                      <div
+                        key={`${weekIndex}-${dayIndex}`}
+                        className="w-[22px] h-[22px] bg-transparent"
+                      />
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={`${weekIndex}-${dayIndex}`}
+                      className={`w-[22px] h-[22px] rounded-md ${getContributionColor(cellData.count)} cursor-pointer transition-all hover:scale-125 hover:ring-2 hover:ring-green-400 hover:-lg`}
+                      onMouseEnter={(e) => handleCellHover(cellData, e, weekIndex, dayIndex)}
+                      onMouseLeave={() => setHoveredCell(null)}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Legend and summary - with larger legend cells */}
+        <div className="flex items-center justify-between mt-8">
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-[#5f6368] dark:text-gray-400">Less</span>
+            <div className="flex gap-[4px]">
+              <div className="w-[22px] h-[22px] rounded-md bg-[#ebedf0] dark:bg-[#161b22]" />
+              <div className="w-[22px] h-[22px] rounded-md bg-[#9be9a8] dark:bg-[#0e4429]" />
+              <div className="w-[22px] h-[22px] rounded-md bg-[#40c463] dark:bg-[#006d32]" />
+              <div className="w-[22px] h-[22px] rounded-md bg-[#30a14e] dark:bg-[#26a641]" />
+              <div className="w-[22px] h-[22px] rounded-md bg-[#216e39] dark:bg-[#39d353]" />
+            </div>
+            <span className="text-sm text-[#5f6368] dark:text-gray-400">More</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <GitCommit className="w-4 h-4 text-[#5f6368]" />
+            <span className="text-sm text-[#5f6368] dark:text-gray-400">
+              {totalContributions} contributions in {selectedYear}
+            </span>
+          </div>
+        </div>
+
+        {/* Streak information */}
+        <div className="mt-6 grid grid-cols-2 gap-4">
+          <div className="bg-[#F8F9FA] dark:bg-[#101010] rounded-xl p-4">
+            <p className="text-xs text-[#5f6368] dark:text-gray-400 mb-1">Current Streak</p>
+            <p className="text-2xl font-bold text-[#23A269]">{yearlyData.streaks?.current || 0} days</p>
+          </div>
+          <div className="bg-[#F8F9FA] dark:bg-[#101010] rounded-xl p-4">
+            <p className="text-xs text-[#5f6368] dark:text-gray-400 mb-1">Longest Streak</p>
+            <p className="text-2xl font-bold text-[#23A269]">{yearlyData.streaks?.longest || 0} days</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Hover Tooltip */}
+      {hoveredCell && (
+        <div
+          className="fixed z-50 px-4 py-3 bg-[#24292f] dark:bg-[#f6f8fa] text-white dark:text-[#24292f] text-sm rounded-xl -xl pointer-events-none transform -translate-x-1/2 -translate-y-full"
+          style={{
+            left: tooltipPos.x,
+            top: tooltipPos.y
+          }}
+        >
+          <div className="font-semibold text-base">
+            {hoveredCell.count} {hoveredCell.count === 1 ? 'contribution' : 'contributions'}
+          </div>
+          <div className="text-xs opacity-80 mt-1">
+            {formatDate(hoveredCell.date)}
+          </div>
+          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-[#24292f] dark:bg-[#f6f8fa]" />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { userName, username: currentUsername, avatar: currentAvatar, updateProfile, checkUsername, changePassword } = useUser();
+  const { userName, username: currentUsername, avatar: currentAvatar, updateProfile, checkUsername, changePassword, userId } = useUser();
 
   // Theme state
   const [theme, setTheme] = useState('system');
@@ -53,7 +322,6 @@ export default function ProfilePage() {
     hat: 'none',
     hatColor: 'black',
     lashes: 'false',
-    lipColor: 'red',
     mask: true,
     faceMask: false,
     mouth: 'grin',
@@ -175,9 +443,9 @@ export default function ProfilePage() {
     // Gender-specific logic
     let bodyType = bodies[Math.floor(Math.random() * bodies.length)];
     if (gender === 'male') {
-      bodyType = 'chest'; // Male typically uses chest
+      bodyType = 'chest';
     } else if (gender === 'female') {
-      bodyType = Math.random() > 0.5 ? 'chest' : 'breasts'; // Mix for female
+      bodyType = Math.random() > 0.5 ? 'chest' : 'breasts';
     }
 
     return {
@@ -190,7 +458,7 @@ export default function ProfilePage() {
       eyes: eyes[Math.floor(Math.random() * eyes.length)],
       facialHair: gender === 'male' 
         ? facialHairs[Math.floor(Math.random() * facialHairs.length)]
-        : 'none', // Less facial hair for female/other
+        : 'none',
       graphic: graphics[Math.floor(Math.random() * graphics.length)],
       hair: hairs[Math.floor(Math.random() * hairs.length)],
       hairColor: hairColors[Math.floor(Math.random() * hairColors.length)],
@@ -198,8 +466,8 @@ export default function ProfilePage() {
       hatColor: hatColors[Math.floor(Math.random() * hatColors.length)],
       lashes: Math.random() > 0.7 ? 'true' : 'false',
       lipColor: lipColors[Math.floor(Math.random() * lipColors.length)],
-      mask: true, // Always true to get circular avatar
-      faceMask: Math.random() > 0.8, // 20% chance of face mask
+      mask: true,
+      faceMask: Math.random() > 0.8,
       mouth: mouths[Math.floor(Math.random() * mouths.length)],
       skinTone: skinTones[Math.floor(Math.random() * skinTones.length)]
     };
@@ -319,7 +587,7 @@ export default function ProfilePage() {
         {/* Profile Picture and Theme Selection - Side by Side */}
         <div className="grid lg:grid-cols-2 gap-4">
           {/* Avatar Section with Gender Selection */}
-          <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl p-8  border-[#dadce0] dark:border-[#181A1E] transition-colors duration-300">
+          <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl p-8 border-[#dadce0] dark:border-[#181A1E] transition-colors duration-300">
             <h2 className="text-2xl font-semibold small text-[#000000] dark:text-white mb-6">Profile Picture</h2>
             
             {/* Gender Selection */}
@@ -366,63 +634,66 @@ export default function ProfilePage() {
           </div>
 
           {/* Theme Selection Card */}
-          <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl p-8  border-[#dadce0] dark:border-[#181A1E] transition-colors duration-300">
-  <div className="flex items-center gap-3 mb-6">
-    <Palette className="w-6 h-6 text-[#23A269]" />
-    <h2 className="text-2xl font-semibold small text-[#000000] dark:text-white">Theme Preference</h2>
-  </div>
-  
-  <p className="text-sm text-[#5f6368] dark:text-gray-400 mb-6">
-    Choose how the application looks. You can switch between light, dark, or system theme.
-  </p>
-
-  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-    {themeOptions.map((option) => {
-      const Icon = option.icon;
-      return (
-        <button
-          key={option.value}
-          onClick={() => handleThemeChange(option.value)}
-          className={`
-            flex items-center justify-between p-4 rounded-2xl transition-all duration-200 h-full
-            ${theme === option.value 
-              ? 'bg-green-100 dark:bg-green-900/30 border-2 border-green-500 dark:border-green-600' 
-              : 'border border-zinc-200 dark:border-[#232529] hover:bg-gray-50 dark:hover:bg-[#101010]'
-            }
-          `}
-        >
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-              theme === option.value
-                ? 'bg-green-500 text-white'
-                : 'bg-gray-100 dark:bg-[#232529] text-[#5f6368] dark:text-gray-400'
-            }`}>
-              <Icon size={20} />
+          <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl p-8 border-[#dadce0] dark:border-[#181A1E] transition-colors duration-300">
+            <div className="flex items-center gap-3 mb-6">
+              <Palette className="w-6 h-6 text-[#23A269]" />
+              <h2 className="text-2xl font-semibold small text-[#000000] dark:text-white">Theme Preference</h2>
             </div>
-            <span className="font-medium text-[#202124] dark:text-white">{option.label}</span>
-          </div>
-          {theme === option.value && (
-            <Check className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
-          )}
-        </button>
-      );
-    })}
-  </div>
+            
+            <p className="text-sm text-[#5f6368] dark:text-gray-400 mb-6">
+              Choose how the application looks. You can switch between light, dark, or system theme.
+            </p>
 
-  <div className="mt-6 p-4 bg-gray-50 dark:bg-[#101010] rounded-2xl">
-    <p className="text-xs text-[#5f6368] dark:text-gray-400">
-      <span className="font-medium text-[#202124] dark:text-white">Preview: </span>
-      {theme === 'light' && 'Light mode is active with white backgrounds.'}
-      {theme === 'dark' && 'Dark mode is active with dark backgrounds.'}
-      {theme === 'system' && 'Following your system preference.'}
-    </p>
-  </div>
-</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {themeOptions.map((option) => {
+                const Icon = option.icon;
+                return (
+                  <button
+                    key={option.value}
+                    onClick={() => handleThemeChange(option.value)}
+                    className={`
+                      flex items-center justify-between p-4 rounded-2xl transition-all duration-200 h-full
+                      ${theme === option.value 
+                        ? 'bg-green-100 dark:bg-green-900/30 border-2 border-green-500 dark:border-green-600' 
+                        : 'border border-zinc-200 dark:border-[#232529] hover:bg-gray-50 dark:hover:bg-[#101010]'
+                      }
+                    `}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        theme === option.value
+                          ? 'bg-green-500 text-white'
+                          : 'bg-gray-100 dark:bg-[#232529] text-[#5f6368] dark:text-gray-400'
+                      }`}>
+                        <Icon size={20} />
+                      </div>
+                      <span className="font-medium text-[#202124] dark:text-white">{option.label}</span>
+                    </div>
+                    {theme === option.value && (
+                      <Check className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-6 p-4 bg-gray-50 dark:bg-[#101010] rounded-2xl">
+              <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                <span className="font-medium text-[#202124] dark:text-white">Preview: </span>
+                {theme === 'light' && 'Light mode is active with white backgrounds.'}
+                {theme === 'dark' && 'Dark mode is active with dark backgrounds.'}
+                {theme === 'system' && 'Following your system preference.'}
+              </p>
+            </div>
+          </div>
         </div>
+
+        {/* Contribution Graph Section - with LARGER CELLS */}
+        <ContributionGraph userId={userId} />
 
         <div className='grid lg:grid-cols-2 gap-4'>
           {/* Basic Information */}
-          <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl p-8  border-[#dadce0] dark:border-[#181A1E] transition-colors duration-300">
+          <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl p-8 border-[#dadce0] dark:border-[#181A1E] transition-colors duration-300">
             <h2 className="text-2xl font-semibold small text-[#000000] dark:text-white mb-6">Basic Information</h2>
             <div className="space-y-6">
               <div>
@@ -471,7 +742,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Change Password */}
-          <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl p-8  border-[#dadce0] dark:border-[#181A1E] transition-colors duration-300">
+          <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl p-8 border-[#dadce0] dark:border-[#181A1E] transition-colors duration-300">
             <h2 className="text-2xl font-semibold small text-[#000000] dark:text-white mb-6">Change Password</h2>
             <form onSubmit={handleChangePassword} className="space-y-4">
               <div>

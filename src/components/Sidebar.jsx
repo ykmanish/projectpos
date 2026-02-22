@@ -1,10 +1,10 @@
-// components/Sidebar.js
+// components/Sidebar.js (updated with VentOut menu)
 
 'use client';
 
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, Award, Gift, LogOut, History, AlertCircle, Users, Rss, MessageCircle, Moon, Sun } from 'lucide-react';
+import { Home, Award, Gift, LogOut, History, AlertCircle, Users, Rss, MessageCircle, Moon, Sun, CircleEllipsis } from 'lucide-react';
 import { useUser } from '@/context/UserContext';
 import { BeanHead } from 'beanheads';
 
@@ -65,6 +65,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [beanConfig, setBeanConfig] = useState(null);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [unreadVents, setUnreadVents] = useState(0);
   const [darkMode, setDarkMode] = useState(false);
 
   const currentLevel = getCurrentLevel(points);
@@ -107,8 +108,18 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
       setBeanConfig(null);
     }
 
-    // Check for unread messages (you can implement this later)
-    // fetchUnreadMessages();
+    // Fetch unread vents count
+    const fetchUnreadVents = async () => {
+      try {
+        const response = await fetch('/api/ventout/unread');
+        const data = await response.json();
+        setUnreadVents(data.count || 0);
+      } catch (error) {
+        console.error('Error fetching unread vents:', error);
+      }
+    };
+    
+    fetchUnreadVents();
   }, [avatar]);
 
   const toggleDarkMode = () => {
@@ -126,6 +137,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
   const navItems = [
     { path: '/', label: 'Home', icon: Home, color: 'bg-[#4285f4]/30 dark:bg-[#4285f4]/20' },
     { path: '/feed', label: 'Feed', icon: Rss, color: 'bg-[#34A853]/30 dark:bg-[#34A853]/20' },
+    { path: '/ventout', label: 'VentOut', icon: CircleEllipsis, color: 'bg-[#FF6B6B]/30 dark:bg-[#FF6B6B]/20', badge: unreadVents },
     { path: '/friends', label: 'Friends', icon: MessageCircle, color: 'bg-[#8e44ad]/30 dark:bg-[#8e44ad]/20', badge: unreadMessages },
     { path: '/history', label: 'Today in History', icon: History, color: 'bg-[#8e44ad]/30 dark:bg-[#8e44ad]/20' },
     { path: '/level', label: 'Level', icon: Award, color: 'bg-[#34a853]/30 dark:bg-[#34a853]/20' },
@@ -170,7 +182,7 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
               <button
                 key={item.path}
                 onClick={() => handleNavigation(item.path)}
-                className={`w-full flex items-center gap-3 px-3 py-3 rounded-3xl transition-all relative ${
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-3xl transition-all relative ${
                   isActive
                     ? 'bg-green-50 dark:bg-[#181A1E] text-[#000000] dark:text-white'
                     : 'text-[#000000] dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#101010]'
@@ -201,9 +213,6 @@ export default function Sidebar({ sidebarOpen, setSidebarOpen }) {
         </nav>
 
         <div className="space-y-2">
-          {/* Dark Mode Toggle Button */}
-          
-
           {/* Profile Button */}
           <button
             onClick={() => {

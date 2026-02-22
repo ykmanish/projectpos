@@ -1,10 +1,7 @@
-// context/SocketContext.js
-
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import io from 'socket.io-client';
-import { useUser } from './UserContext';
 
 const SocketContext = createContext();
 
@@ -12,17 +9,13 @@ export function SocketProvider({ children }) {
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(new Map());
-  const { userId } = useUser();
 
   useEffect(() => {
-    if (!userId) {
-      console.log('❌ No userId, not connecting socket');
-      return;
-    }
+    // Wait for userId to be available (you can modify this based on your auth)
+    // For now, we'll connect without userId and then emit user-online after connection
+    console.log('🔌 Initializing socket connection');
 
-    console.log('🔌 Initializing socket connection for user:', userId);
-
-    const socketIo = io('http://localhost:3000', {
+    const socketIo = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000', {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 10,
@@ -34,7 +27,13 @@ export function SocketProvider({ children }) {
     socketIo.on('connect', () => {
       console.log('✅ Socket connected successfully with ID:', socketIo.id);
       setIsConnected(true);
-      socketIo.emit('user-online', { userId });
+      
+      // You can emit user-online here if you have userId from somewhere
+      // For example, from localStorage or a context
+      const storedUserId = localStorage.getItem('userId');
+      if (storedUserId) {
+        socketIo.emit('user-online', { userId: storedUserId });
+      }
     });
 
     socketIo.on('disconnect', (reason) => {
@@ -50,10 +49,14 @@ export function SocketProvider({ children }) {
     socketIo.on('reconnect', (attemptNumber) => {
       console.log('✅ Socket reconnected after', attemptNumber, 'attempts');
       setIsConnected(true);
-      socketIo.emit('user-online', { userId });
+      
+      const storedUserId = localStorage.getItem('userId');
+      if (storedUserId) {
+        socketIo.emit('user-online', { userId: storedUserId });
+      }
     });
 
-    // Listen for user coming online
+    // User status events
     socketIo.on('user-came-online', (data) => {
       console.log('👤 User came online:', data);
       setOnlineUsers(prev => {
@@ -90,8 +93,80 @@ export function SocketProvider({ children }) {
       });
     });
 
+    // Message status events
     socketIo.on('undelivered-messages-status', (data) => {
       console.log('📦 Undelivered messages status:', data);
+    });
+
+    socketIo.on('message-delivered', (data) => {
+      console.log('✓ Message delivered:', data);
+    });
+
+    socketIo.on('message-read', (data) => {
+      console.log('✓✓ Message read:', data);
+    });
+
+    // Call events
+    socketIo.on('incoming-call', (data) => {
+      console.log('📞 Incoming call event:', data);
+    });
+
+    socketIo.on('call-answered', (data) => {
+      console.log('📞 Call answered event:', data);
+    });
+
+    socketIo.on('call-rejected', (data) => {
+      console.log('📞 Call rejected event:', data);
+    });
+
+    socketIo.on('call-ended', (data) => {
+      console.log('📞 Call ended event:', data);
+    });
+
+    socketIo.on('call-ringing', (data) => {
+      console.log('📞 Call ringing event:', data);
+    });
+
+    socketIo.on('call-failed', (data) => {
+      console.log('📞 Call failed event:', data);
+    });
+
+    // Group events
+    socketIo.on('member-joined', (data) => {
+      console.log('👥 Member joined group:', data);
+    });
+
+    socketIo.on('member-joined-confirmed', (data) => {
+      console.log('✅ Member join confirmed:', data);
+    });
+
+    socketIo.on('group-settings-updated', (data) => {
+      console.log('⚙️ Group settings updated:', data);
+    });
+
+    socketIo.on('group-settings-updated-confirmed', (data) => {
+      console.log('✅ Group settings update confirmed:', data);
+    });
+
+    // Bill events
+    socketIo.on('bill-created', (data) => {
+      console.log('💰 Bill created:', data);
+    });
+
+    socketIo.on('bill-updated', (data) => {
+      console.log('💰 Bill updated:', data);
+    });
+
+    socketIo.on('bill-message-updated', (data) => {
+      console.log('💰 Bill message updated:', data);
+    });
+
+    socketIo.on('bill-cancelled', (data) => {
+      console.log('🚫 Bill cancelled:', data);
+    });
+
+    socketIo.on('bill-direct-update', (data) => {
+      console.log('💰 Direct bill update:', data);
     });
 
     setSocket(socketIo);
@@ -102,15 +177,26 @@ export function SocketProvider({ children }) {
       socketIo.disconnect();
       setSocket(null);
     };
-  }, [userId]);
+  }, []);
 
   const getUserOnlineStatus = useCallback((targetUserId) => {
     return onlineUsers.get(targetUserId) || { online: false, lastSeen: null };
   }, [onlineUsers]);
 
-  const checkUndeliveredMessages = useCallback((roomId, targetUserId) => {
+  const checkUndeliveredMessages = useCallback((roomId, targetUserId, isGroupMessage = false) => {
     if (socket && isConnected) {
-      socket.emit('get-undelivered-status', { roomId, userId: targetUserId });
+      socket.emit('get-undelivered-status', { 
+        roomId, 
+        userId: targetUserId,
+        isGroupMessage 
+      });
+    }
+  }, [socket, isConnected]);
+
+  const emitUserOnline = useCallback((userId) => {
+    if (socket && isConnected && userId) {
+      localStorage.setItem('userId', userId);
+      socket.emit('user-online', { userId });
     }
   }, [socket, isConnected]);
 
@@ -120,7 +206,8 @@ export function SocketProvider({ children }) {
       isConnected,
       onlineUsers,
       getUserOnlineStatus,
-      checkUndeliveredMessages
+      checkUndeliveredMessages,
+      emitUserOnline
     }}>
       {children}
     </SocketContext.Provider>

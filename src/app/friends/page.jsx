@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/context/UserContext";
 import { useSocket } from "@/context/SocketContext";
@@ -17,6 +17,8 @@ import {
   CirclePlus,
   Lock,
   Ban,
+  Volume2,
+  VolumeX
 } from "lucide-react";
 import { BeanHead } from 'beanheads';
 
@@ -31,6 +33,18 @@ import BlockedUsersModal from "@/components/BlockedUsersModal";
 import ContactsModal from "@/components/ContactsModal";
 import SettingsDropdown from "@/components/SettingsDropdown";
 import FriendsLockOverlay from "@/components/FriendsLockOverlay";
+
+// Import sound utilities
+import { 
+  isTabVisible, 
+  playNotificationSound, 
+  setupPendingSounds,
+  requestNotificationPermission,
+  showSmartBrowserNotification,
+  setupVisibilityListener,
+  resetAwayNotifications,
+  showReturnSummaryNotification
+} from "@/utils/soundUtils";
 
 export default function FriendsPage() {
   const router = useRouter();
@@ -75,11 +89,79 @@ export default function FriendsPage() {
   const [decryptedPreviews, setDecryptedPreviews] = useState({});
   const [decryptingQueue, setDecryptingQueue] = useState(new Set());
 
+  // Sound settings
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [notificationPermission, setNotificationPermission] = useState(false);
+  const lastPlayedSoundRef = useRef({});
+  
+  // Track if user was away to show summary
+  const wasAwayRef = useRef(false);
+
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",
   });
+
+  // Initialize sound settings and request notification permission
+  useEffect(() => {
+    // Load sound preference from localStorage
+    const savedSoundSetting = localStorage.getItem('soundEnabled');
+    if (savedSoundSetting !== null) {
+      setSoundEnabled(savedSoundSetting === 'true');
+    }
+    
+    // Request notification permission
+    requestNotificationPermission().then(granted => {
+      setNotificationPermission(granted);
+    });
+    
+    // Setup pending sounds handler
+    setupPendingSounds();
+  }, []);
+
+  // Save sound preference
+  useEffect(() => {
+    localStorage.setItem('soundEnabled', soundEnabled);
+  }, [soundEnabled]);
+
+  // Setup visibility listener to detect when user returns
+  useEffect(() => {
+    const handleUserReturn = () => {
+      // Calculate total unread messages
+      const totalUnreadDMs = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+      const totalUnreadGroups = Object.values(groupUnreadCounts).reduce((a, b) => a + b, 0);
+      const totalUnread = totalUnreadDMs + totalUnreadGroups;
+      
+      // Count chats with unread messages
+      const chatsWithUnread = Object.keys(unreadCounts).filter(key => unreadCounts[key] > 0).length;
+      const groupsWithUnread = Object.keys(groupUnreadCounts).filter(key => groupUnreadCounts[key] > 0).length;
+      const totalChatsWithUnread = chatsWithUnread + groupsWithUnread;
+      
+      // Show summary notification if user was away and there are unread messages
+      if (wasAwayRef.current && totalUnread > 0 && notificationPermission) {
+        showReturnSummaryNotification(totalUnread, totalChatsWithUnread);
+      }
+      
+      wasAwayRef.current = false;
+    };
+    
+    // Track when user leaves tab
+    const handleVisibilityChange = () => {
+      if (!isTabVisible()) {
+        wasAwayRef.current = true;
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    const cleanupVisibilityListener = setupVisibilityListener(handleUserReturn);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (cleanupVisibilityListener) cleanupVisibilityListener();
+    };
+  }, [unreadCounts, groupUnreadCounts, notificationPermission]);
 
   useEffect(() => {
     if (userId) {
@@ -91,6 +173,19 @@ export default function FriendsPage() {
       fetchBlockedUsers();
     }
   }, [userId]);
+
+  // Function to play sound with debouncing
+  const playSoundWithDebounce = useCallback((soundType, identifier = 'default', debounceTime = 2000) => {
+    if (!soundEnabled) return;
+    
+    const now = Date.now();
+    const lastPlayed = lastPlayedSoundRef.current[identifier] || 0;
+    
+    if (now - lastPlayed > debounceTime) {
+      playNotificationSound(soundType);
+      lastPlayedSoundRef.current[identifier] = now;
+    }
+  }, [soundEnabled]);
 
   // Function to safely remove mention formatting
   const removeMentionFormatting = (text) => {
@@ -404,6 +499,21 @@ export default function FriendsPage() {
       if (data.success) {
         setFriendRequests(data.requests || []);
         setUnreadRequests(data.requests?.length || 0);
+        
+        // Play sound for new friend requests if tab is not visible
+        if (data.requests?.length > unreadRequests && !isTabVisible() && notificationPermission) {
+          playSoundWithDebounce('friend-request', 'friend-request', 5000);
+          
+          // Show limited notification for friend request
+          showSmartBrowserNotification(
+            'friend-requests',
+            'New Friend Request',
+            {
+              body: `You have ${data.requests.length} pending friend request${data.requests.length > 1 ? 's' : ''}`,
+              data: { type: 'friend-request' }
+            }
+          );
+        }
       }
     } catch (error) {
       console.error("Error fetching friend requests:", error);
@@ -494,6 +604,29 @@ export default function FriendsPage() {
   };
 
   const handleIncomingMessage = useCallback((message) => {
+    // Check if we should show notification
+    const shouldNotify = () => {
+      // Don't notify for own messages
+      if (message.senderId === userId) return false;
+      
+      // Don't notify if we're in the current chat (user is already seeing messages)
+      if (selectedChat?.userId === message.senderId || selectedGroup?.groupId === message.roomId) {
+        return false;
+      }
+      
+      // Check if tab is visible
+      const tabVisible = isTabVisible();
+      
+      // If tab is visible but user is in a different chat, don't show browser notification
+      // (they'll see the unread indicator)
+      if (tabVisible) {
+        return false;
+      }
+      
+      // Tab is not visible - we should notify but with smart limiting
+      return true;
+    };
+
     if (message.isGroupMessage) {
       if (message.roomId) {
         setGroupLastMessages(prev => ({
@@ -513,6 +646,37 @@ export default function FriendsPage() {
             ...prev,
             [message.roomId]: (prev[message.roomId] || 0) + 1
           }));
+          
+          // Smart notification for group message
+          if (shouldNotify()) {
+            const group = groups.find(g => g.groupId === message.roomId);
+            const senderName = message.senderName || 'Someone';
+            
+            // Play sound (with throttling)
+            playSoundWithDebounce('new-message', `group-${message.roomId}`);
+            
+            // Show smart browser notification (limited to last 2-3)
+            if (notificationPermission) {
+              const notificationShown = showSmartBrowserNotification(
+                `group-${message.roomId}`,
+                `New message in ${group?.groupName || 'group'}`,
+                {
+                  body: `${senderName}: ${message.content ? (message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content) : 'Sent a message'}`,
+                  data: {
+                    type: 'group',
+                    roomId: message.roomId,
+                    senderId: message.senderId,
+                    messageId: `${message.roomId}-${message.timestamp}`
+                  }
+                }
+              );
+              
+              // If notification wasn't shown (limited), still increment counter
+              if (!notificationShown) {
+                console.log(`📱 Notification limited for group ${message.roomId} (away mode)`);
+              }
+            }
+          }
         }
       }
     } else if (message.senderId === userId || message.receiverId === userId) {
@@ -552,10 +716,41 @@ export default function FriendsPage() {
             ...prev,
             [message.roomId]: (prev[message.roomId] || 0) + 1
           }));
+          
+          // Smart notification for direct message
+          if (shouldNotify()) {
+            const sender = chats.find(c => c.userId === message.senderId);
+            const senderName = sender?.userName || message.senderName || 'Someone';
+            
+            // Play sound (with throttling)
+            playSoundWithDebounce('new-message', `dm-${message.roomId}`);
+            
+            // Show smart browser notification (limited to last 2-3)
+            if (notificationPermission) {
+              const notificationShown = showSmartBrowserNotification(
+                `dm-${message.roomId}`,
+                `New message from ${senderName}`,
+                {
+                  body: message.content ? (message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content) : 'Sent a message',
+                  data: {
+                    type: 'dm',
+                    roomId: message.roomId,
+                    senderId: message.senderId,
+                    messageId: `${message.roomId}-${message.timestamp}`
+                  }
+                }
+              );
+              
+              // If notification wasn't shown (limited), still increment counter
+              if (!notificationShown) {
+                console.log(`📱 Notification limited for DM ${message.roomId} (away mode)`);
+              }
+            }
+          }
         }
       }
     }
-  }, [userId, selectedChat, selectedGroup]);
+  }, [userId, selectedChat, selectedGroup, soundEnabled, notificationPermission, playSoundWithDebounce, groups, chats]);
 
   const handleMessageRead = useCallback((data) => {
     if (data.roomId) {
@@ -565,6 +760,8 @@ export default function FriendsPage() {
             ...prev,
             [data.roomId]: 0
           }));
+          // Reset away notifications when messages are read
+          resetAwayNotifications(`group-${data.roomId}`);
         }
       } else {
         if (data.userId === userId) {
@@ -572,6 +769,8 @@ export default function FriendsPage() {
             ...prev,
             [data.roomId]: 0
           }));
+          // Reset away notifications when messages are read
+          resetAwayNotifications(`dm-${data.roomId}`);
         }
       }
     }
@@ -775,6 +974,9 @@ export default function FriendsPage() {
       ...prev,
       [roomId]: 0
     }));
+    
+    // Reset away notifications when user opens the chat
+    resetAwayNotifications(`dm-${roomId}`);
   };
 
   const handleGroupSelect = (group) => {
@@ -786,6 +988,9 @@ export default function FriendsPage() {
       ...prev,
       [group.groupId]: 0
     }));
+    
+    // Reset away notifications when user opens the group
+    resetAwayNotifications(`group-${group.groupId}`);
   };
 
   const handleBackToList = () => {
@@ -836,11 +1041,13 @@ export default function FriendsPage() {
           ...prev,
           [data.roomId]: 0
         }));
+        resetAwayNotifications(`group-${data.roomId}`);
       } else {
         setUnreadCounts(prev => ({
           ...prev,
           [data.roomId]: 0
         }));
+        resetAwayNotifications(`dm-${data.roomId}`);
       }
     } else {
       if (data.isGroupMessage) {
@@ -910,6 +1117,11 @@ export default function FriendsPage() {
       if (data.success) {
         await fetchGroups();
         setShowCreateGroup(false);
+        
+        // Play success sound
+        if (soundEnabled) {
+          playNotificationSound('group-join');
+        }
       } else {
         alert(`Failed to create group: ${data.error}`);
       }
@@ -931,6 +1143,12 @@ export default function FriendsPage() {
         setGroups(prev => [...prev, data.group]);
         setSelectedGroup(data.group);
         setMobileView('chat');
+        
+        // Play success sound
+        if (soundEnabled) {
+          playNotificationSound('group-join');
+        }
+        
         return { success: true };
       } else {
         return { success: false, error: data.error };
@@ -1024,6 +1242,10 @@ export default function FriendsPage() {
       .slice(0, 2);
   };
 
+  const toggleSound = () => {
+    setSoundEnabled(prev => !prev);
+  };
+
   return (
     <FriendsLockOverlay>
       <main className="flex-1 p-4 md:p-8 bg-[#EEF1F0] dark:bg-[#000000] overflow-y-auto min-h-screen transition-colors duration-300">
@@ -1039,9 +1261,22 @@ export default function FriendsPage() {
                     <span>{today}</span>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* Sound Toggle Button */}
+                    
+                    
                     {/* Settings Dropdown with Chat Lock */}
                     <SettingsDropdown />
-                    
+                    <button
+                      onClick={toggleSound}
+                      className="relative p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+                      title={soundEnabled ? "Mute notifications" : "Unmute notifications"}
+                    >
+                      {soundEnabled ? (
+                        <Volume2 size={20} className="text-green-600 dark:text-green-500" />
+                      ) : (
+                        <VolumeX size={20} className="text-gray-400 dark:text-gray-500" />
+                      )}
+                    </button>
                     {/* Friend Requests Icon */}
                     <button
                       onClick={() => setShowRequestsModal(true)}
@@ -1076,13 +1311,17 @@ export default function FriendsPage() {
                   </p>
                 )}
                 
-                {/* Lock indicator if enabled */}
-                {/* {lockEnabled && (
-                  <div className="mt-3 flex items-center gap-2 text-xs text-green-600 dark:text-green-500 bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-full">
-                    <Lock size={14} />
-                    <span>Chat locked after {lockTimeout} min of inactivity</span>
-                  </div>
-                )} */}
+                {/* Notification status indicator */}
+                {/* <div className="mt-2 flex items-center gap-2">
+                  <span className={`text-xs ${soundEnabled ? 'text-green-600 dark:text-green-500' : 'text-gray-400 dark:text-gray-500'}`}>
+                    {soundEnabled ? '🔊 Sound on' : '🔇 Sound off'}
+                  </span>
+                  {notificationPermission && (
+                    <span className="text-xs text-blue-600 dark:text-blue-400">
+                      • Notifications on
+                    </span>
+                  )}
+                </div> */}
               </div>
 
               {/* Search */}
@@ -1396,6 +1635,7 @@ export default function FriendsPage() {
                 currentUserAvatar={avatar}
                 onClose={handleBackToList}
                 onMessageUpdate={handleMessageUpdate}
+                soundEnabled={soundEnabled}
               />
             ) : selectedGroup ? (
               <GroupChatInterface
@@ -1405,6 +1645,7 @@ export default function FriendsPage() {
                 onClose={handleBackToList}
                 onMessageUpdate={handleMessageUpdate}
                 onGroupUpdate={handleGroupUpdate}
+                soundEnabled={soundEnabled}
               />
             ) : (
               <div className="h-full bg-white dark:bg-[#0c0c0c] rounded-3xl border-[#dadce0] dark:border-[#181A1E] flex items-center justify-center p-8 transition-colors duration-300">

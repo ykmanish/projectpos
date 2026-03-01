@@ -8,6 +8,8 @@ import { Menu } from 'lucide-react';
 import { UserProvider, useUser } from '@/context/UserContext';
 import { SocketProvider } from '@/context/SocketContext';
 import Sidebar from '@/components/Sidebar';
+import ModerationNotification from '@/components/ModerationNotification';
+
 import './globals.css';
 
 function LayoutContent({ children }) {
@@ -106,7 +108,9 @@ export default function RootLayout({ children }) {
       <body className="newq">
         <UserProvider>
           <SocketProvider>
-            <LayoutContent>{children}</LayoutContent>
+            <LayoutContent>{children}
+               <ModerationNotification />
+            </LayoutContent>
           </SocketProvider>
         </UserProvider>
       </body>

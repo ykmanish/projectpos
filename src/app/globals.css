@@ -79,6 +79,18 @@ html {
   src: url("./font/Countless.ttf") format("truetype");
   /* Add additional font weights and styles if needed */
 }
+
+@font-face {
+  font-family: "logoz";
+  src: url("./font/Logoza-nAeZ0.woff") format("truetype");
+  /* Add additional font weights and styles if needed */
+}
+
+.test{
+  font-family: "logoz";
+}
+
+
 .newq {
   font-family: "Geist";
 }

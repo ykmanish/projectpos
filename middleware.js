@@ -6,7 +6,7 @@ export function middleware(request) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths
-  if (pathname.startsWith('/login') || pathname.startsWith('/signup')) {
+  if (pathname.startsWith('/signin') || pathname.startsWith('/signup')) {
     // If already logged in, redirect to home
     if (token && verifyToken(token)) {
       return NextResponse.redirect(new URL('/', request.url));
@@ -16,9 +16,9 @@ export function middleware(request) {
 
   // Protect all other routes
   if (!token || !verifyToken(token)) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('from', pathname);
-    return NextResponse.redirect(loginUrl);
+    const signinUrl = new URL('/signin', request.url);
+    signinUrl.searchParams.set('from', pathname);
+    return NextResponse.redirect(signinUrl);
   }
 
   return NextResponse.next();

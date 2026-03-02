@@ -48,6 +48,10 @@ export default function LoginContent() {
         return;
       }
 
+      // Store user name in localStorage for welcome page
+      localStorage.setItem('userName', data.user.name);
+      localStorage.setItem('userEmail', data.user.email);
+      
       // Use the login function from context
       login(data.user);
 
@@ -157,6 +161,24 @@ export default function LoginContent() {
           </p>
         </div>
       </div>
+
+      {/* Animation styles */}
+      <style jsx>{`
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .animate-fade-in {
+          animation: fade-in 0.6s ease-out;
+        }
+      `}</style>
     </div>
   );
 }

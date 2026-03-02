@@ -7,19 +7,33 @@ import { Sparkles, ArrowRight } from 'lucide-react';
 export default function WelcomePage() {
   const router = useRouter();
   const [userName, setUserName] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Get user name from localStorage
     const name = localStorage.getItem('userName');
+    
     if (!name) {
+      // If no name in localStorage, try to get from user context or redirect to signup
       router.push('/signup');
       return;
     }
+    
     setUserName(name);
+    setLoading(false);
   }, [router]);
 
   const handleContinue = () => {
     router.push('/onboarding');
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#1a73e8]"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-[#f8f9fa] min-h-screen flex flex-col items-center justify-center text-[#202124] p-6">
@@ -30,7 +44,6 @@ export default function WelcomePage() {
 
       <div className="relative z-50 w-full max-w-5xl text-center animate-fade-in">
         <div className="mb-8">
-          
           <h1 className="text-5xl small md:text-6xl font-bold text-[#000000] mb-4">
             Welcome, {userName}! 🎉
           </h1>
@@ -39,10 +52,7 @@ export default function WelcomePage() {
           </p>
         </div>
 
-        <div className="bg-white rounded-[35px] p-8 md:p-12  border-[#dadce0]  mb-8">
-          {/* <h2 className="text-2xl font-semibold text-[#000000] mb-6">
-            Here's what awaits you:
-          </h2> */}
+        <div className="bg-white rounded-[35px] p-8 md:p-12 border border-[#dadce0] mb-8">
           <div className="grid md:grid-cols-3 gap-6 mb-8">
             <div className="p-6 rounded-3xl bg-[#e8f0fe]">
               <div className="text-4xl mb-3">📅</div>
@@ -63,7 +73,7 @@ export default function WelcomePage() {
 
           <button
             onClick={handleContinue}
-            className="group flex items-center justify-center gap-3 mx-auto px-8 py-4 bg-[#1a73e8] text-white rounded-2xl hover:bg-[#1765cc] font-medium text-lg transition-all "
+            className="group flex items-center justify-center gap-3 mx-auto px-8 py-4 bg-[#1a73e8] text-white rounded-2xl hover:bg-[#1765cc] font-medium text-lg transition-all"
           >
             Let's Personalize Your Experience
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -74,6 +84,24 @@ export default function WelcomePage() {
           This will only take a minute ⏱️
         </p>
       </div>
+
+      {/* Animation styles */}
+      <style jsx>{`
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .animate-fade-in {
+          animation: fade-in 0.6s ease-out;
+        }
+      `}</style>
     </div>
   );
 }

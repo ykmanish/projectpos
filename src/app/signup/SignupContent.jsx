@@ -1,10 +1,8 @@
-// app/signup/page.js
-
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Sparkles, Eye, EyeOff, Users, Gift, CheckCircle, Award, Share2, Copy } from 'lucide-react';
+import { Sparkles, Eye, EyeOff, Users, Gift, CheckCircle, Award, Copy } from 'lucide-react';
 import Link from 'next/link';
 import { useUser } from '@/context/UserContext';
 
@@ -27,14 +25,13 @@ export default function SignupContent() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showReferralInput, setShowReferralInput] = useState(!!referralCodeFromUrl);
-  const [referralBonus, setReferralBonus] = useState(!!referralCodeFromUrl);
   const [successMessage, setSuccessMessage] = useState('');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     // If referral code is in URL, show the bonus message
     if (referralCodeFromUrl) {
-      setReferralBonus(true);
+      setShowReferralInput(true);
     }
   }, [referralCodeFromUrl]);
 
@@ -97,6 +94,10 @@ export default function SignupContent() {
         return;
       }
 
+      // Store user name in localStorage for welcome page
+      localStorage.setItem('userName', data.user.name);
+      localStorage.setItem('userEmail', data.user.email);
+
       // Show success message if there's one from the API
       if (data.message) {
         setSuccessMessage(data.message);
@@ -153,12 +154,78 @@ export default function SignupContent() {
         <div className="relative z-50 w-full max-w-6xl animate-fade-in">
           <div className="grid md:grid-cols-2 gap-6">
             {/* Left Card - Referral Info */}
-            
+            <div className="bg-white rounded-[35px] p-8 border border-[#dadce0] shadow-sm h-fit md:sticky md:top-8">
+              <div className="flex justify-center mb-6">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#f39c12] to-[#f1c40f] flex items-center justify-center">
+                  <Gift className="w-10 h-10 text-white" />
+                </div>
+              </div>
+
+              <h2 className="text-2xl font-bold text-center text-[#000000] mb-2">
+                You've Been Invited! 🎉
+              </h2>
+              <p className="text-center text-[#5f6368] mb-6">
+                Join with this special referral and get bonus points!
+              </p>
+
+              {/* Referral Code Display */}
+              <div className="bg-gradient-to-r from-[#f39c12]/10 to-[#f1c40f]/10 rounded-3xl p-6 mb-6 border border-[#f39c12]/30">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-sm font-medium text-[#5f6368]">Your Referral Code</span>
+                  <button
+                    onClick={handleCopyCode}
+                    className="flex items-center gap-1 text-sm text-[#1a73e8] hover:text-[#1557b0]"
+                  >
+                    {copied ? (
+                      <>
+                        <CheckCircle size={16} className="text-green-500" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={16} />
+                        <span>Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="text-center">
+                  <span className="text-4xl font-mono font-bold text-[#f39c12] tracking-wider">
+                    {referralCodeFromUrl}
+                  </span>
+                </div>
+              </div>
+
+              {/* Bonus Stats */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="flex items-center gap-3 p-4 bg-[#f8f9fa] rounded-3xl">
+                  <div className="w-12 h-12 rounded-full bg-[#34a853]/20 flex items-center justify-center">
+                    <Award className="w-6 h-6 text-[#34a853]" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-[#5f6368]">Your Bonus</p>
+                    <p className="text-xl font-bold text-[#34a853]">+50 Points</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 p-4 bg-[#f8f9fa] rounded-3xl">
+                  <div className="w-12 h-12 rounded-full bg-[#1a73e8]/20 flex items-center justify-center">
+                    <Users className="w-6 h-6 text-[#1a73e8]" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-[#5f6368]">Friend's Bonus</p>
+                    <p className="text-xl font-bold text-[#1a73e8]">+50 Points</p>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Right Card - Signup Form */}
             <div className="bg-white rounded-[35px] p-8 border border-[#dadce0] shadow-sm">
               <div className="flex justify-center mb-6">
-               <img src="/oak.svg" alt="Gift" className="w-16 h-16" />
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1a73e8] to-[#4285f4] flex items-center justify-center">
+                  <Sparkles className="w-8 h-8 text-white" />
+                </div>
               </div>
 
               <div className="text-center mb-6">
@@ -304,82 +371,7 @@ export default function SignupContent() {
                 </p>
               )}
             </div>
-            <div className="bg-white rounded-[35px] p-8 border border-[#dadce0] shadow-sm h-fit md:sticky md:top-8">
-              <div className="flex justify-center mb-6">
-                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#f39c12] to-[#f1c40f] flex items-center justify-center">
-                  <Gift className="w-10 h-10 text-white" />
-                </div>
-              </div>
-
-              <h2 className="text-2xl font-bold text-center text-[#000000] mb-2">
-                You've Been Invited! 🎉
-              </h2>
-              <p className="text-center text-[#5f6368] mb-6">
-                Join with this special referral and get bonus points!
-              </p>
-
-              {/* Referral Code Display */}
-              {/* <div className="bg-gradient-to-r from-[#f39c12]/10 to-[#f1c40f]/10 rounded-3xl p-6 mb-6  border-[#f39c12]/30">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-sm font-medium text-[#5f6368]">Your Referral Code</span>
-                  <button
-                    onClick={handleCopyCode}
-                    className="flex items-center gap-1 text-sm text-[#1a73e8] hover:text-[#1557b0]"
-                  >
-                    {copied ? (
-                      <>
-                        <CheckCircle size={16} className="text-green-500" />
-                        <span>Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy size={16} />
-                        <span>Copy</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-                <div className="">
-                  <span className="text-4xl font-mono font-bold text-[#f39c12] tracking-wider">
-                    {referralCodeFromUrl}
-                  </span>
-                </div>
-              </div> */}
-
-              {/* Bonus Stats */}
-              <div className=" flex justify-center gap-6 items-center mb-6">
-                <div className="flex items-center gap-3 p-4 bg-[#ffffff] rounded-3xl">
-                  <div className="w-12 h-12 rounded-full bg-[#34a853]/20 flex items-center justify-center">
-                    <Award className="w-6 h-6 text-[#34a853]" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-[#5f6368]">Your Bonus</p>
-                    <p className="text-xl font-bold text-[#34a853]">+50 Points</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-4 bg-[#ffffff] rounded-3xl">
-                  <div className="w-12 h-12 rounded-full bg-[#1a73e8]/20 flex items-center justify-center">
-                    <Users className="w-6 h-6 text-[#1a73e8]" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-[#5f6368]">Friend's Bonus</p>
-                    <p className="text-xl font-bold text-[#1a73e8]">+50 Points</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Benefits List */}
-              
-
-              {/* Testimonial */}
-              
-            </div>
           </div>
-
-          {/* <p className="text-xs text-[#5f6368] text-center mt-6">
-            By signing up, you agree to our Terms of Service and Privacy Policy
-          </p> */}
         </div>
 
         {/* Animation styles */}

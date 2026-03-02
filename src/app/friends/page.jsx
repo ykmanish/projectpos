@@ -18,7 +18,8 @@ import {
   Lock,
   Ban,
   Volume2,
-  VolumeX
+  VolumeX,
+  ChevronLeft
 } from "lucide-react";
 import { BeanHead } from 'beanheads';
 
@@ -97,26 +98,38 @@ export default function FriendsPage() {
   // Track if user was away to show summary
   const wasAwayRef = useRef(false);
 
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false);
+
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",
   });
 
+  // ==================== DETECT MOBILE ====================
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   // Initialize sound settings and request notification permission
   useEffect(() => {
-    // Load sound preference from localStorage
     const savedSoundSetting = localStorage.getItem('soundEnabled');
     if (savedSoundSetting !== null) {
       setSoundEnabled(savedSoundSetting === 'true');
     }
     
-    // Request notification permission
     requestNotificationPermission().then(granted => {
       setNotificationPermission(granted);
     });
     
-    // Setup pending sounds handler
     setupPendingSounds();
   }, []);
 
@@ -128,17 +141,14 @@ export default function FriendsPage() {
   // Setup visibility listener to detect when user returns
   useEffect(() => {
     const handleUserReturn = () => {
-      // Calculate total unread messages
       const totalUnreadDMs = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
       const totalUnreadGroups = Object.values(groupUnreadCounts).reduce((a, b) => a + b, 0);
       const totalUnread = totalUnreadDMs + totalUnreadGroups;
       
-      // Count chats with unread messages
       const chatsWithUnread = Object.keys(unreadCounts).filter(key => unreadCounts[key] > 0).length;
       const groupsWithUnread = Object.keys(groupUnreadCounts).filter(key => groupUnreadCounts[key] > 0).length;
       const totalChatsWithUnread = chatsWithUnread + groupsWithUnread;
       
-      // Show summary notification if user was away and there are unread messages
       if (wasAwayRef.current && totalUnread > 0 && notificationPermission) {
         showReturnSummaryNotification(totalUnread, totalChatsWithUnread);
       }
@@ -146,7 +156,6 @@ export default function FriendsPage() {
       wasAwayRef.current = false;
     };
     
-    // Track when user leaves tab
     const handleVisibilityChange = () => {
       if (!isTabVisible()) {
         wasAwayRef.current = true;
@@ -500,11 +509,9 @@ export default function FriendsPage() {
         setFriendRequests(data.requests || []);
         setUnreadRequests(data.requests?.length || 0);
         
-        // Play sound for new friend requests if tab is not visible
         if (data.requests?.length > unreadRequests && !isTabVisible() && notificationPermission) {
           playSoundWithDebounce('friend-request', 'friend-request', 5000);
           
-          // Show limited notification for friend request
           showSmartBrowserNotification(
             'friend-requests',
             'New Friend Request',
@@ -604,26 +611,19 @@ export default function FriendsPage() {
   };
 
   const handleIncomingMessage = useCallback((message) => {
-    // Check if we should show notification
     const shouldNotify = () => {
-      // Don't notify for own messages
       if (message.senderId === userId) return false;
       
-      // Don't notify if we're in the current chat (user is already seeing messages)
       if (selectedChat?.userId === message.senderId || selectedGroup?.groupId === message.roomId) {
         return false;
       }
       
-      // Check if tab is visible
       const tabVisible = isTabVisible();
       
-      // If tab is visible but user is in a different chat, don't show browser notification
-      // (they'll see the unread indicator)
       if (tabVisible) {
         return false;
       }
       
-      // Tab is not visible - we should notify but with smart limiting
       return true;
     };
 
@@ -647,17 +647,14 @@ export default function FriendsPage() {
             [message.roomId]: (prev[message.roomId] || 0) + 1
           }));
           
-          // Smart notification for group message
           if (shouldNotify()) {
             const group = groups.find(g => g.groupId === message.roomId);
             const senderName = message.senderName || 'Someone';
             
-            // Play sound (with throttling)
             playSoundWithDebounce('new-message', `group-${message.roomId}`);
             
-            // Show smart browser notification (limited to last 2-3)
             if (notificationPermission) {
-              const notificationShown = showSmartBrowserNotification(
+              showSmartBrowserNotification(
                 `group-${message.roomId}`,
                 `New message in ${group?.groupName || 'group'}`,
                 {
@@ -670,11 +667,6 @@ export default function FriendsPage() {
                   }
                 }
               );
-              
-              // If notification wasn't shown (limited), still increment counter
-              if (!notificationShown) {
-                console.log(`📱 Notification limited for group ${message.roomId} (away mode)`);
-              }
             }
           }
         }
@@ -717,17 +709,14 @@ export default function FriendsPage() {
             [message.roomId]: (prev[message.roomId] || 0) + 1
           }));
           
-          // Smart notification for direct message
           if (shouldNotify()) {
             const sender = chats.find(c => c.userId === message.senderId);
             const senderName = sender?.userName || message.senderName || 'Someone';
             
-            // Play sound (with throttling)
             playSoundWithDebounce('new-message', `dm-${message.roomId}`);
             
-            // Show smart browser notification (limited to last 2-3)
             if (notificationPermission) {
-              const notificationShown = showSmartBrowserNotification(
+              showSmartBrowserNotification(
                 `dm-${message.roomId}`,
                 `New message from ${senderName}`,
                 {
@@ -740,11 +729,6 @@ export default function FriendsPage() {
                   }
                 }
               );
-              
-              // If notification wasn't shown (limited), still increment counter
-              if (!notificationShown) {
-                console.log(`📱 Notification limited for DM ${message.roomId} (away mode)`);
-              }
             }
           }
         }
@@ -760,7 +744,6 @@ export default function FriendsPage() {
             ...prev,
             [data.roomId]: 0
           }));
-          // Reset away notifications when messages are read
           resetAwayNotifications(`group-${data.roomId}`);
         }
       } else {
@@ -769,7 +752,6 @@ export default function FriendsPage() {
             ...prev,
             [data.roomId]: 0
           }));
-          // Reset away notifications when messages are read
           resetAwayNotifications(`dm-${data.roomId}`);
         }
       }
@@ -975,7 +957,6 @@ export default function FriendsPage() {
       [roomId]: 0
     }));
     
-    // Reset away notifications when user opens the chat
     resetAwayNotifications(`dm-${roomId}`);
   };
 
@@ -989,7 +970,6 @@ export default function FriendsPage() {
       [group.groupId]: 0
     }));
     
-    // Reset away notifications when user opens the group
     resetAwayNotifications(`group-${group.groupId}`);
   };
 
@@ -1118,7 +1098,6 @@ export default function FriendsPage() {
         await fetchGroups();
         setShowCreateGroup(false);
         
-        // Play success sound
         if (soundEnabled) {
           playNotificationSound('group-join');
         }
@@ -1144,7 +1123,6 @@ export default function FriendsPage() {
         setSelectedGroup(data.group);
         setMobileView('chat');
         
-        // Play success sound
         if (soundEnabled) {
           playNotificationSound('group-join');
         }
@@ -1248,145 +1226,145 @@ export default function FriendsPage() {
 
   return (
     <FriendsLockOverlay>
-      <main className="flex-1 p-4 md:p-8 bg-[#EEF1F0] dark:bg-[#000000] overflow-y-auto min-h-screen transition-colors duration-300">
-        <div className="h-full flex flex-col lg:flex-row gap-6">
+      <main className="flex-1 p-3 md:p-4 lg:p-8 bg-[#EEF1F0] dark:bg-[#000000] overflow-y-auto min-h-screen transition-colors duration-300">
+        <div className="h-full flex flex-col lg:flex-row gap-3 md:gap-4 lg:gap-6">
           {/* Left Panel - Chats & Groups List */}
           <div className={`lg:w-96 flex-shrink-0 ${mobileView === 'chat' ? 'hidden lg:block' : 'block'}`}>
-            <div className="bg-white dark:bg-[#0c0c0c] rounded-3xl border-[#dadce0] dark:border-[#181A1E] overflow-hidden h-full flex flex-col transition-colors duration-300">
+            <div className="bg-white dark:bg-[#0c0c0c] rounded-2xl lg:rounded-3xl border-[#dadce0] dark:border-[#181A1E] overflow-hidden h-full flex flex-col transition-colors duration-300">
               {/* Header */}
-              <div className="p-6 border-b border-[#f1f3f4] dark:border-[#181A1E]">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-zinc-100 dark:bg-[#101010] text-sm font-medium text-[#5f6368] dark:text-gray-400">
-                    <Calendar className="w-4 h-4 text-[#34A853]" />
-                    <span>{today}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {/* Sound Toggle Button */}
-                    
-                    
-                    {/* Settings Dropdown with Chat Lock */}
-                    <SettingsDropdown />
+              <div className="p-4 md:p-5 lg:p-6 border-b border-[#f1f3f4] dark:border-[#181A1E]">
+                {/* Mobile Header with Back Button */}
+                {isMobile && mobileView === 'chat' ? (
+                  <div className="flex items-center gap-2 mb-3">
                     <button
-                      onClick={toggleSound}
-                      className="relative p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
-                      title={soundEnabled ? "Mute notifications" : "Unmute notifications"}
+                      onClick={handleBackToList}
+                      className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
                     >
-                      {soundEnabled ? (
-                        <Volume2 size={20} className="text-green-600 dark:text-green-500" />
-                      ) : (
-                        <VolumeX size={20} className="text-gray-400 dark:text-gray-500" />
-                      )}
+                      <ChevronLeft size={20} className="text-[#202124] dark:text-white" />
                     </button>
-                    {/* Friend Requests Icon */}
-                    <button
-                      onClick={() => setShowRequestsModal(true)}
-                      className="relative p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full"
-                    >
-                      <Bell size={20} className="text-green-600 dark:text-green-500" />
-                      {unreadRequests > 0 && (
-                        <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                          {unreadRequests}
-                        </span>
-                      )}
-                    </button>
+                    <h2 className="text-lg font-semibold text-[#202124] dark:text-white">Back to Chats</h2>
                   </div>
-                </div>
-                
-                <h1 className="text-2xl small font-semibold text-[#000000] dark:text-white mb-2">
-                  Messages
-                </h1>
-                <p className="text-sm text-[#5f6368] dark:text-gray-400">
-                  Chat with friends and groups
-                </p>
-                {!isConnected && (
-                  <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
-                    <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-                    Connecting to server...
-                  </p>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-3 md:mb-4">
+                      <div className="inline-flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-1.5 md:py-2 rounded-full bg-zinc-100 dark:bg-[#101010] text-xs md:text-sm font-medium text-[#5f6368] dark:text-gray-400">
+                        <Calendar className="w-3 h-3 md:w-4 md:h-4 text-[#34A853]" />
+                        <span className="truncate max-w-[150px] md:max-w-none">{today}</span>
+                      </div>
+                      <div className="flex items-center gap-1 md:gap-2">
+                        <button
+                          onClick={toggleSound}
+                          className="relative p-1.5 md:p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+                          title={soundEnabled ? "Mute notifications" : "Unmute notifications"}
+                        >
+                          {soundEnabled ? (
+                            <Volume2 size={18} className="text-green-600 dark:text-green-500" />
+                          ) : (
+                            <VolumeX size={18} className="text-gray-400 dark:text-gray-500" />
+                          )}
+                        </button>
+                        
+                        <button
+                          onClick={() => setShowRequestsModal(true)}
+                          className="relative p-1.5 md:p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full"
+                        >
+                          <Bell size={18} className="text-green-600 dark:text-green-500" />
+                          {unreadRequests > 0 && (
+                            <span className="absolute top-0 right-0 w-3.5 h-3.5 md:w-4 md:h-4 bg-red-500 text-white text-[10px] md:text-xs rounded-full flex items-center justify-center">
+                              {unreadRequests > 9 ? '9+' : unreadRequests}
+                            </span>
+                          )}
+                        </button>
+                        
+                        <SettingsDropdown />
+                      </div>
+                    </div>
+                    
+                    <h1 className="text-xl md:text-2xl font-semibold text-[#000000] dark:text-white mb-1">
+                      Messages
+                    </h1>
+                    <p className="text-xs md:text-sm text-[#5f6368] dark:text-gray-400">
+                      Chat with friends and groups
+                    </p>
+                    {!isConnected && (
+                      <p className="text-[10px] md:text-xs text-red-500 mt-2 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-red-500 rounded-full animate-pulse"></span>
+                        Connecting...
+                      </p>
+                    )}
+                    {isConnected && (
+                      <p className="text-[10px] md:text-xs text-green-600 dark:text-green-500 mt-2 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-green-500 rounded-full"></span>
+                        Connected
+                      </p>
+                    )}
+                  </>
                 )}
-                {isConnected && (
-                  <p className="text-xs text-green-600 dark:text-green-500 mt-2 flex items-center gap-1">
-                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                    Connected
-                  </p>
-                )}
-                
-                {/* Notification status indicator */}
-                {/* <div className="mt-2 flex items-center gap-2">
-                  <span className={`text-xs ${soundEnabled ? 'text-green-600 dark:text-green-500' : 'text-gray-400 dark:text-gray-500'}`}>
-                    {soundEnabled ? '🔊 Sound on' : '🔇 Sound off'}
-                  </span>
-                  {notificationPermission && (
-                    <span className="text-xs text-blue-600 dark:text-blue-400">
-                      • Notifications on
-                    </span>
-                  )}
-                </div> */}
               </div>
 
               {/* Search */}
-              <div className="p-4 border-b border-[#f1f3f4] dark:border-[#181A1E]">
+              <div className="p-3 md:p-4 border-b border-[#f1f3f4] dark:border-[#181A1E]">
                 <div className="relative">
                   <input
                     type="text"
                     placeholder="Search messages or users..."
                     value={searchQuery}
                     onChange={handleSearchChange}
-                    className="w-full px-4 py-4 pl-10 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#000000] dark:text-white rounded-2xl focus:ring focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none text-sm"
+                    className="w-full px-3 md:px-4 py-3 md:py-4 pl-9 md:pl-10 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#000000] dark:text-white rounded-xl md:rounded-2xl focus:ring focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none text-xs md:text-sm"
                   />
                   <Search
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5f6368] dark:text-gray-400"
-                    size={18}
+                    size={16}
                   />
                 </div>
               </div>
 
               {/* Search Results */}
               {searchQuery && (
-                <div className="flex-1 overflow-y-auto p-4">
-                  <h2 className="text-sm font-semibold text-[#202124] dark:text-white mb-3">
+                <div className="flex-1 overflow-y-auto p-3 md:p-4">
+                  <h2 className="text-xs md:text-sm font-semibold text-[#202124] dark:text-white mb-2 md:mb-3">
                     Search Results
                   </h2>
                   {searching ? (
-                    <div className="text-center py-8">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#34A853] mx-auto"></div>
+                    <div className="text-center py-6 md:py-8">
+                      <div className="animate-spin rounded-full h-5 w-5 md:h-6 md:w-6 border-b-2 border-[#34A853] mx-auto"></div>
                     </div>
                   ) : searchResults.length > 0 ? (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5 md:space-y-2">
                       {searchResults.map((user) => (
                         <button
                           key={user.userId}
                           onClick={() => viewUserProfile(user)}
-                          className="w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-[#101010] rounded-xl transition-all"
+                          className="w-full flex items-center justify-between p-2 md:p-3 hover:bg-gray-50 dark:hover:bg-[#101010] rounded-xl transition-all"
                         >
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2 md:gap-3">
                             <div className="relative">
-                              <Avatar userAvatar={user.avatar} name={user.userName} size="w-10 h-10" />
+                              <Avatar userAvatar={user.avatar} name={user.userName} size="w-8 h-8 md:w-10 md:h-10" />
                               {user.isBlocked && (
-                                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-                                  <Ban size={8} className="text-white" />
+                                <span className="absolute -top-1 -right-1 w-3 h-3 md:w-4 md:h-4 bg-red-500 rounded-full flex items-center justify-center">
+                                  <Ban size={6} className="text-white" />
                                 </span>
                               )}
                             </div>
                             <div className="text-left">
-                              <p className="font-medium text-[#202124] dark:text-white text-sm">
+                              <p className="font-medium text-[#202124] dark:text-white text-xs md:text-sm">
                                 {user.userName}
                                 {user.isBlocked && (
-                                  <span className="ml-2 text-xs text-red-500">(Blocked)</span>
+                                  <span className="ml-1 md:ml-2 text-[10px] md:text-xs text-red-500">(Blocked)</span>
                                 )}
                               </p>
-                              <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                              <p className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400">
                                 @{user.username}
                               </p>
                             </div>
                           </div>
-                          <UserPlus size={18} className="text-[#34A853]" />
+                          <UserPlus size={16} className="text-[#34A853]" />
                         </button>
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-8">
-                      <p className="text-sm text-[#5f6368] dark:text-gray-400">No users found</p>
+                    <div className="text-center py-6 md:py-8">
+                      <p className="text-xs md:text-sm text-[#5f6368] dark:text-gray-400">No users found</p>
                     </div>
                   )}
                 </div>
@@ -1394,35 +1372,35 @@ export default function FriendsPage() {
 
               {/* Groups & Chats Lists */}
               {!searchQuery && (
-                <div className="flex-1 overflow-y-auto p-4">
+                <div className="flex-1 overflow-y-auto p-3 md:p-4">
                   {/* Groups Section */}
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between mb-3">
-                      <h2 className="text-sm font-semibold text-[#202124] dark:text-white flex items-center gap-2">
+                  <div className="mb-4 md:mb-6">
+                    <div className="flex items-center justify-between mb-2 md:mb-3">
+                      <h2 className="text-xs md:text-sm font-semibold text-[#202124] dark:text-white flex items-center gap-1 md:gap-2">
                         Groups ({groups.length})
                       </h2>
                       <div className="flex gap-1">
                         <button
                           onClick={() => setShowJoinGroup(true)}
-                          className="p-2 flex gap-1 items-center text-xs bg-gray-100 dark:bg-[#101010] rounded-full text-[#5f6368] dark:text-gray-400"
+                          className="p-1.5 md:p-2 flex gap-1 items-center text-[10px] md:text-xs bg-gray-100 dark:bg-[#101010] rounded-full text-[#5f6368] dark:text-gray-400"
                           title="Join group with code"
                         > 
-                          <Merge size={16} />
-                          Join
+                          <Merge size={14} />
+                          <span className="hidden sm:inline">Join</span>
                         </button>
                         <button
                           onClick={() => setShowCreateGroup(true)}
-                          className="p-2 flex gap-1 items-center text-xs bg-green-100 dark:bg-green-900/30 rounded-full text-green-800 dark:text-green-400"
+                          className="p-1.5 md:p-2 flex gap-1 items-center text-[10px] md:text-xs bg-green-100 dark:bg-green-900/30 rounded-full text-green-800 dark:text-green-400"
                           title="Create new group"
                         > 
-                          <CirclePlus size={16} />
-                          Create
+                          <CirclePlus size={14} />
+                          <span className="hidden sm:inline">Create</span>
                         </button>
                       </div>
                     </div>
                     
                     {groups.length > 0 ? (
-                      <div className="space-y-2">
+                      <div className="space-y-1.5 md:space-y-2">
                         {groups.map((group) => {
                           const lastMsg = groupLastMessages[group.groupId];
                           const unreadCount = groupUnreadCounts[group.groupId] || 0;
@@ -1444,12 +1422,12 @@ export default function FriendsPage() {
                             <button
                               key={group.groupId}
                               onClick={() => handleGroupSelect(group)}
-                              className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-[#101010] rounded-2xl transition-all ${
+                              className={`w-full flex items-center gap-2 md:gap-3 p-2 md:p-3 hover:bg-gray-50 dark:hover:bg-[#101010] rounded-xl md:rounded-2xl transition-all ${
                                 selectedGroup?.groupId === group.groupId ? 'bg-green-50 dark:bg-[#181A1E]' : ''
                               } ${unreadCount > 0 ? 'bg-blue-50 dark:bg-[#0c2c1a]' : ''}`}
                             >
                               {/* Group Avatar */}
-                              <div className="w-12 h-12 rounded-full overflow-hidden bg-zinc-100 dark:bg-[#232529] flex items-center justify-center text-[#202124] dark:text-white font-semibold text-lg flex-shrink-0">
+                              <div className="w-10 h-10 md:w-12 md:h-12 rounded-full overflow-hidden bg-zinc-100 dark:bg-[#232529] flex items-center justify-center text-[#202124] dark:text-white font-semibold text-base md:text-lg flex-shrink-0">
                                 {groupAvatar?.beanConfig ? (
                                   <BeanHead {...groupAvatar.beanConfig} />
                                 ) : (
@@ -1459,21 +1437,21 @@ export default function FriendsPage() {
                               
                               <div className="flex-1 text-left min-w-0">
                                 <div className="flex items-center justify-between">
-                                  <p className={`font-medium text-[#202124] dark:text-white text-sm truncate flex items-center gap-1 ${
+                                  <p className={`font-medium text-[#202124] dark:text-white text-xs md:text-sm truncate flex items-center gap-1 ${
                                     unreadCount > 0 ? 'font-semibold' : ''
                                   }`}>
                                     {groupName}
                                   </p>
                                   {lastMsg && (
-                                    <span className="text-xs text-[#5f6368] dark:text-gray-400 ml-2 flex-shrink-0">
+                                    <span className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400 ml-1 flex-shrink-0">
                                       {formatMessageTime(lastMsg.timestamp)}
                                     </span>
                                   )}
                                 </div>
                                 
-                                <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center justify-between gap-1 md:gap-2">
                                   <div className="flex items-center gap-1 flex-1 min-w-0">
-                                    <p className={`text-xs ${
+                                    <p className={`text-[10px] md:text-xs ${
                                       unreadCount > 0 ? 'text-[#202124] dark:text-white font-medium' : 'text-[#5f6368] dark:text-gray-400'
                                     } truncate`}>
                                       {lastMsg ? (
@@ -1490,7 +1468,7 @@ export default function FriendsPage() {
                                   </div>
                                   
                                   {unreadCount > 0 && (
-                                    <span className="flex-shrink-0 bg-[#34A853] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold">
+                                    <span className="flex-shrink-0 bg-[#34A853] text-white text-[10px] md:text-xs rounded-full w-4 h-4 md:w-5 md:h-5 flex items-center justify-center font-semibold">
                                       {unreadCount > 9 ? '9+' : unreadCount}
                                     </span>
                                   )}
@@ -1501,35 +1479,35 @@ export default function FriendsPage() {
                         })}
                       </div>
                     ) : (
-                      <div className="text-center flex flex-col items-center justify-center py-6 bg-gray-50 dark:bg-[#101010] rounded-2xl">
-                        <p className="text-sm text-[#5f6368] dark:text-gray-400">No groups yet</p>
-                        <p className="text-xs text-[#5f6368] dark:text-gray-500 mt-1">Create or join a group to start chatting</p>
+                      <div className="text-center flex flex-col items-center justify-center py-4 md:py-6 bg-gray-50 dark:bg-[#101010] rounded-xl md:rounded-2xl">
+                        <p className="text-xs md:text-sm text-[#5f6368] dark:text-gray-400">No groups yet</p>
+                        <p className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-500 mt-1">Create or join a group</p>
                       </div>
                     )}
                   </div>
 
                   {/* Chats Section */}
                   <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <h2 className="text-sm font-semibold text-[#202124] dark:text-white">
+                    <div className="flex items-center justify-between mb-2 md:mb-3">
+                      <h2 className="text-xs md:text-sm font-semibold text-[#202124] dark:text-white">
                         Direct Messages ({chats.length})
                       </h2>
                       <button
                         onClick={() => setShowContactsModal(true)}
-                        className="p-2 flex gap-1 items-center text-xs bg-green-100 dark:bg-green-900/30 rounded-full text-green-800 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+                        className="p-1.5 md:p-2 flex gap-1 items-center text-[10px] md:text-xs bg-green-100 dark:bg-green-900/30 rounded-full text-green-800 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
                         title="Start new chat"
                       >
-                        <CirclePlus size={16} />
-                        New Chat
+                        <CirclePlus size={14} />
+                        <span className="hidden sm:inline">New Chat</span>
                       </button>
                     </div>
                     
                     {loading ? (
-                      <div className="text-center py-8">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#34A853] mx-auto"></div>
+                      <div className="text-center py-4 md:py-6">
+                        <div className="animate-spin rounded-full h-5 w-5 md:h-6 md:w-6 border-b-2 border-[#34A853] mx-auto"></div>
                       </div>
                     ) : chats.length > 0 ? (
-                      <div className="space-y-2">
+                      <div className="space-y-1.5 md:space-y-2">
                         {chats.map((chat) => {
                           const roomId = getRoomId(chat.userId);
                           const lastMsg = lastMessages[roomId];
@@ -1540,47 +1518,47 @@ export default function FriendsPage() {
                             <button
                               key={chat.userId}
                               onClick={() => handleChatSelect(chat)}
-                              className={`w-full flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-[#101010] rounded-2xl transition-all ${
+                              className={`w-full flex items-center gap-2 md:gap-3 p-2 md:p-3 hover:bg-gray-50 dark:hover:bg-[#101010] rounded-xl md:rounded-2xl transition-all ${
                                 selectedChat?.userId === chat.userId ? 'bg-green-50 dark:bg-[#181A1E]' : ''
                               } ${unreadCount > 0 && !isBlocked ? 'bg-blue-50 dark:bg-[#0c2c1a]' : ''} ${isBlocked ? 'opacity-70' : ''}`}
                             >
                               <div className="relative">
-                                <Avatar userAvatar={chat.avatar} name={chat.userName} size="w-12 h-12" />
+                                <Avatar userAvatar={chat.avatar} name={chat.userName} size="w-10 h-10 md:w-12 md:h-12" />
                                 {chat.online && !isBlocked && (
-                                  <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#0c0c0c] rounded-full"></span>
+                                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 md:w-3 md:h-3 bg-green-500 border-2 border-white dark:border-[#0c0c0c] rounded-full"></span>
                                 )}
                                 {isBlocked && (
-                                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 border-2 border-white dark:border-[#0c0c0c] rounded-full flex items-center justify-center">
-                                    <Ban size={10} className="text-white" />
+                                  <span className="absolute -top-1 -right-1 w-4 h-4 md:w-5 md:h-5 bg-red-500 border-2 border-white dark:border-[#0c0c0c] rounded-full flex items-center justify-center">
+                                    <Ban size={8} className="text-white" />
                                   </span>
                                 )}
                               </div>
                               
                               <div className="flex-1 text-left min-w-0">
                                 <div className="flex items-center justify-between">
-                                  <p className={`font-medium text-[#202124] dark:text-white text-sm truncate flex items-center gap-1 ${
+                                  <p className={`font-medium text-[#202124] dark:text-white text-xs md:text-sm truncate flex items-center gap-1 ${
                                     unreadCount > 0 && !isBlocked ? 'font-semibold' : ''
                                   }`}>
                                     {chat.userName}
                                     {isBlocked && (
-                                      <span className="text-xs text-red-500 ml-1">(Blocked)</span>
+                                      <span className="text-[10px] md:text-xs text-red-500 ml-1">(Blocked)</span>
                                     )}
                                   </p>
                                   {lastMsg && !isBlocked && (
-                                    <span className="text-xs text-[#5f6368] dark:text-gray-400 ml-2 flex-shrink-0">
+                                    <span className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400 ml-1 flex-shrink-0">
                                       {formatMessageTime(lastMsg.timestamp)}
                                     </span>
                                   )}
                                   {isBlocked && (
-                                    <span className="text-xs text-red-400 ml-2 flex-shrink-0">
+                                    <span className="text-[10px] md:text-xs text-red-400 ml-1 flex-shrink-0">
                                       Blocked
                                     </span>
                                   )}
                                 </div>
                                 
-                                <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center justify-between gap-1 md:gap-2">
                                   <div className="flex items-center gap-1 flex-1 min-w-0">
-                                    <p className={`text-xs ${
+                                    <p className={`text-[10px] md:text-xs ${
                                       unreadCount > 0 && !isBlocked ? 'text-[#202124] dark:text-white font-medium' : 'text-[#5f6368] dark:text-gray-400'
                                     } truncate`}>
                                       {isBlocked ? (
@@ -1599,7 +1577,7 @@ export default function FriendsPage() {
                                   </div>
                                   
                                   {!isBlocked && unreadCount > 0 && (
-                                    <span className="flex-shrink-0 bg-[#34A853] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold">
+                                    <span className="flex-shrink-0 bg-[#34A853] text-white text-[10px] md:text-xs rounded-full w-4 h-4 md:w-5 md:h-5 flex items-center justify-center font-semibold">
                                       {unreadCount > 9 ? '9+' : unreadCount}
                                     </span>
                                   )}
@@ -1610,13 +1588,13 @@ export default function FriendsPage() {
                         })}
                       </div>
                     ) : (
-                      <div className="text-center py-12 bg-gray-50 dark:bg-[#101010] rounded-2xl">
-                        <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
-                          <MessageCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
+                      <div className="text-center py-8 md:py-12 bg-gray-50 dark:bg-[#101010] rounded-xl md:rounded-2xl">
+                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-2 md:mb-4">
+                          <MessageCircle className="w-6 h-6 md:w-8 md:h-8 text-green-600 dark:text-green-400" />
                         </div>
-                        <p className="text-[#5f6368] dark:text-gray-400 text-sm">No chats yet</p>
-                        <p className="text-xs text-[#5f6368] dark:text-gray-500 mt-2">
-                          Click "New Chat" to start messaging your friends!
+                        <p className="text-xs md:text-sm text-[#5f6368] dark:text-gray-400">No chats yet</p>
+                        <p className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-500 mt-1 md:mt-2">
+                          Click "New Chat" to start messaging
                         </p>
                       </div>
                     )}
@@ -1648,16 +1626,16 @@ export default function FriendsPage() {
                 soundEnabled={soundEnabled}
               />
             ) : (
-              <div className="h-full bg-white dark:bg-[#0c0c0c] rounded-3xl border-[#dadce0] dark:border-[#181A1E] flex items-center justify-center p-8 transition-colors duration-300">
-                <div className="text-center max-w-md">
-                  <div className="w-24 h-24 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-6">
-                    <MessageCircle size={48} className="text-green-600 dark:text-green-400" />
+              <div className="h-full bg-white dark:bg-[#0c0c0c] rounded-2xl lg:rounded-3xl border-[#dadce0] dark:border-[#181A1E] flex items-center justify-center p-4 md:p-6 lg:p-8 transition-colors duration-300">
+                <div className="text-center max-w-sm md:max-w-md">
+                  <div className="w-16 h-16 md:w-20 md:h-20 lg:w-24 lg:h-24 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-3 md:mb-4 lg:mb-6">
+                    <MessageCircle size={32} className="text-green-600 dark:text-green-400" />
                   </div>
-                  <h3 className="text-xl small font-semibold text-[#202124] dark:text-white mb-2">
+                  <h3 className="text-lg md:text-xl font-semibold text-[#202124] dark:text-white mb-1 md:mb-2">
                     No Chat Selected
                   </h3>
-                  <p className="text-[#5f6368] dark:text-gray-400 text-sm">
-                    Select a chat from the list or click "New Chat" to start messaging your friends.
+                  <p className="text-xs md:text-sm text-[#5f6368] dark:text-gray-400">
+                    Select a chat from the list or click "New Chat" to start messaging.
                   </p>
                 </div>
               </div>
@@ -1716,6 +1694,41 @@ export default function FriendsPage() {
           userId={userId}
         />
       </main>
+
+      <style jsx>{`
+        @media (max-width: 1024px) {
+          .lg\\:hidden {
+            display: none;
+          }
+        }
+
+        /* Animation for fade in */
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .animate-fade-in {
+          animation: fadeIn 0.3s ease-out;
+        }
+
+        /* Safe area for mobile devices */
+        @supports (padding: max(0px)) {
+          .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom);
+          }
+          
+          .pt-safe {
+            padding-top: env(safe-area-inset-top);
+          }
+        }
+      `}</style>
     </FriendsLockOverlay>
   );
 }

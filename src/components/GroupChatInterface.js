@@ -179,6 +179,9 @@ export default function GroupChatInterface({
   // New state for join notifications
   const [joinNotifications, setJoinNotifications] = useState([]);
 
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false);
+
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -194,6 +197,18 @@ export default function GroupChatInterface({
 
   const { socket, isConnected, getUserOnlineStatus } = useSocket();
   const roomId = group.groupId;
+
+  // ==================== DETECT MOBILE ====================
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // ==================== HELPER FUNCTIONS ====================
 
@@ -720,48 +735,47 @@ export default function GroupChatInterface({
   // ==================== BILL FUNCTIONS ====================
 
   // Helper function to update bill message in state
- // Helper function to update bill message in state (around line 300-350)
-const updateBillMessageInState = (bill) => {
-  setMessages((prev) =>
-    prev.map((msg) => {
-      if (msg.billId === bill.id) {
-        const paidCount = bill.splits?.filter(
-          (s) => s.status === "paid"
-        ).length || 0;
-        const totalCount = bill.splits?.length || 0;
-        
-        // Get payer name
-        const paidByMember = bill.splits?.find(
-          (s) => s.userId === bill.paidBy
-        );
-        const paidByName = paidByMember?.userName || "Someone";
+  const updateBillMessageInState = (bill) => {
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.billId === bill.id) {
+          const paidCount = bill.splits?.filter(
+            (s) => s.status === "paid"
+          ).length || 0;
+          const totalCount = bill.splits?.length || 0;
+          
+          // Get payer name
+          const paidByMember = bill.splits?.find(
+            (s) => s.userId === bill.paidBy
+          );
+          const paidByName = paidByMember?.userName || "Someone";
 
-        const currencySymbol = getCurrencySymbol(bill.currency || "USD");
+          const currencySymbol = getCurrencySymbol(bill.currency || "USD");
 
-        // Create updated content
-        const updatedContent = `New Split Bill: ${bill.title}\n Total: ${currencySymbol}${bill.totalAmount?.toFixed(2) || "0.00"}\nPaid by: ${paidByName}\nPending payments: ${totalCount - paidCount} people\n\nUse /split to view or pay bills`;
+          // Create updated content
+          const updatedContent = `New Split Bill: ${bill.title}\n Total: ${currencySymbol}${bill.totalAmount?.toFixed(2) || "0.00"}\nPaid by: ${paidByName}\nPending payments: ${totalCount - paidCount} people\n\nUse /split to view or pay bills`;
 
-        return {
-          ...msg,
-          content: updatedContent,
-          billData: {
-            ...bill,
-            title: bill.title,
-            totalAmount: bill.totalAmount,
-            paidBy: bill.paidBy,
-            paidByName: paidByName,
-            paidCount,
-            totalCount,
-            pendingCount: totalCount - paidCount,
-            paidPercentage: bill.totalAmount > 0 ? (paidCount / totalCount) * 100 : 0,
-            splits: bill.splits || [],
-          },
-        };
-      }
-      return msg;
-    }),
-  );
-};
+          return {
+            ...msg,
+            content: updatedContent,
+            billData: {
+              ...bill,
+              title: bill.title,
+              totalAmount: bill.totalAmount,
+              paidBy: bill.paidBy,
+              paidByName: paidByName,
+              paidCount,
+              totalCount,
+              pendingCount: totalCount - paidCount,
+              paidPercentage: bill.totalAmount > 0 ? (paidCount / totalCount) * 100 : 0,
+              splits: bill.splits || [],
+            },
+          };
+        }
+        return msg;
+      }),
+    );
+  };
 
   // Refresh bill data manually
   const refreshBillData = async (billId) => {
@@ -954,98 +968,97 @@ const updateBillMessageInState = (bill) => {
     };
 
     // Function to render text with clickable links
-    // Helper function to render text with clickable links (for code block messages)
-const renderTextWithLinks = (text, keyPrefix) => {
-  if (!text) return null;
+    const renderTextWithLinks = (text, keyPrefix) => {
+      if (!text) return null;
 
-  const urlPattern =
-    /(https?:\/\/[^\s]+)|(www\.[^\s]+\.[^\s]+)|([^\s]+\.[^\s]+\.[^\s]+\/[^\s]*)/gi;
-  const parts = text.split(urlPattern);
-  const matches = text.match(urlPattern) || [];
+      const urlPattern =
+        /(https?:\/\/[^\s]+)|(www\.[^\s]+\.[^\s]+)|([^\s]+\.[^\s]+\.[^\s]+\/[^\s]*)/gi;
+      const parts = text.split(urlPattern);
+      const matches = text.match(urlPattern) || [];
 
-  const isValidUrl = (string) => {
-    try {
-      new URL(string);
-      return true;
-    } catch {
-      return false;
-    }
-  };
+      const isValidUrl = (string) => {
+        try {
+          new URL(string);
+          return true;
+        } catch {
+          return false;
+        }
+      };
 
-  const highlightText = (text, highlight) => {
-    if (!highlight.trim() || !text) {
-      return text;
-    }
+      const highlightText = (text, highlight) => {
+        if (!highlight.trim() || !text) {
+          return text;
+        }
 
-    const regex = new RegExp(
-      `(${highlight.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
-      "gi",
-    );
-    const textParts = text.split(regex);
-
-    return textParts.map((part, idx) => {
-      if (regex.test(part)) {
-        return (
-          <mark
-            key={idx}
-            className="bg-green-300 dark:bg-green-600 text-inherit px-0.5 rounded"
-          >
-            {part}
-          </mark>
+        const regex = new RegExp(
+          `(${highlight.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+          "gi",
         );
+        const textParts = text.split(regex);
+
+        return textParts.map((part, idx) => {
+          if (regex.test(part)) {
+            return (
+              <mark
+                key={idx}
+                className="bg-green-300 dark:bg-green-600 text-inherit px-0.5 rounded"
+              >
+                {part}
+              </mark>
+            );
+          }
+          return part;
+        });
+      };
+
+      let result = [];
+
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+
+        // Check if this part is a URL
+        let isUrl = false;
+        let url = part;
+
+        if (matches.includes(part)) {
+          isUrl = true;
+        } else if (part && (part.startsWith("http") || part.includes("."))) {
+          if (part.startsWith("www.")) {
+            url = `https://${part}`;
+          } else if (!part.startsWith("http") && part.includes(".")) {
+            url = `https://${part}`;
+          }
+          isUrl = isValidUrl(url);
+        }
+
+        if (isUrl && part) {
+          result.push(
+            <a
+              key={`${keyPrefix}-url-${i}`}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 dark:text-blue-400 hover:underline break-all"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {part}
+            </a>,
+          );
+        } else if (part) {
+          if (highlightedText) {
+            result.push(
+              <span key={`${keyPrefix}-text-${i}`}>
+                {highlightText(part, highlightedText)}
+              </span>,
+            );
+          } else {
+            result.push(<span key={`${keyPrefix}-text-${i}`}>{part}</span>);
+          }
+        }
       }
-      return part;
-    });
-  };
 
-  let result = [];
-
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-
-    // Check if this part is a URL
-    let isUrl = false;
-    let url = part;
-
-    if (matches.includes(part)) {
-      isUrl = true;
-    } else if (part && (part.startsWith("http") || part.includes("."))) {
-      if (part.startsWith("www.")) {
-        url = `https://${part}`;
-      } else if (!part.startsWith("http") && part.includes(".")) {
-        url = `https://${part}`;
-      }
-      isUrl = isValidUrl(url);
-    }
-
-    if (isUrl && part) {
-      result.push(
-        <a
-          key={`${keyPrefix}-url-${i}`}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-600 dark:text-blue-400 hover:underline break-all"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {part}
-        </a>,
-      );
-    } else if (part) {
-      if (highlightedText) {
-        result.push(
-          <span key={`${keyPrefix}-text-${i}`}>
-            {highlightText(part, highlightedText)}
-          </span>,
-        );
-      } else {
-        result.push(<span key={`${keyPrefix}-text-${i}`}>{part}</span>);
-      }
-    }
-  }
-
-  return result;
-};
+      return result;
+    };
 
     const urls = extractUrlsFromText(content);
     const hasUrls = urls.length > 0;
@@ -1120,8 +1133,8 @@ const renderTextWithLinks = (text, keyPrefix) => {
         const pendingCount = pendingMatch ? parseInt(pendingMatch[1]) : 0;
 
         return (
-          <div className="bill-message-content w-72 lg:w-[20svw]">
-            <div className="rounded-[30px] p-5 w-full bg-gray-200 dark:bg-gray-800">
+          <div className="bill-message-content w-full max-w-[280px] md:max-w-sm">
+            <div className="rounded-[30px] p-4 md:p-5 w-full bg-gray-200 dark:bg-gray-800">
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 {title}
               </p>
@@ -1134,8 +1147,8 @@ const renderTextWithLinks = (text, keyPrefix) => {
       }
 
       return (
-        <div className="bill-message-content w-72 lg:w-[20svw]">
-          <div className="rounded-[30px] p-5 w-full bg-gray-200 dark:bg-gray-800">
+        <div className="bill-message-content w-full max-w-[280px] md:max-w-sm">
+          <div className="rounded-[30px] p-4 md:p-5 w-full bg-gray-200 dark:bg-gray-800">
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Loading bill details...
             </p>
@@ -1228,15 +1241,15 @@ const renderTextWithLinks = (text, keyPrefix) => {
     const palette = CARD_PALETTES[paletteIdx];
 
     return (
-      <div className="bill-message-content w-72 lg:w-[20svw]">
+      <div className="bill-message-content w-full max-w-[280px] md:max-w-sm">
         <div
-          className="rounded-[30px] p-5 w-full"
+          className="rounded-[30px] p-4 md:p-5 w-full"
           style={{ backgroundColor: palette.bg }}
         >
-          <div className="flex items-start justify-between mb-4">
+          <div className="flex items-start justify-between mb-3 md:mb-4">
             <div>
               <h3
-                className="text-xl font-extrabold leading-tight"
+                className="text-lg md:text-xl font-extrabold leading-tight"
                 style={{ color: palette.text }}
               >
                 {title}
@@ -1250,7 +1263,7 @@ const renderTextWithLinks = (text, keyPrefix) => {
             </div>
           </div>
 
-          <div className="flex items-end justify-between mb-5">
+          <div className="flex items-end justify-between mb-4 md:mb-5">
             <div>
               <p
                 className="text-xs font-semibold mb-1"
@@ -1259,7 +1272,7 @@ const renderTextWithLinks = (text, keyPrefix) => {
                 Total
               </p>
               <p
-                className="text-2xl font-extrabold tracking-tight"
+                className="text-xl md:text-2xl font-extrabold tracking-tight"
                 style={{ color: palette.text }}
               >
                 {total}
@@ -1285,7 +1298,7 @@ const renderTextWithLinks = (text, keyPrefix) => {
           </div>
 
           {pendingCount > 0 ? (
-            <div className="mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
+            <div className="mt-3 md:mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1307,7 +1320,7 @@ const renderTextWithLinks = (text, keyPrefix) => {
               </span>
             </div>
           ) : (
-            <div className="mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
+            <div className="mt-3 md:mt-4 pt-3 border-t border-white/30 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <CheckCircle size={14} style={{ color: palette.text }} />
                 <span
@@ -2419,24 +2432,23 @@ const renderTextWithLinks = (text, keyPrefix) => {
   };
 
   // Handle bill creation success
-  // In the handleBillCreated function (around line 560-570)
-const handleBillCreated = async (bill) => {
-  console.log('💰 Bill created with data from API:', bill);
-  
-  // The API already saved the message to the database and will emit socket events
-  // So we don't need to create another message here
-  // Just fetch messages to ensure we have the latest
-  await fetchMessages();
-  
-  // Also emit a direct socket event to ensure real-time update
-  if (socket && isConnected) {
-    socket.emit("bill-created", {
-      roomId: roomId,
-      bill: bill,
-      timestamp: new Date().toISOString()
-    });
-  }
-};
+  const handleBillCreated = async (bill) => {
+    console.log('💰 Bill created with data from API:', bill);
+    
+    // The API already saved the message to the database and will emit socket events
+    // So we don't need to create another message here
+    // Just fetch messages to ensure we have the latest
+    await fetchMessages();
+    
+    // Also emit a direct socket event to ensure real-time update
+    if (socket && isConnected) {
+      socket.emit("bill-created", {
+        roomId: roomId,
+        bill: bill,
+        timestamp: new Date().toISOString()
+      });
+    }
+  };
 
   // ==================== USE EFFECTS ====================
 
@@ -2920,32 +2932,32 @@ const handleBillCreated = async (bill) => {
       }
     };
 
-   const onBillCreated = (data) => {
-  console.log("💰 New bill created:", data);
-  if (data.roomId === roomId) {
-    // The message will be added via the regular message handler
-    // But we need to fetch messages to ensure we have it
-    fetchMessages();
-    
-    // Also add a temporary notification for better UX
-    const notification = {
-      id: `bill-${data.timestamp}`,
-      type: "bill",
-      billId: data.bill?.id,
-      userName: data.bill?.paidByName || "Someone",
-      timestamp: data.timestamp,
+    const onBillCreated = (data) => {
+      console.log("💰 New bill created:", data);
+      if (data.roomId === roomId) {
+        // The message will be added via the regular message handler
+        // But we need to fetch messages to ensure we have it
+        fetchMessages();
+        
+        // Also add a temporary notification for better UX
+        const notification = {
+          id: `bill-${data.timestamp}`,
+          type: "bill",
+          billId: data.bill?.id,
+          userName: data.bill?.paidByName || "Someone",
+          timestamp: data.timestamp,
+        };
+        
+        setJoinNotifications((prev) => [...prev, notification]);
+        
+        // Remove notification after 3 seconds
+        setTimeout(() => {
+          setJoinNotifications((prev) =>
+            prev.filter((n) => n.id !== notification.id),
+          );
+        }, 3000);
+      }
     };
-    
-    setJoinNotifications((prev) => [...prev, notification]);
-    
-    // Remove notification after 3 seconds
-    setTimeout(() => {
-      setJoinNotifications((prev) =>
-        prev.filter((n) => n.id !== notification.id),
-      );
-    }, 3000);
-  }
-};
 
     const onBillCancelled = (data) => {
       console.log("🚫 Bill cancelled:", data);
@@ -2966,32 +2978,32 @@ const handleBillCreated = async (bill) => {
       }
     };
 
-   const onBillDirectUpdate = (data) => {
-  console.log("💰 Direct bill update received:", data);
-  if (data.roomId === roomId && data.bill) {
-    // Update the bill message in the chat
-    updateBillMessageInState(data.bill);
-  }
-};
-
-const onBillMessageImmediate = (data) => {
-  console.log("💰 Immediate bill message:", data);
-  if (data.roomId === roomId && data.message) {
-    // Add the message directly without waiting for API
-    setMessages((prev) => {
-      // Check if message already exists
-      const exists = prev.some(
-        (m) => m.timestamp === data.message.timestamp
-      );
-      
-      if (exists) {
-        return prev;
+    const onBillDirectUpdate = (data) => {
+      console.log("💰 Direct bill update received:", data);
+      if (data.roomId === roomId && data.bill) {
+        // Update the bill message in the chat
+        updateBillMessageInState(data.bill);
       }
-      
-      return [...prev, data.message];
-    });
-  }
-};
+    };
+
+    const onBillMessageImmediate = (data) => {
+      console.log("💰 Immediate bill message:", data);
+      if (data.roomId === roomId && data.message) {
+        // Add the message directly without waiting for API
+        setMessages((prev) => {
+          // Check if message already exists
+          const exists = prev.some(
+            (m) => m.timestamp === data.message.timestamp
+          );
+          
+          if (exists) {
+            return prev;
+          }
+          
+          return [...prev, data.message];
+        });
+      }
+    };
 
     // ====== BILL DELETION LISTENERS ======
     const onBillMessageDeleted = (data) => {
@@ -3156,10 +3168,10 @@ const onBillMessageImmediate = (data) => {
 
   return (
     <>
-      <div className="h-full flex flex-col bg-white dark:bg-[#0c0c0c] rounded-3xl border border-none dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300">
-        {/* Chat Header */}
-        <div className="p-4 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between bg-white dark:bg-[#0c0c0c]">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div className={`h-full flex flex-col bg-white dark:bg-[#0c0c0c] rounded-3xl border border-none dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300 ${isMobile ? 'fixed inset-0 z-50 rounded-none' : ''}`}>
+        {/* Chat Header - Fixed */}
+        <div className={`flex-shrink-0 p-3 md:p-4 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between bg-white dark:bg-[#0c0c0c] ${isMobile ? 'sticky top-0 z-20' : ''}`}>
+          <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
             <button
               onClick={onClose}
               className="lg:hidden p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
@@ -3170,7 +3182,7 @@ const onBillMessageImmediate = (data) => {
               />
             </button>
 
-            <div className="w-10 h-10 rounded-full overflow-hidden bg-zinc-100 dark:bg-[#232529] flex items-center justify-center text-[#202124] dark:text-white font-semibold text-lg flex-shrink-0">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden bg-zinc-100 dark:bg-[#232529] flex items-center justify-center text-[#202124] dark:text-white font-semibold text-base md:text-lg flex-shrink-0">
               {(() => {
                 let groupAvatar = null;
                 if (groupData.avatar) {
@@ -3200,35 +3212,36 @@ const onBillMessageImmediate = (data) => {
             </div>
 
             <div className="flex-1 min-w-0">
-              <h3 className=" text-[#202124] dark:text-white truncate flex items-center gap-2">
+              <h3 className="text-sm md:text-base text-[#202124] dark:text-white truncate flex items-center gap-2">
                 {groupData.groupName || groupData.name}
                 {isCurrentUserAdmin && (
-                  <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full">
+                  <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full">
                     Admin
                   </span>
                 )}
                 {groupData.settings?.onlyAdminsCanMessage &&
                   !isCurrentUserAdmin && (
                     <Lock
-                      size={14}
+                      size={12}
                       className="text-[#5f6368] dark:text-gray-400"
                     />
                   )}
               </h3>
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-1 md:gap-2 text-xs">
                 <div className="flex items-center gap-1 text-[#5f6368] dark:text-gray-400">
                   <Users size={12} />
-                  <span>{groupData.members?.length || 0} members</span>
-                  <span className="mx-1">•</span>
-                  <span className="text-green-600 dark:text-green-400">
+                  <span className="hidden xs:inline">{groupData.members?.length || 0} members</span>
+                  <span className="xs:hidden">{groupData.members?.length || 0}</span>
+                  <span className="mx-1 hidden xs:inline">•</span>
+                  <span className="text-green-600 dark:text-green-400 whitespace-nowrap">
                     {onlineMembers.size} online
                   </span>
                 </div>
                 {groupTyping.length > 0 && (
-                  <span className="text-green-600 dark:text-green-400 animate-pulse">
+                  <span className="text-green-600 dark:text-green-400 animate-pulse text-xs truncate max-w-[120px] md:max-w-none">
                     {groupTyping.length === 1
-                      ? `${getMemberName(groupTyping[0])} ${groupData.members?.find((m) => m.userId === groupTyping[0])?.role === "admin" ? "(Admin)" : ""} is typing...`
-                      : `${groupTyping.length} people are typing...`}
+                      ? `${getMemberName(groupTyping[0]).split(' ')[0]} is typing...`
+                      : `${groupTyping.length} typing...`}
                   </span>
                 )}
                 {cooldownActive && !isCurrentUserAdmin && (
@@ -3245,21 +3258,21 @@ const onBillMessageImmediate = (data) => {
               className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
             >
               <MoreVertical
-                size={20}
+                size={18}
                 className="text-[#5f6368] dark:text-gray-400"
               />
             </button>
 
             {showDropdown && (
-              <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl -lg z-50 py-2">
+              <div className="absolute right-0 mt-2 w-48 md:w-56 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl z-50 py-2">
                 {dropdownItems.map((item) => (
                   <button
                     key={item.id}
                     onClick={item.onClick}
-                    className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-100 dark:hover:bg-[#101010] transition-colors ${item.className || "text-[#202124] dark:text-white"}`}
+                    className={`w-full flex items-center gap-3 px-3 md:px-4 py-2.5 md:py-3 hover:bg-gray-100 dark:hover:bg-[#101010] transition-colors text-sm ${item.className || "text-[#202124] dark:text-white"}`}
                   >
-                    <item.icon size={18} />
-                    <span className="text-sm">{item.label}</span>
+                    <item.icon size={16} />
+                    <span>{item.label}</span>
                   </button>
                 ))}
               </div>
@@ -3268,9 +3281,9 @@ const onBillMessageImmediate = (data) => {
 
           <button
             onClick={onClose}
-            className="p-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors ml-2"
+            className="p-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors ml-1 md:ml-2"
           >
-            <X size={18} className="text-red-600 dark:text-red-400" />
+            <X size={16} className="text-red-600 dark:text-red-400" />
           </button>
         </div>
 
@@ -3289,10 +3302,10 @@ const onBillMessageImmediate = (data) => {
           />
         )}
 
-        {/* Messages Area */}
+        {/* Messages Area - Scrollable */}
         <div
           ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8F9FA] dark:bg-[#000000] transition-colors duration-300"
+          className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4 bg-[#F8F9FA] dark:bg-[#000000] transition-colors duration-300"
           style={{ scrollBehavior: "smooth" }}
         >
           {/* Join Notifications */}
@@ -3301,8 +3314,8 @@ const onBillMessageImmediate = (data) => {
               key={notification.id}
               className="flex justify-center my-2 animate-fade-in"
             >
-              <div className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-4 py-2 rounded-full text-sm flex items-center gap-2">
-                <UserPlus size={16} />
+              <div className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-sm flex items-center gap-2">
+                <UserPlus size={14} />
                 <span>{notification.userName} joined the group</span>
               </div>
             </div>
@@ -3313,11 +3326,11 @@ const onBillMessageImmediate = (data) => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#34A853]"></div>
             </div>
           ) : messages.length === 0 ? (
-            <div className="flex items-center justify-center ">
-              <div className="bg-white dark:bg-[#0c0c0c] rounded-[35px]  border-[#f1f3f4] dark:border-[#232529] -lg p-8 max-w-md w-full mx-4">
+            <div className="flex items-center justify-center h-full">
+              <div className="bg-white dark:bg-[#0c0c0c] rounded-[35px] border-[#f1f3f4] dark:border-[#232529] p-6 md:p-8 max-w-md w-full mx-4">
                 {/* Group Avatar */}
                 <div className="flex justify-center mb-4">
-                  <div className="w-20 h-20 rounded-full overflow-hidden bg-zinc-100 flex items-center justify-center text-white font-bold text-3xl -lg">
+                  <div className="w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden bg-zinc-100 flex items-center justify-center text-white font-bold text-2xl md:text-3xl">
                     {(() => {
                       let groupAvatar = null;
                       if (groupData.avatar) {
@@ -3348,15 +3361,15 @@ const onBillMessageImmediate = (data) => {
                 </div>
 
                 {/* Group Name */}
-                <h2 className="text-2xl small font-semibold text-center text-[#000000] dark:text-white mb-2">
+                <h2 className="text-xl md:text-2xl font-semibold text-center text-[#000000] dark:text-white mb-2">
                   {groupData.groupName || groupData.name}
                 </h2>
 
                 {/* Group Info */}
-                <div className="space-y-3  mb-6">
+                <div className="space-y-2 md:space-y-3 mb-4 md:mb-6">
                   <div className="flex justify-center">
-                    <div className="flex items-center justify-center gap-2 w-fit text-[#5f6368] dark:text-gray-400 bg-gray-50 dark:bg-[#101010] p-3 rounded-xl">
-                      <span className="text-sm">
+                    <div className="flex items-center justify-center gap-2 w-fit text-[#5f6368] dark:text-gray-400 bg-gray-50 dark:bg-[#101010] p-2 md:p-3 rounded-xl">
+                      <span className="text-xs md:text-sm">
                         <span className="font-medium text-[#202124] dark:text-white">
                           {groupData.members?.length || 0}
                         </span>{" "}
@@ -3368,16 +3381,16 @@ const onBillMessageImmediate = (data) => {
                   {/* Created By */}
                   {groupData.createdBy && (
                     <div className="flex justify-center">
-                      <div className="flex items-center justify-center gap-2 text-[#5f6368] dark:text-gray-400 bg-gray-50 w-fit dark:bg-[#101010] p-3 rounded-xl">
-                        <span className="text-sm flex items-center gap-2">
+                      <div className="flex items-center justify-center gap-2 text-[#5f6368] dark:text-gray-400 bg-gray-50 w-fit dark:bg-[#101010] p-2 md:p-3 rounded-xl">
+                        <span className="text-xs md:text-sm flex items-center gap-2">
                           Created by{" "}
-                          <span className="font-medium flex items-center  text-[#202124] dark:text-white">
+                          <span className="font-medium flex items-center text-[#202124] dark:text-white">
                             {getMemberName(groupData.createdBy)}
                             {groupData.members?.find(
                               (m) => m.userId === groupData.createdBy,
                             )?.role === "admin" && (
                               <Shield
-                                size={12}
+                                size={10}
                                 className="inline ml-1 text-green-600 dark:text-green-400"
                               />
                             )}
@@ -3386,48 +3399,11 @@ const onBillMessageImmediate = (data) => {
                       </div>
                     </div>
                   )}
-
-                  {/* Created At */}
-                  {groupData.createdAt && (
-                    <div className="flex items-center -mt-4 justify-center gap-2 text-[#5f6368] dark:text-gray-400 -50 p-3 rounded-xl">
-                      <span className="text-sm flex items-center gap-2">
-                        Created on{" "}
-                        <span className="font-medium text-[#202124] dark:text-white">
-                          {new Date(groupData.createdAt).toLocaleDateString(
-                            "en-US",
-                            {
-                              year: "numeric",
-                              month: "long",
-                              day: "numeric",
-                            },
-                          )}
-                        </span>
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Group Settings Summary */}
-                  {groupData.settings && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {groupData.settings.onlyAdminsCanMessage && (
-                        <span className="inline-flex items-center gap-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-full">
-                          <Lock size={12} />
-                          Only admins can message
-                        </span>
-                      )}
-                      {groupData.settings.slowMode?.enabled && (
-                        <span className="inline-flex items-center gap-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-1 rounded-full">
-                          <Snowflake size={12} />
-                          Slow mode ({groupData.settings.slowMode.cooldown}s)
-                        </span>
-                      )}
-                    </div>
-                  )}
                 </div>
 
                 {/* Message Icon and Text */}
                 <div className="text-center">
-                  <p className="text-[#5f6368] dark:text-gray-400 text-sm">
+                  <p className="text-[#5f6368] dark:text-gray-400 text-xs md:text-sm">
                     No messages yet. Start the conversation!
                   </p>
                 </div>
@@ -3436,8 +3412,8 @@ const onBillMessageImmediate = (data) => {
           ) : (
             Object.entries(groupedMessages).map(([date, dateMessages]) => (
               <div key={date}>
-                <div className="flex justify-center mb-4">
-                  <span className="px-3 py-1 bg-gray-200 dark:bg-[#101010] rounded-full text-xs text-[#5f6368] dark:text-gray-400">
+                <div className="flex justify-center mb-3">
+                  <span className="px-2 py-0.5 md:px-3 md:py-1 bg-gray-200 dark:bg-[#101010] rounded-full text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400">
                     {date}
                   </span>
                 </div>
@@ -3467,22 +3443,22 @@ const onBillMessageImmediate = (data) => {
                         className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-2 transition-all duration-200 ease-out`}
                       >
                         <div
-                          className={`max-w-[70%] ${isOwn ? "order-2" : "order-1"}`}
+                          className={`${isOwn ? "order-2" : "order-1"} max-w-[85%] md:max-w-[70%]`}
                         >
                           {!isOwn && showSenderInfo && (
-                            <div className="flex items-center gap-2 mb-1 ml-1">
+                            <div className="flex items-center gap-1 md:gap-2 mb-1 ml-1">
                               {renderAvatar(
                                 groupData.members?.find(
                                   (m) => m.userId === msg.senderId,
                                 )?.avatar,
                                 getMemberName(msg.senderId),
-                                "w-6 h-6",
+                                "w-5 h-5 md:w-6 md:h-6",
                               )}
-                              <span className="text-xs flex items-center text-[#5f6368] dark:text-gray-400">
+                              <span className="text-[10px] md:text-xs flex items-center text-[#5f6368] dark:text-gray-400">
                                 {msg.senderName || getMemberName(msg.senderId)}
                                 {getMemberRole(msg.senderId) === "admin" && (
                                   <span className="ml-1 text-green-600 dark:text-green-400">
-                                    <Shield size={10} />
+                                    <Shield size={8} />
                                   </span>
                                 )}
                                 {onlineMembers.has(msg.senderId) && (
@@ -3518,7 +3494,7 @@ const onBillMessageImmediate = (data) => {
                                           <img
                                             src={att.url}
                                             alt="Attachment"
-                                            className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                            className="max-w-full rounded-2xl max-h-48 md:max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                                             onClick={() =>
                                               handleAttachmentClick(
                                                 att,
@@ -3534,13 +3510,13 @@ const onBillMessageImmediate = (data) => {
                                                   globalIndex,
                                                 )
                                               }
-                                              className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                                              className="p-1 md:p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
                                             >
-                                              <Maximize2 size={20} />
+                                              <Maximize2 size={16} />
                                             </button>
                                           </div>
                                           {/* Time overlay for images */}
-                                          <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                                          <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[8px] md:text-[10px] px-1.5 py-0.5 md:px-2 md:py-1 rounded-full backdrop-blur-sm">
                                             {formatTime(msg.timestamp)}
                                           </div>
                                         </div>
@@ -3548,7 +3524,7 @@ const onBillMessageImmediate = (data) => {
                                         <div className="relative">
                                           <video
                                             src={att.url}
-                                            className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer"
+                                            className="max-w-full rounded-2xl max-h-48 md:max-h-64 object-cover cursor-pointer"
                                             onClick={() =>
                                               handleAttachmentClick(
                                                 att,
@@ -3564,13 +3540,13 @@ const onBillMessageImmediate = (data) => {
                                                   globalIndex,
                                                 )
                                               }
-                                              className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                                              className="p-1 md:p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
                                             >
-                                              <Maximize2 size={20} />
+                                              <Maximize2 size={16} />
                                             </button>
                                           </div>
                                           {/* Time overlay for videos */}
-                                          <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
+                                          <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[8px] md:text-[10px] px-1.5 py-0.5 md:px-2 md:py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
                                             <span>
                                               {formatTime(msg.timestamp)}
                                             </span>
@@ -3583,16 +3559,16 @@ const onBillMessageImmediate = (data) => {
                                             <img
                                               src={att.url}
                                               alt={att.name || "GIF"}
-                                              className="max-w-full rounded-2xl max-h-64 object-cover   transition-opacity"
+                                              className="max-w-full rounded-2xl max-h-48 md:max-h-64 object-cover transition-opacity"
                                               loading="lazy"
                                             />
-                                            <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                                            <div className="absolute top-2 left-2 bg-black/60 text-white text-[8px] md:text-[10px] px-1.5 py-0.5 md:px-2 md:py-1 rounded-full backdrop-blur-sm">
                                               GIF
                                             </div>
                                           </div>
                                           {/* Time and status below GIF */}
                                           <div className="flex items-center justify-end gap-1 mt-1 px-1">
-                                            <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                                            <span className="text-[8px] md:text-[10px] text-gray-500 dark:text-gray-400">
                                               {formatTime(msg.timestamp)}
                                             </span>
                                             {renderMessageStatus(msg)}
@@ -3606,131 +3582,126 @@ const onBillMessageImmediate = (data) => {
                             )}
 
                           {/* Text content with highlighting */}
-
-                          {/* Text content with highlighting */}
-  
-{/* Text content with highlighting */}
-{hasTextContent && (
-  // Check if this is a bill message first (keep existing bill logic)
-  isBillMessage ? (
-    // Bill message - keep as is
-    msg.billCancelled ? (
-      <div className="bill-message-content w-72 lg:w-[20svw]">
-        <div className="rounded-[30px] p-5 w-full bg-gray-300 dark:bg-gray-700">
-          <div className="flex items-center gap-2 mb-2">
-            <XCircle size={20} className="text-red-500" />
-            <h3 className="text-xl font-extrabold text-gray-700 dark:text-gray-300">
-              Bill Cancelled
-            </h3>
-          </div>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            This bill has been cancelled
-          </p>
-        </div>
-      </div>
-    ) : (
-      <div className="bill-message-wrapper">
-        {renderBillMessage(
-          messageContent,
-          msg.billId,
-          msg.billCurrency,
-          msg.billData
-        )}
-      </div>
-    )
-  ) : (
-    // Check if this message contains a code block
-    (() => {
-      // Parse the message to check for code blocks
-      const parts = parseMessageContent(messageContent);
-      const hasCodeBlock = parts.some(part => part.type === "code-block");
-      
-      // If it has a code block, render it with code blocks outside the bubble
-      if (hasCodeBlock) {
-        return (
-          <div className="w-full">
-            {parts.map((part, index) => {
-              if (part.type === "code-block") {
-                // Code block - render outside bubble (like images)
-                return (
-                  <div key={`code-${index}`} className="my-2">
-                    <CodeBlock
-                      code={part.code}
-                      language={part.language || "javascript"}
-                    />
-                  </div>
-                );
-              } else if (part.type === "inline-code") {
-                // Inline code - render inside text
-                return (
-                  <span key={`inline-${index}`}>
-                    <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-[#1a1a1a] text-pink-600 dark:text-pink-400 rounded-md font-mono text-sm border border-gray-200 dark:border-[#232529]">
-                      {part.code}
-                    </code>
-                  </span>
-                );
-              } else if (part.content) {
-                // Text content - render in bubble
-                return (
-                  <div
-                    key={`text-${index}`}
-                    className={`rounded-2xl p-3 mb-2 ${
-                      msg.deleted
-                        ? msg.deletedByAdmin
-                          ? "bg-zinc-100 dark:bg-zinc-500/20 italic text-zinc-700 dark:text-zinc-400 border-amber-200 dark:border-amber-800"
-                          : "bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400"
-                        : isOwn
-                          ? "bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none"
-                          : "bg-white dark:bg-[#101010] dark:text-white border-[#dadce0] dark:border-[#232529] rounded-tl-none"
-                    }`}
-                  >
-                    <div className="text-sm whitespace-pre-wrap break-words leading-relaxed">
-                      {renderTextWithLinks(part.content, index)}
-                    </div>
-                    {/* Only show time and status on the last text bubble if there are multiple */}
-                    {index === parts.length - 1 && (
-                      <div className="flex items-center justify-end gap-1 mt-2">
-                        <p className={`text-[10px] ${isOwn ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"}`}>
-                          {formatTime(msg.timestamp)}
-                        </p>
-                        {renderMessageStatus(msg)}
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-              return null;
-            })}
-          </div>
-        );
-      } else {
-        // Regular message without code blocks - keep in single bubble
-        return (
-          <div
-            className={`rounded-2xl p-3 ${
-              msg.deleted
-                ? msg.deletedByAdmin
-                  ? "bg-zinc-100 dark:bg-zinc-500/20 italic text-zinc-700 dark:text-zinc-400 border-amber-200 dark:border-amber-800"
-                  : "bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400"
-                : isOwn
-                  ? "bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none"
-                  : "bg-white dark:bg-[#101010] dark:text-white border-[#dadce0] dark:border-[#232529] rounded-tl-none"
-            }`}
-          >
-            <MessageContent
-              message={msg}
-              content={messageContent}
-              highlightedText={highlightedText}
-              formatTime={formatTime}
-              renderMessageStatus={renderMessageStatus}
-              isOwn={isOwn}
-            />
-          </div>
-        );
-      }
-    })()
-  )
-)}
+                          {hasTextContent && (
+                            isBillMessage ? (
+                              // Bill message
+                              msg.billCancelled ? (
+                                <div className="bill-message-content w-full max-w-[280px] md:max-w-sm">
+                                  <div className="rounded-[30px] p-4 md:p-5 w-full bg-gray-300 dark:bg-gray-700">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <XCircle size={16} className="text-red-500" />
+                                      <h3 className="text-lg md:text-xl font-extrabold text-gray-700 dark:text-gray-300">
+                                        Bill Cancelled
+                                      </h3>
+                                    </div>
+                                    <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400">
+                                      This bill has been cancelled
+                                    </p>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="bill-message-wrapper">
+                                  {renderBillMessage(
+                                    messageContent,
+                                    msg.billId,
+                                    msg.billCurrency,
+                                    msg.billData
+                                  )}
+                                </div>
+                              )
+                            ) : (
+                              // Check if this message contains a code block
+                              (() => {
+                                // Parse the message to check for code blocks
+                                const parts = parseMessageContent(messageContent);
+                                const hasCodeBlock = parts.some(part => part.type === "code-block");
+                                
+                                // If it has a code block, render it with code blocks outside the bubble
+                                if (hasCodeBlock) {
+                                  return (
+                                    <div className="w-full">
+                                      {parts.map((part, index) => {
+                                        if (part.type === "code-block") {
+                                          // Code block - render outside bubble (like images)
+                                          return (
+                                            <div key={`code-${index}`} className="my-2">
+                                              <CodeBlock
+                                                code={part.code}
+                                                language={part.language || "javascript"}
+                                              />
+                                            </div>
+                                          );
+                                        } else if (part.type === "inline-code") {
+                                          // Inline code - render inside text
+                                          return (
+                                            <span key={`inline-${index}`}>
+                                              <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-[#1a1a1a] text-pink-600 dark:text-pink-400 rounded-md font-mono text-xs border border-gray-200 dark:border-[#232529]">
+                                                {part.code}
+                                              </code>
+                                            </span>
+                                          );
+                                        } else if (part.content) {
+                                          // Text content - render in bubble
+                                          return (
+                                            <div
+                                              key={`text-${index}`}
+                                              className={`rounded-2xl p-2 md:p-3 mb-2 text-sm ${
+                                                msg.deleted
+                                                  ? msg.deletedByAdmin
+                                                    ? "bg-zinc-100 dark:bg-zinc-500/20 italic text-zinc-700 dark:text-zinc-400 border-amber-200 dark:border-amber-800"
+                                                    : "bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400"
+                                                  : isOwn
+                                                    ? "bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none"
+                                                    : "bg-white dark:bg-[#101010] dark:text-white border-[#dadce0] dark:border-[#232529] rounded-tl-none"
+                                              }`}
+                                            >
+                                              <div className="whitespace-pre-wrap break-words leading-relaxed">
+                                                {renderTextWithLinks(part.content, index)}
+                                              </div>
+                                              {/* Only show time and status on the last text bubble if there are multiple */}
+                                              {index === parts.length - 1 && (
+                                                <div className="flex items-center justify-end gap-1 mt-2">
+                                                  <p className={`text-[8px] md:text-[10px] ${isOwn ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"}`}>
+                                                    {formatTime(msg.timestamp)}
+                                                  </p>
+                                                  {renderMessageStatus(msg)}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        }
+                                        return null;
+                                      })}
+                                    </div>
+                                  );
+                                } else {
+                                  // Regular message without code blocks - keep in single bubble
+                                  return (
+                                    <div
+                                      className={`rounded-2xl p-2 md:p-3 ${
+                                        msg.deleted
+                                          ? msg.deletedByAdmin
+                                            ? "bg-zinc-100 dark:bg-zinc-500/20 italic text-zinc-700 dark:text-zinc-400 border-amber-200 dark:border-amber-800"
+                                            : "bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400"
+                                          : isOwn
+                                            ? "bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none"
+                                            : "bg-white dark:bg-[#101010] dark:text-white border-[#dadce0] dark:border-[#232529] rounded-tl-none"
+                                      }`}
+                                    >
+                                      <MessageContent
+                                        message={msg}
+                                        content={messageContent}
+                                        highlightedText={highlightedText}
+                                        formatTime={formatTime}
+                                        renderMessageStatus={renderMessageStatus}
+                                        isOwn={isOwn}
+                                      />
+                                    </div>
+                                  );
+                                }
+                              })()
+                            )
+                          )}
                           {/* Reactions */}
                           {msg.reactions && msg.reactions.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1 px-2">
@@ -3742,7 +3713,7 @@ const onBillMessageImmediate = (data) => {
                               ).map(([emoji, count]) => (
                                 <span
                                   key={emoji}
-                                  className="text-xs bg-gray-100 dark:bg-[#101010] rounded-full px-2 py-1 flex items-center gap-1"
+                                  className="text-[10px] md:text-xs bg-gray-100 dark:bg-[#101010] rounded-full px-2 py-0.5 md:px-2 md:py-1 flex items-center gap-1"
                                 >
                                   <span>{emoji}</span>
                                   {count > 1 && (
@@ -3760,11 +3731,11 @@ const onBillMessageImmediate = (data) => {
                         {!msg.deleted && isOwn && (
                           <button
                             onClick={() => handleReplyToMessage(msg)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full hover:bg-gray-100 dark:hover:bg-[#101010] z-10 mr-2 flex-shrink-0 self-center order-1"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 md:p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full hover:bg-gray-100 dark:hover:bg-[#101010] z-10 mr-1 md:mr-2 flex-shrink-0 self-center order-1"
                             title="Reply to this message"
                           >
                             <Reply
-                              size={14}
+                              size={12}
                               className="text-[#5f6368] dark:text-gray-400"
                             />
                           </button>
@@ -3774,11 +3745,11 @@ const onBillMessageImmediate = (data) => {
                         {!msg.deleted && !isOwn && (
                           <button
                             onClick={() => handleReplyToMessage(msg)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full hover:bg-gray-100 dark:hover:bg-[#101010] z-10 ml-2 flex-shrink-0 self-center order-3"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 md:p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full hover:bg-gray-100 dark:hover:bg-[#101010] z-10 ml-1 md:ml-2 flex-shrink-0 self-center order-3"
                             title="Reply to this message"
                           >
                             <Reply
-                              size={14}
+                              size={12}
                               className="text-[#5f6368] dark:text-gray-400"
                             />
                           </button>
@@ -3815,9 +3786,9 @@ const onBillMessageImmediate = (data) => {
 
         {/* Edit Message Bar */}
         {editingMessage && (
-          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-900/30 flex items-center gap-2">
+          <div className="p-2 md:p-3 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-900/30 flex items-center gap-2">
             <div className="flex-1">
-              <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">
+              <p className="text-[10px] md:text-xs text-blue-600 dark:text-blue-400 mb-1">
                 Editing message
               </p>
               <input
@@ -3830,66 +3801,66 @@ const onBillMessageImmediate = (data) => {
                     handleEditMessage();
                   }
                 }}
-                className="w-full px-3 py-2 border border-blue-300 dark:border-blue-700 bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-xl focus:ring focus:ring-blue-200 dark:focus:ring-blue-900 focus:border-blue-400 dark:focus:border-blue-600 focus:outline-none text-sm"
+                className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-blue-300 dark:border-blue-700 bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-xl focus:ring focus:ring-blue-200 dark:focus:ring-blue-900 focus:border-blue-400 dark:focus:border-blue-600 focus:outline-none text-xs md:text-sm"
                 autoFocus
               />
             </div>
             <button
               onClick={handleEditMessage}
-              className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
+              className="p-1.5 md:p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
             >
-              <Send size={18} />
+              <Send size={14} />
             </button>
             <button
               onClick={() => {
                 setEditingMessage(null);
                 setEditText("");
               }}
-              className="p-2 bg-gray-200 dark:bg-[#232529] text-gray-600 dark:text-gray-300 rounded-full hover:bg-gray-300 dark:hover:bg-[#181A1E] transition-colors"
+              className="p-1.5 md:p-2 bg-gray-200 dark:bg-[#232529] text-gray-600 dark:text-gray-300 rounded-full hover:bg-gray-300 dark:hover:bg-[#181A1E] transition-colors"
             >
-              <X size={18} />
+              <X size={14} />
             </button>
           </div>
         )}
 
-        {/* Message Input */}
-        <div className="p-4 border-t border-[#f1f3f4] dark:border-[#181A1E] bg-white dark:bg-[#0c0c0c] relative">
+        {/* Message Input - Fixed */}
+        <div className={`flex-shrink-0 p-3 md:p-4 border-t border-[#f1f3f4] dark:border-[#181A1E] bg-white dark:bg-[#0c0c0c] ${isMobile ? 'sticky bottom-0 z-20' : ''}`}>
           {!canSendMessage() && !isCurrentUserAdmin && (
             <div className="absolute -top-8 left-0 right-0 text-center">
-              <span className="text-xs flex items-center justify-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-3 py-2 rounded-t-lg">
-                <Lock size={12} className="inline mr-1" />
+              <span className="text-[10px] md:text-xs flex items-center justify-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2 py-1 md:px-3 md:py-2 rounded-t-lg">
+                <Lock size={10} className="inline mr-1" />
                 {groupData.settings?.onlyAdminsCanMessage
-                  ? "🔒 Only admins can send messages in this group"
+                  ? "🔒 Only admins can send messages"
                   : slowModeSettings.enabled && !canSendInSlowMode()
-                    ? `Slow mode active. Please wait ${timeRemaining}s`
-                    : "You cannot send messages at this time"}
+                    ? `Slow mode active (${timeRemaining}s)`
+                    : "Cannot send messages"}
               </span>
             </div>
           )}
 
           {/* Slash Command Suggestions */}
           {showSlashSuggestions && (
-            <div className="absolute bottom-full left-4 mb-2 w-64 bg-white dark:bg-[#0c0c0c]  border-zinc-200 dark:border-[#232529] rounded-2xl z-50">
-              <div className="p-2">
-                <div className="text-xs text-[#5f6368] dark:text-gray-400 px-3 py-2">
+            <div className="absolute bottom-full left-2 md:left-4 mb-2 w-56 md:w-64 bg-white dark:bg-[#0c0c0c] border-zinc-200 dark:border-[#232529] rounded-2xl z-50">
+              <div className="p-1 md:p-2">
+                <div className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400 px-2 md:px-3 py-1 md:py-2">
                   Available commands
                 </div>
                 <button
                   onClick={() => handleSlashCommand("/split")}
-                  className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-lg transition-colors"
+                  className="w-full flex items-center gap-2 md:gap-3 p-2 md:p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-lg transition-colors"
                 >
-                  <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                  <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
                     <ReceiptText
-                      size={16}
+                      size={12}
                       className="text-green-600 dark:text-green-400"
                     />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="text-sm font-medium text-[#202124] dark:text-white">
+                    <p className="text-xs md:text-sm font-medium text-[#202124] dark:text-white">
                       /split
                     </p>
-                    <p className="text-xs text-[#5f6368] dark:text-gray-400">
-                      Split a bill with group members
+                    <p className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400">
+                      Split a bill
                     </p>
                   </div>
                 </button>
@@ -3898,7 +3869,7 @@ const onBillMessageImmediate = (data) => {
           )}
 
           {showMentions && (
-            <div className="absolute bottom-full left-0 mb-2 w-64 z-50 mention-suggestions">
+            <div className="absolute bottom-full left-0 mb-2 w-56 md:w-64 z-50 mention-suggestions">
               <MentionSuggestions
                 members={filteredMembers}
                 onSelect={handleSelectMention}
@@ -3908,278 +3879,524 @@ const onBillMessageImmediate = (data) => {
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-            {/* AI Enhancement Button */}
-            <button
-              onClick={() => setShowAIEnhancement(true)}
-              className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group"
-              title="Enhance with AI"
-              disabled={!isConnected || !roomJoined || !canSendMessage()}
-            >
-              <Sparkles
-                size={20}
-                className="text-purple-600 dark:text-purple-400"
-              />
-              {newMessage.trim() && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
-              )}
-            </button>
+          {/* Mobile Input Layout - Buttons above input */}
+          {isMobile ? (
+            <>
+              {/* Input Controls */}
+              <div className="flex items-center gap-1 mb-2">
+                {/* AI Enhancement Button */}
+                <button
+                  onClick={() => setShowAIEnhancement(true)}
+                  className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group"
+                  title="Enhance with AI"
+                  disabled={!isConnected || !roomJoined || !canSendMessage()}
+                >
+                  <Sparkles
+                    size={18}
+                    className="text-purple-600 dark:text-purple-400"
+                  />
+                  {newMessage.trim() && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+                  )}
+                </button>
 
-            {/* Attachment Button */}
-            <div className="relative" ref={attachmentPickerRef}>
-              <button
-                onClick={() => {
-                  setShowAttachments(!showAttachments);
-                  setShowEmojiPicker(false);
-                  setShowGIFPicker(false);
-                }}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
-                disabled={
-                  !isConnected ||
-                  !roomJoined ||
-                  editingMessage ||
-                  !canSendMessage()
-                }
-              >
-                <Paperclip
-                  size={20}
-                  className="text-[#5f6368] dark:text-gray-400"
-                />
-              </button>
+                {/* Attachment Button */}
+                <div className="relative" ref={attachmentPickerRef}>
+                  <button
+                    onClick={() => {
+                      setShowAttachments(!showAttachments);
+                      setShowEmojiPicker(false);
+                      setShowGIFPicker(false);
+                    }}
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
+                    disabled={
+                      !isConnected ||
+                      !roomJoined ||
+                      editingMessage ||
+                      !canSendMessage()
+                    }
+                  >
+                    <Paperclip
+                      size={18}
+                      className="text-[#5f6368] dark:text-gray-400"
+                    />
+                  </button>
 
-              {showAttachments && (
-                <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px]">
-                  <div className="space-y-2">
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
-                        <ImageIcon
-                          size={20}
-                          className="text-blue-600 dark:text-blue-400"
-                        />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-sm font-medium text-[#202124] dark:text-white">
-                          Send Image
-                        </p>
-                        <p className="text-xs text-[#5f6368] dark:text-gray-400">
-                          Share photos
-                        </p>
-                      </div>
-                    </button>
+                  {showAttachments && (
+                    <div className="absolute bottom-12 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-2 min-w-[180px]">
+                      <div className="space-y-1">
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
+                            <ImageIcon
+                              size={16}
+                              className="text-blue-600 dark:text-blue-400"
+                            />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p className="text-xs font-medium text-[#202124] dark:text-white">
+                              Image
+                            </p>
+                          </div>
+                        </button>
 
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
-                        <Video
-                          size={20}
-                          className="text-red-600 dark:text-red-400"
-                        />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-sm font-medium text-[#202124] dark:text-white">
-                          Send Video
-                        </p>
-                        <p className="text-xs text-[#5f6368] dark:text-gray-400">
-                          Share videos
-                        </p>
-                      </div>
-                    </button>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
+                            <Video
+                              size={16}
+                              className="text-red-600 dark:text-red-400"
+                            />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p className="text-xs font-medium text-[#202124] dark:text-white">
+                              Video
+                            </p>
+                          </div>
+                        </button>
 
-                    {/* GIF Button */}
-                    <button
-                      onClick={() => {
-                        setShowGIFPicker(true);
-                        setShowAttachments(false);
-                      }}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
-                        <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
-                          GIF
-                        </span>
+                        <button
+                          onClick={() => {
+                            setShowGIFPicker(true);
+                            setShowAttachments(false);
+                          }}
+                          className="w-full flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
+                            <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
+                              GIF
+                            </span>
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p className="text-xs font-medium text-[#202124] dark:text-white">
+                              GIF
+                            </p>
+                          </div>
+                        </button>
                       </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-sm font-medium text-[#202124] dark:text-white">
-                          Send GIF
-                        </p>
-                        <p className="text-xs text-[#5f6368] dark:text-gray-400">
-                          Animated GIFs
-                        </p>
-                      </div>
-                    </button>
-                  </div>
+                    </div>
+                  )}
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
                 </div>
-              )}
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/*"
-                multiple
-                className="hidden"
-                onChange={handleFileSelect}
-              />
-            </div>
+                {/* Emoji Button */}
+                <div className="relative" ref={emojiPickerRef}>
+                  <button
+                    onClick={() => {
+                      setShowEmojiPicker(!showEmojiPicker);
+                      setShowAttachments(false);
+                      setShowGIFPicker(false);
+                    }}
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+                    disabled={!isConnected || !roomJoined || !canSendMessage()}
+                  >
+                    <span className="text-lg">😊</span>
+                  </button>
 
-            {/* GIF Picker */}
-            {showGIFPicker && (
-              <div
-                ref={gifPickerRef}
-                className="absolute bottom-20 left-4 z-50"
-              >
-                <GIFPicker
-                  onSelect={handleSendGIF}
-                  onClose={() => setShowGIFPicker(false)}
-                />
+                  {showEmojiPicker && (
+                    <div className="absolute bottom-12 left-0 z-50">
+                      <EmojiPicker
+                        onEmojiClick={onEmojiClick}
+                        width={280}
+                        height={350}
+                        searchDisabled
+                        skinTonesDisabled
+                        previewConfig={{ showPreview: false }}
+                        theme={
+                          document.documentElement.classList.contains("dark")
+                            ? "dark"
+                            : "light"
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* GIF Picker */}
+                {showGIFPicker && (
+                  <div
+                    ref={gifPickerRef}
+                    className="absolute bottom-20 left-2 z-50"
+                  >
+                    <GIFPicker
+                      onSelect={handleSendGIF}
+                      onClose={() => setShowGIFPicker(false)}
+                    />
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Emoji Button */}
-            <div className="relative" ref={emojiPickerRef}>
+              {/* Text Input Row */}
+              <div className="flex items-center gap-2">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  onPaste={handlePaste}
+                  value={editingMessage ? editText : newMessage}
+                  onChange={
+                    editingMessage
+                      ? (e) => setEditText(e.target.value)
+                      : handleInputChange
+                  }
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+
+                      // Check for slash command
+                      if (
+                        newMessage.startsWith("/") &&
+                        handleSlashCommand(newMessage)
+                      ) {
+                        return;
+                      }
+
+                      if (editingMessage) {
+                        handleEditMessage();
+                      } else if (attachments.length > 0) {
+                        handleSendWithAttachments();
+                      } else {
+                        handleSendMessage();
+                      }
+                    }
+                  }}
+                  placeholder={
+                    !isConnected
+                      ? "Connecting..."
+                      : !roomJoined
+                        ? "Joining chat..."
+                        : !canSendMessage()
+                          ? isCurrentUserAdmin
+                            ? "Admin (bypassing restrictions)"
+                            : groupData.settings?.onlyAdminsCanMessage
+                              ? "🔒 Only admins can message"
+                              : slowModeSettings.enabled && !canSendInSlowMode()
+                                ? `Slow mode (${timeRemaining}s)`
+                                : "Cannot send"
+                          : isCurrentUserAdmin
+                            ? "Type a message..."
+                            : "Type a message..."
+                  }
+                  className="flex-1 px-3 py-2.5 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all text-sm"
+                  disabled={
+                    !isConnected || !roomJoined || uploading || !canSendMessage()
+                  }
+                />
+
+                {/* Send Button */}
+                <button
+                  onClick={
+                    editingMessage
+                      ? handleEditMessage
+                      : attachments.length > 0
+                        ? handleSendWithAttachments
+                        : handleSendMessage
+                  }
+                  disabled={
+                    editingMessage
+                      ? !editText.trim()
+                      : (!newMessage.trim() && attachments.length === 0) ||
+                        !isConnected ||
+                        !roomJoined ||
+                        uploading ||
+                        !canSendMessage()
+                  }
+                  className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative"
+                >
+                  {uploading ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  ) : (
+                    <Send size={18} />
+                  )}
+                </button>
+              </div>
+            </>
+          ) : (
+            /* Desktop Input Layout */
+            <div className="flex items-center gap-2">
+              {/* AI Enhancement Button */}
               <button
-                onClick={() => {
-                  setShowEmojiPicker(!showEmojiPicker);
-                  setShowAttachments(false);
-                  setShowGIFPicker(false);
-                }}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+                onClick={() => setShowAIEnhancement(true)}
+                className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group"
+                title="Enhance with AI"
                 disabled={!isConnected || !roomJoined || !canSendMessage()}
               >
-                <span className="text-xl">😊</span>
+                <Sparkles
+                  size={20}
+                  className="text-purple-600 dark:text-purple-400"
+                />
+                {newMessage.trim() && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+                )}
               </button>
 
-              {showEmojiPicker && (
-                <div className="absolute bottom-14 left-0 z-50">
-                  <EmojiPicker
-                    onEmojiClick={onEmojiClick}
-                    width={320}
-                    height={400}
-                    searchDisabled
-                    skinTonesDisabled
-                    previewConfig={{ showPreview: false }}
-                    theme={
-                      document.documentElement.classList.contains("dark")
-                        ? "dark"
-                        : "light"
-                    }
+              {/* Attachment Button */}
+              <div className="relative" ref={attachmentPickerRef}>
+                <button
+                  onClick={() => {
+                    setShowAttachments(!showAttachments);
+                    setShowEmojiPicker(false);
+                    setShowGIFPicker(false);
+                  }}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
+                  disabled={
+                    !isConnected ||
+                    !roomJoined ||
+                    editingMessage ||
+                    !canSendMessage()
+                  }
+                >
+                  <Paperclip
+                    size={20}
+                    className="text-[#5f6368] dark:text-gray-400"
+                  />
+                </button>
+
+                {showAttachments && (
+                  <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px]">
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
+                          <ImageIcon
+                            size={20}
+                            className="text-blue-600 dark:text-blue-400"
+                          />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium text-[#202124] dark:text-white">
+                            Send Image
+                          </p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                            Share photos
+                          </p>
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
+                          <Video
+                            size={20}
+                            className="text-red-600 dark:text-red-400"
+                          />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium text-[#202124] dark:text-white">
+                            Send Video
+                          </p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                            Share videos
+                          </p>
+                        </div>
+                      </button>
+
+                      {/* GIF Button */}
+                      <button
+                        onClick={() => {
+                          setShowGIFPicker(true);
+                          setShowAttachments(false);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
+                          <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                            GIF
+                          </span>
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium text-[#202124] dark:text-white">
+                            Send GIF
+                          </p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                            Animated GIFs
+                          </p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+              </div>
+
+              {/* GIF Picker */}
+              {showGIFPicker && (
+                <div
+                  ref={gifPickerRef}
+                  className="absolute bottom-20 left-4 z-50"
+                >
+                  <GIFPicker
+                    onSelect={handleSendGIF}
+                    onClose={() => setShowGIFPicker(false)}
                   />
                 </div>
               )}
-            </div>
 
-            {/* Text Input */}
-            <input
-              ref={inputRef}
-              type="text"
-              onPaste={handlePaste}
-              value={editingMessage ? editText : newMessage}
-              onChange={
-                editingMessage
-                  ? (e) => setEditText(e.target.value)
-                  : handleInputChange
-              }
-              onKeyPress={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
+              {/* Emoji Button */}
+              <div className="relative" ref={emojiPickerRef}>
+                <button
+                  onClick={() => {
+                    setShowEmojiPicker(!showEmojiPicker);
+                    setShowAttachments(false);
+                    setShowGIFPicker(false);
+                  }}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+                  disabled={!isConnected || !roomJoined || !canSendMessage()}
+                >
+                  <span className="text-xl">😊</span>
+                </button>
 
-                  // Check for slash command
-                  if (
-                    newMessage.startsWith("/") &&
-                    handleSlashCommand(newMessage)
-                  ) {
-                    return;
-                  }
+                {showEmojiPicker && (
+                  <div className="absolute bottom-14 left-0 z-50">
+                    <EmojiPicker
+                      onEmojiClick={onEmojiClick}
+                      width={320}
+                      height={400}
+                      searchDisabled
+                      skinTonesDisabled
+                      previewConfig={{ showPreview: false }}
+                      theme={
+                        document.documentElement.classList.contains("dark")
+                          ? "dark"
+                          : "light"
+                      }
+                    />
+                  </div>
+                )}
+              </div>
 
-                  if (editingMessage) {
-                    handleEditMessage();
-                  } else if (attachments.length > 0) {
-                    handleSendWithAttachments();
-                  } else {
-                    handleSendMessage();
-                  }
+              {/* Text Input */}
+              <input
+                ref={inputRef}
+                type="text"
+                onPaste={handlePaste}
+                value={editingMessage ? editText : newMessage}
+                onChange={
+                  editingMessage
+                    ? (e) => setEditText(e.target.value)
+                    : handleInputChange
                 }
-              }}
-              onBlur={(e) => {
-                setTimeout(() => {
-                  const mentionElement = document.querySelector(
-                    ".mention-suggestions",
-                  );
-                  if (
-                    mentionElement &&
-                    mentionElement.contains(document.activeElement)
-                  ) {
-                    return;
-                  }
-                }, 200);
-              }}
-              placeholder={
-                !isConnected
-                  ? "Connecting..."
-                  : !roomJoined
-                    ? "Joining chat..."
-                    : !canSendMessage()
-                      ? isCurrentUserAdmin
-                        ? "You are an admin (bypassing restrictions)"
-                        : groupData.settings?.onlyAdminsCanMessage
-                          ? "🔒 Only admins can send messages"
-                          : slowModeSettings.enabled && !canSendInSlowMode()
-                            ? `Slow mode active (${timeRemaining}s)`
-                            : "You cannot send messages"
-                      : isCurrentUserAdmin
-                        ? "Type a message as admin... (Use @ to mention, ✨ for AI, 📷 for GIF, /split for bills)"
-                        : "Type a message... (Use @ to mention, ✨ for AI, 📷 for GIF, /split for bills)"
-              }
-              className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
-              disabled={
-                !isConnected || !roomJoined || uploading || !canSendMessage()
-              }
-            />
+                onKeyPress={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
 
-            {/* Send Button */}
-            <button
-              onClick={
-                editingMessage
-                  ? handleEditMessage
-                  : attachments.length > 0
-                    ? handleSendWithAttachments
-                    : handleSendMessage
-              }
-              disabled={
-                editingMessage
-                  ? !editText.trim()
-                  : (!newMessage.trim() && attachments.length === 0) ||
-                    !isConnected ||
-                    !roomJoined ||
-                    uploading ||
-                    !canSendMessage()
-              }
-              className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative"
-            >
-              {uploading ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-              ) : (
-                <Send size={20} />
-              )}
-            </button>
-          </div>
+                    // Check for slash command
+                    if (
+                      newMessage.startsWith("/") &&
+                      handleSlashCommand(newMessage)
+                    ) {
+                      return;
+                    }
+
+                    if (editingMessage) {
+                      handleEditMessage();
+                    } else if (attachments.length > 0) {
+                      handleSendWithAttachments();
+                    } else {
+                      handleSendMessage();
+                    }
+                  }
+                }}
+                onBlur={(e) => {
+                  setTimeout(() => {
+                    const mentionElement = document.querySelector(
+                      ".mention-suggestions",
+                    );
+                    if (
+                      mentionElement &&
+                      mentionElement.contains(document.activeElement)
+                    ) {
+                      return;
+                    }
+                  }, 200);
+                }}
+                placeholder={
+                  !isConnected
+                    ? "Connecting..."
+                    : !roomJoined
+                      ? "Joining chat..."
+                      : !canSendMessage()
+                        ? isCurrentUserAdmin
+                          ? "You are an admin (bypassing restrictions)"
+                          : groupData.settings?.onlyAdminsCanMessage
+                            ? "🔒 Only admins can send messages"
+                            : slowModeSettings.enabled && !canSendInSlowMode()
+                              ? `Slow mode active (${timeRemaining}s)`
+                              : "You cannot send messages"
+                        : isCurrentUserAdmin
+                          ? "Type a message as admin... (Use @ to mention, ✨ for AI, 📷 for GIF, /split for bills)"
+                          : "Type a message... (Use @ to mention, ✨ for AI, 📷 for GIF, /split for bills)"
+                }
+                className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
+                disabled={
+                  !isConnected || !roomJoined || uploading || !canSendMessage()
+                }
+              />
+
+              {/* Send Button */}
+              <button
+                onClick={
+                  editingMessage
+                    ? handleEditMessage
+                    : attachments.length > 0
+                      ? handleSendWithAttachments
+                      : handleSendMessage
+                }
+                disabled={
+                  editingMessage
+                    ? !editText.trim()
+                    : (!newMessage.trim() && attachments.length === 0) ||
+                      !isConnected ||
+                      !roomJoined ||
+                      uploading ||
+                      !canSendMessage()
+                }
+                className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative"
+              >
+                {uploading ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                ) : (
+                  <Send size={20} />
+                )}
+              </button>
+            </div>
+          )}
 
           {!isConnected && (
             <div className="absolute -top-8 left-0 right-0 text-center">
-              <span className="text-xs text-red-500 bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded-full">
-                ⚠️ Reconnecting to server...
+              <span className="text-[10px] md:text-xs text-red-500 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded-full">
+                ⚠️ Reconnecting...
               </span>
             </div>
           )}
 
           {isConnected && !roomJoined && (
             <div className="absolute -top-8 left-0 right-0 text-center">
-              <span className="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/30 px-3 py-1 rounded-full">
-                ⏳ Joining group chat...
+              <span className="text-[10px] md:text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/30 px-2 py-1 rounded-full">
+                ⏳ Joining group...
               </span>
             </div>
           )}
@@ -4406,7 +4623,14 @@ const onBillMessageImmediate = (data) => {
         /* Ensure message container has max width */
         .max-w-[70%] {
           max-width: 70%;
-          min-width: 200px;
+          min-width: 150px;
+        }
+
+        @media (max-width: 768px) {
+          .max-w-[70%] {
+            max-width: 85%;
+            min-width: 120px;
+          }
         }
 
         /* For very long code lines */
@@ -4417,7 +4641,7 @@ const onBillMessageImmediate = (data) => {
 
         /* Custom scrollbar for code blocks */
         .overflow-x-auto::-webkit-scrollbar {
-          height: 8px;
+          height: 6px;
         }
 
         .overflow-x-auto::-webkit-scrollbar-track {
@@ -4468,17 +4692,55 @@ const onBillMessageImmediate = (data) => {
           -webkit-overflow-scrolling: touch;
         }
 
-        /* For the message container */
-        .max-w-[70%] {
-          max-width: min(70%, 600px);
-        }
-
         /* Ensure bill message is visible */
         .bill-message-wrapper {
           display: block;
           width: 100%;
           margin: 0;
           padding: 0;
+        }
+
+        /* Animation for join notifications */
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .animate-fade-in {
+          animation: fadeIn 0.3s ease-out;
+        }
+
+        /* Responsive breakpoints */
+        @media (max-width: 640px) {
+          .xs\\:hidden {
+            display: none;
+          }
+          
+          .xs\\:inline {
+            display: inline;
+          }
+        }
+
+        /* Safe area for mobile devices */
+        @supports (padding: max(0px)) {
+          .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom);
+          }
+          
+          .pt-safe {
+            padding-top: env(safe-area-inset-top);
+          }
+        }
+
+        /* Prevent body scroll when chat is open on mobile */
+        body:has(.fixed.inset-0) {
+          overflow: hidden;
         }
       `}</style>
     </>

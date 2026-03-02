@@ -122,6 +122,9 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const [editingMessage, setEditingMessage] = useState(null);
   const [editText, setEditText] = useState("");
   
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false);
+  
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -136,6 +139,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   
   const { socket, isConnected, getUserOnlineStatus, checkUndeliveredMessages } = useSocket();
   const roomId = [currentUserId, friend.userId].sort().join('-');
+
+  // ==================== DETECT MOBILE ====================
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const canSendMessages = !blockStatus.iBlockedThem && !blockStatus.theyBlockedMe;
 
@@ -152,7 +167,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   useEffect(() => {
     if (friendOnline && roomJoined) {
       console.log('👤 Friend came online, checking undelivered messages...');
-      // Update all undelivered messages to delivered
       setMessages(prev => 
         prev.map(msg => {
           if (msg.senderId === currentUserId && !msg.delivered) {
@@ -379,7 +393,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const handleCodeModeToggle = () => {
     setCodeMode(!codeMode);
     if (!codeMode) {
-      // When turning on code mode, wrap existing text in triple backticks
       if (newMessage.trim() && !newMessage.includes("```")) {
         setNewMessage(`\`\`\`\n${newMessage}\n\`\`\``);
       }
@@ -388,23 +401,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const handlePaste = (e) => {
     e.preventDefault();
-
-    // Get pasted text
     const pastedText = e.clipboardData.getData("text");
 
-    // Check if the pasted text contains code indicators
     const containsNewlines = pastedText.includes("\n");
     const containsIndentation = /^[ \t]/.test(pastedText);
     const containsSpecialChars = /[{}[\]()<>;=+\-*/&|!]/.test(pastedText);
 
-    // Heuristic: if it has multiple lines and code-like characters, treat as code
     const looksLikeCode =
       containsNewlines &&
       (containsIndentation || containsSpecialChars || pastedText.length > 100);
 
     if (looksLikeCode) {
-      // Detect language (simplified)
-      let language = "javascript"; // default
+      let language = "javascript";
 
       if (
         pastedText.includes("def ") ||
@@ -422,10 +430,8 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         language = "css";
       }
 
-      // Format as code block with language and proper line breaks
       const formattedCode = `\`\`\`${language}\n${pastedText}\n\`\`\``;
 
-      // Insert at cursor position
       const start = inputRef.current.selectionStart;
       const end = inputRef.current.selectionEnd;
       const currentValue = newMessage;
@@ -436,13 +442,11 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
       setNewMessage(newValue);
 
-      // Set cursor position after the inserted code
       setTimeout(() => {
         inputRef.current.selectionStart = start + formattedCode.length;
         inputRef.current.selectionEnd = start + formattedCode.length;
       }, 0);
     } else {
-      // Regular paste - insert at cursor position
       const start = inputRef.current.selectionStart;
       const end = inputRef.current.selectionEnd;
       const currentValue = newMessage;
@@ -453,7 +457,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
       setNewMessage(newValue);
 
-      // Set cursor position after the inserted text
       setTimeout(() => {
         inputRef.current.selectionStart = start + pastedText.length;
         inputRef.current.selectionEnd = start + pastedText.length;
@@ -490,7 +493,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const MessageContent = ({ message, content, highlightedText, formatTime, renderMessageStatus, isOwn }) => {
     const [showFullContent, setShowFullContent] = useState(false);
 
-    // Function to validate URL
     const isValidUrl = (string) => {
       try {
         new URL(string);
@@ -500,7 +502,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       }
     };
 
-    // Function to highlight text
     const highlightText = (text, highlight) => {
       if (!highlight.trim() || !text) {
         return text;
@@ -524,7 +525,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       });
     };
 
-    // Function to render text with clickable links
     const renderTextWithLinks = (text) => {
       if (!text) return null;
       
@@ -537,14 +537,12 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
         
-        // Check if this part is a URL
         let isUrl = false;
         let url = part;
         
         if (matches.includes(part)) {
           isUrl = true;
         } else if (part && (part.startsWith('http') || part.includes('.'))) {
-          // Try to construct a URL
           if (part.startsWith('www.')) {
             url = `https://${part}`;
           } else if (!part.startsWith('http') && part.includes('.')) {
@@ -569,7 +567,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         } else if (part) {
           if (highlightedText) {
             const highlighted = highlightText(part, highlightedText);
-            // If highlightText returns an array, we need to handle it properly
             if (Array.isArray(highlighted)) {
               result.push(...highlighted.map((item, idx) => (
                 <span key={`text-${i}-${idx}`}>{item}</span>
@@ -586,7 +583,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       return result;
     };
 
-    // Extract URLs from content
     const extractUrls = (text) => {
       if (!text) return [];
       const urlPattern = /(https?:\/\/[^\s]+)|(www\.[^\s]+\.[^\s]+)|([^\s]+\.[^\s]+\.[^\s]+\/[^\s]*)/gi;
@@ -598,19 +594,16 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       });
     };
 
-    // Parse the message content to detect code blocks
     const parts = parseMessageContent(content);
     const hasCodeBlock = parts.some(part => part.type === "code-block");
     const urls = extractUrls(content);
     const hasUrls = urls.length > 0;
 
-    // If it has code blocks, render them specially
     if (hasCodeBlock) {
       return (
         <div className="w-full">
           {parts.map((part, index) => {
             if (part.type === "code-block") {
-              // Code block - render with syntax highlighting
               return (
                 <div key={`code-${index}`} className="my-2">
                   <CodeBlock
@@ -620,16 +613,14 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                 </div>
               );
             } else if (part.type === "inline-code") {
-              // Inline code - render inside text
               return (
                 <span key={`inline-${index}`}>
-                  <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-[#1a1a1a] text-pink-600 dark:text-pink-400 rounded-md font-mono text-sm border border-gray-200 dark:border-[#232529]">
+                  <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-[#1a1a1a] text-pink-600 dark:text-pink-400 rounded-md font-mono text-xs border border-gray-200 dark:border-[#232529]">
                     {part.code}
                   </code>
                 </span>
               );
             } else if (part.content) {
-              // Text content - render with links and highlighting
               const shouldTruncate = part.content.length > 300 && !showFullContent;
               const displayContent = shouldTruncate ? part.content.substring(0, 300) + '...' : part.content;
               
@@ -642,7 +633,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             return null;
           })}
 
-          {/* Show more/less button for long messages with code */}
           {content.length > 300 && (
             <button
               onClick={() => setShowFullContent(!showFullContent)}
@@ -652,7 +642,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             </button>
           )}
 
-          {/* Link previews */}
           {hasUrls && urls.length > 0 && !message.deleted && (
             <div className="mt-2 space-y-2">
               <LinkPreview 
@@ -667,7 +656,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             </div>
           )}
 
-          {/* Time and status */}
           <div className="flex items-center justify-end gap-1 mt-2">
             <p className={`text-[10px] ${isOwn ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
               {formatTime(message.timestamp)}
@@ -678,13 +666,11 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       );
     }
 
-    // Regular message without code blocks
     const shouldTruncate = content.length > 300 && !showFullContent;
     const displayContent = shouldTruncate ? content.substring(0, 300) + '...' : content;
 
     return (
       <div>
-        {/* Text content with links */}
         <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
           {renderTextWithLinks(displayContent)}
           {message.edited && !message.deleted && (
@@ -692,7 +678,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           )}
         </p>
 
-        {/* Show more/less button for long messages */}
         {content.length > 300 && (
           <button
             onClick={() => setShowFullContent(!showFullContent)}
@@ -702,7 +687,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           </button>
         )}
 
-        {/* Link previews */}
         {hasUrls && urls.length > 0 && !message.deleted && (
           <div className="mt-2 space-y-2">
             <LinkPreview 
@@ -717,7 +701,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           </div>
         )}
 
-        {/* Time and status */}
         <div className="flex items-center justify-end gap-1 mt-1">
           <p className={`text-[10px] ${isOwn ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
             {formatTime(message.timestamp)}
@@ -746,7 +729,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
       if (data.success) {
         console.log('✅ Chat deleted successfully');
-        // Notify parent component to refresh the chat list
         if (onMessageUpdate) {
           onMessageUpdate({ 
             type: 'chat-deleted', 
@@ -754,7 +736,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             friendId: friend.userId 
           });
         }
-        // Close the chat interface
         onClose();
       } else {
         console.error('❌ Failed to delete chat:', data.error);
@@ -787,13 +768,9 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
       if (data.success) {
         console.log('✅ Chat cleared successfully');
-        // Clear messages from state
         setMessages([]);
-        // Clear decrypted messages
         setDecryptedMessages(new Map());
-        // Clear attachments
         setAllAttachments([]);
-        // Notify parent component
         if (onMessageUpdate) {
           onMessageUpdate({ 
             type: 'chat-cleared', 
@@ -827,7 +804,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
     const now = new Date().toISOString();
     
-    // Prepare reply data if replying to a message
     let replyTo = null;
     if (replyingToMessage && !replyingToMessage.deleted) {
       const replyContent = getMessageContent(replyingToMessage);
@@ -844,7 +820,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
     let encryptedContent = null;
 
-    // If encryption is enabled, encrypt the message
     if (encryptionReady && sharedSecret) {
       try {
         encryptedContent = await encryptionService.encryptMessage('', sharedSecret);
@@ -853,7 +828,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       }
     }
 
-    // Create GIF attachment with proper structure
     const gifAttachment = {
       url: gif.images?.fixed_height?.url || gif.url,
       type: 'gif',
@@ -881,7 +855,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       isEncrypted: !!encryptedContent,
     };
 
-    // Create local message with the same structure
     const localMessage = {
       ...messageData,
       content: '',
@@ -899,7 +872,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     console.log("📤 Sending GIF message to friend");
     socket.emit("send-message", messageData);
 
-    // Save to database
     fetch("/api/chat/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1014,7 +986,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     const onMessage = (message) => {
       console.log('📩 Message received in chat:', message);
       if (message.roomId === roomId) {
-        // Process encrypted content if needed
         if (message.encryptedContent && sharedSecret) {
           let encryptedData = message.encryptedContent;
           if (typeof encryptedData === 'string') {
@@ -1135,7 +1106,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       if (data.roomId === roomId) {
         setMessages(prev =>
           prev.map(msg => {
-            // Update messages sent to friend that are now read
             if (msg.senderId === currentUserId && !msg.read) {
               return { ...msg, read: true, readAt: data.readAt };
             }
@@ -1150,15 +1120,12 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       if (data.roomId === roomId) {
         setMessages(prev =>
           prev.map(msg => {
-            // Update specific message or all messages from this sender
             if (msg.senderId === currentUserId) {
-              // If specific timestamp is provided, update only that message
               if (data.timestamp) {
                 if (msg.timestamp === data.timestamp && !msg.delivered) {
                   return { ...msg, delivered: true, deliveredAt: data.deliveredAt };
                 }
               } 
-              // Otherwise update all undelivered messages from current user
               else if (!msg.delivered) {
                 return { ...msg, delivered: true, deliveredAt: data.deliveredAt };
               }
@@ -1175,7 +1142,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         setFriendOnline(true);
         setFriendLastSeen(data.timestamp);
         
-        // Update all undelivered messages to delivered
         setMessages(prev =>
           prev.map(msg => {
             if (msg.senderId === currentUserId && !msg.delivered) {
@@ -1194,7 +1160,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     const onCheckUndelivered = (data) => {
       console.log('🔍 Check undelivered messages:', data);
       if (data.roomId === roomId) {
-        // Request status of undelivered messages
         checkUndeliveredMessages(roomId, friend.userId);
       }
     };
@@ -1268,10 +1233,8 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       const res = await fetch(`/api/chat/messages?roomId=${roomId}&userId=${currentUserId}`);
       const data = await res.json();
       if (data.success) {
-        // Process messages to ensure correct status
         const processedMessages = data.messages.map(msg => ({
           ...msg,
-          // Ensure delivered and read are properly set from database
           delivered: msg.delivered || false,
           read: msg.read || false
         }));
@@ -1313,7 +1276,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           isGroupMessage: false
         });
         
-        // Update local messages to read
         setMessages(prev =>
           prev.map(msg =>
             msg.senderId === friend.userId && !msg.read
@@ -1918,7 +1880,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     setSelectedMessage(message);
   };
 
-  // GIF playback control - play 3 times max, restart on hover
   const handleGifHoverStart = (e) => {
     const img = e.currentTarget;
     const playCount = parseInt(img.dataset.playCount || '0');
@@ -1928,12 +1889,10 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       img.dataset.playCount = (playCount + 1).toString();
       img.dataset.isPaused = 'false';
       
-      // Restart GIF by changing src (forces 1 full loop)
       const src = img.src;
       img.src = '';
       img.src = src;
       
-      // Pause after ~3 seconds (adjust based on your GIFs)
       setTimeout(() => {
         if (parseInt(img.dataset.playCount || '0') >= 3) {
           img.dataset.isPaused = 'true';
@@ -2003,25 +1962,20 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     return groups;
   }, {});
 
-  // Fixed message status rendering with real-time updates
   const renderMessageStatus = (message) => {
     if (message.senderId !== currentUserId) return null;
     
-    // Check if message is read
     if (message.read) {
       return <CheckCheck size={16} className="text-blue-500" title="Read" />;
     } 
-    // Check if message is delivered
     else if (message.delivered) {
       return <CheckCheck size={16} className="text-gray-400 dark:text-gray-500" title="Delivered" />;
     } 
-    // Message is sent but not delivered
     else {
       return <Check size={16} className="text-gray-400 dark:text-gray-500" title="Sent" />;
     }
   };
 
-  // Render reply preview in a message
   const renderReplyPreview = (replyTo) => {
     if (!replyTo) return null;
 
@@ -2072,10 +2026,10 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         {!message.deleted && isOwn && (
           <button
             onClick={() => handleReplyToMessage(message)}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 mr-2 flex-shrink-0 self-center"
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 mr-1 md:mr-2 flex-shrink-0 self-center"
             title="Reply to this message"
           >
-            <Reply size={14} className="text-[#5f6368] dark:text-gray-400" />
+            <Reply size={12} className="text-[#5f6368] dark:text-gray-400" />
           </button>
         )}
         
@@ -2084,10 +2038,10 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         {!message.deleted && !isOwn && (
           <button
             onClick={() => handleReplyToMessage(message)}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 ml-2 flex-shrink-0 self-center"
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-[#101010] z-10 ml-1 md:ml-2 flex-shrink-0 self-center"
             title="Reply to this message"
           >
-            <Reply size={14} className="text-[#5f6368] dark:text-gray-400" />
+            <Reply size={12} className="text-[#5f6368] dark:text-gray-400" />
           </button>
         )}
       </div>
@@ -2174,10 +2128,10 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   return (
     <>
-      <div className="h-full flex flex-col bg-white border-none dark:bg-[#0c0c0c] rounded-3xl border dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300">
-        {/* Chat Header */}
-        <div className="p-4 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between bg-white dark:bg-[#0c0c0c]">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div className={`h-full flex flex-col bg-white dark:bg-[#0c0c0c] rounded-3xl border border-none dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300 ${isMobile ? 'fixed inset-0 z-50 rounded-none' : ''}`}>
+        {/* Chat Header - Fixed */}
+        <div className={`flex-shrink-0 p-3 md:p-4 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between bg-white dark:bg-[#0c0c0c] ${isMobile ? 'sticky top-0 z-20' : ''}`}>
+          <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
             <button
               onClick={onClose}
               className="lg:hidden p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
@@ -2185,19 +2139,19 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               <ChevronLeft size={20} className="text-[#202124] dark:text-white" />
             </button>
             <div className="relative flex-shrink-0">
-              {renderAvatar(friend.avatar, friend.userName, "w-10 h-10")}
+              {renderAvatar(friend.avatar, friend.userName, isMobile ? "w-8 h-8" : "w-10 h-10")}
               {friendOnline && !blockStatus.theyBlockedMe && !blockStatus.iBlockedThem && (
-                <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#0c0c0c] rounded-full"></span>
+                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 md:w-3 md:h-3 bg-green-500 border-2 border-white dark:border-[#0c0c0c] rounded-full"></span>
               )}
               {(blockStatus.iBlockedThem || blockStatus.theyBlockedMe) && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 border-2 border-white dark:border-[#0c0c0c] rounded-full flex items-center justify-center">
-                  <Ban size={10} className="text-white" />
+                <span className="absolute -top-1 -right-1 w-4 h-4 md:w-5 md:h-5 bg-red-500 border-2 border-white dark:border-[#0c0c0c] rounded-full flex items-center justify-center">
+                  <Ban size={8} className="text-white" />
                 </span>
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-[#202124] dark:text-white truncate">{friend.userName}</h3>
-              <p className="text-xs text-[#5f6368] dark:text-gray-400 truncate">
+              <h3 className="text-sm md:text-base font-semibold text-[#202124] dark:text-white truncate">{friend.userName}</h3>
+              <p className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400 truncate">
                 {blockStatus.iBlockedThem ? (
                   <span className="text-red-600 dark:text-red-400">You blocked this user</span>
                 ) : blockStatus.theyBlockedMe ? (
@@ -2212,25 +2166,25 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowDropdown(!showDropdown)}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
               >
-                <MoreVertical size={20} className="text-[#5f6368] dark:text-gray-400" />
+                <MoreVertical size={18} className="text-[#5f6368] dark:text-gray-400" />
               </button>
 
               {showDropdown && (
-                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl shadow-lg z-50 py-2">
+                <div className="absolute right-0 mt-2 w-48 md:w-56 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl shadow-lg z-50 py-2">
                   {dropdownItems.map((item) => (
                     <button
                       key={item.id}
                       onClick={item.onClick}
-                      className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-100 dark:hover:bg-[#101010] transition-colors ${item.className || 'text-[#202124] dark:text-white'}`}
+                      className={`w-full flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 md:py-3 hover:bg-gray-100 dark:hover:bg-[#101010] transition-colors text-sm ${item.className || 'text-[#202124] dark:text-white'}`}
                     >
-                      <item.icon size={18} />
-                      <span className="text-sm">{item.label}</span>
+                      <item.icon size={16} />
+                      <span>{item.label}</span>
                     </button>
                   ))}
                 </div>
@@ -2241,16 +2195,16 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               onClick={onClose}
               className="p-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors"
             >
-              <X size={18} className="text-red-600 dark:text-red-400" />
+              <X size={16} className="text-red-600 dark:text-red-400" />
             </button>
           </div>
         </div>
 
         {/* Blocked Banner */}
         {(blockStatus.iBlockedThem || blockStatus.theyBlockedMe) && (
-          <div className="bg-red-50 dark:bg-red-900/20 p-3 text-center border-b border-red-200 dark:border-red-900/30">
-            <p className="text-xs text-red-600 dark:text-red-400 flex items-center justify-center gap-1">
-              <Ban size={14} />
+          <div className="bg-red-50 dark:bg-red-900/20 p-2 md:p-3 text-center border-b border-red-200 dark:border-red-900/30">
+            <p className="text-[10px] md:text-xs text-red-600 dark:text-red-400 flex items-center justify-center gap-1">
+              <Ban size={12} />
               {getBlockMessage()}
             </p>
           </div>
@@ -2271,10 +2225,10 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           />
         )}
 
-        {/* Messages Area */}
+        {/* Messages Area - Scrollable */}
         <div
           ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F8F9FA] dark:bg-[#000000] transition-colors duration-300"
+          className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4 bg-[#F8F9FA] dark:bg-[#000000] transition-colors duration-300"
           style={{scrollBehavior: 'smooth'}}
         >
           {loading ? (
@@ -2282,10 +2236,10 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#34A853]"></div>
             </div>
           ) : messages.length === 0 ? (
-            <div className="text-center py-12">
-              <MessageCircle size={48} className="mx-auto text-[#dadce0] dark:text-[#232529] mb-3" />
-              <p className="text-[#5f6368] dark:text-gray-400">No messages yet</p>
-              <p className="text-sm text-[#5f6368] dark:text-gray-500 mt-1">
+            <div className="text-center py-8 md:py-12">
+              <MessageCircle size={40} className="mx-auto text-[#dadce0] dark:text-[#232529] mb-2 md:mb-3" />
+              <p className="text-xs md:text-sm text-[#5f6368] dark:text-gray-400">No messages yet</p>
+              <p className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-500 mt-1">
                 {blockStatus.iBlockedThem ? (
                   "You've blocked this user. Unblock to send messages."
                 ) : blockStatus.theyBlockedMe ? (
@@ -2298,8 +2252,8 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           ) : (
             Object.entries(groupedMessages).map(([date, dateMessages]) => (
               <div key={date}>
-                <div className="flex justify-center mb-4">
-                  <span className="px-3 py-1 bg-gray-200 dark:bg-[#101010] rounded-full text-xs text-[#5f6368] dark:text-gray-400">
+                <div className="flex justify-center mb-2 md:mb-4">
+                  <span className="px-2 py-0.5 md:px-3 md:py-1 bg-gray-200 dark:bg-[#101010] rounded-full text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400">
                     {date}
                   </span>
                 </div>
@@ -2316,12 +2270,12 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                   return (
                     <MessageWrapper key={`${msg.timestamp}-${index}`} message={msg} isOwn={isOwn}>
                       <div
-                        className={`max-w-[70%] transition-all duration-200 ease-out mb-2`}
+                        className={`max-w-[85%] md:max-w-[70%] transition-all duration-200 ease-out mb-2`}
                       >
                           {!isOwn && showAvatar && (
-                            <div className="flex items-center gap-2 mb-1 ml-1">
-                              {renderAvatar(friend.avatar, friend.userName, "w-6 h-6")}
-                              <span className="text-xs text-[#5f6368] dark:text-gray-400">{friend.userName}</span>
+                            <div className="flex items-center gap-1 md:gap-2 mb-1 ml-1">
+                              {renderAvatar(friend.avatar, friend.userName, "w-5 h-5 md:w-6 md:h-6")}
+                              <span className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400">{friend.userName}</span>
                             </div>
                           )}
                           
@@ -2343,18 +2297,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                                         <img
                                           src={att.url}
                                           alt="Attachment"
-                                          className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                          className="max-w-full rounded-2xl max-h-48 md:max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                                           onClick={() => handleAttachmentClick(att, globalIndex)}
                                         />
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
                                           <button
                                             onClick={() => handleAttachmentClick(att, globalIndex)}
-                                            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                                            className="p-1 md:p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
                                           >
-                                            <Maximize2 size={20} />
+                                            <Maximize2 size={16} />
                                           </button>
                                         </div>
-                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[8px] md:text-[10px] px-1.5 py-0.5 md:px-2 md:py-1 rounded-full backdrop-blur-sm">
                                           {formatTime(msg.timestamp)}
                                           <span className="ml-1">{renderMessageStatus(msg)}</span>
                                         </div>
@@ -2363,18 +2317,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                                       <div className="relative">
                                         <video
                                           src={att.url}
-                                          className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer"
+                                          className="max-w-full rounded-2xl max-h-48 md:max-h-64 object-cover cursor-pointer"
                                           onClick={() => handleAttachmentClick(att, globalIndex)}
                                         />
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
                                           <button
                                             onClick={() => handleAttachmentClick(att, globalIndex)}
-                                            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                                            className="p-1 md:p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
                                           >
-                                            <Maximize2 size={20} />
+                                            <Maximize2 size={16} />
                                           </button>
                                         </div>
-                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
+                                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[8px] md:text-[10px] px-1.5 py-0.5 md:px-2 md:py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
                                           <span>{formatTime(msg.timestamp)}</span>
                                           {renderMessageStatus(msg)}
                                         </div>
@@ -2385,7 +2339,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                                           <img
                                             src={att.url}
                                             alt={att.name || 'GIF'}
-                                            className="max-w-full rounded-2xl max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                            className="max-w-full rounded-2xl max-h-48 md:max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                                             onClick={() => handleAttachmentClick(att, globalIndex)}
                                             loading="lazy"
                                             data-play-count="0"
@@ -2393,21 +2347,21 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                                             onMouseEnter={handleGifHoverStart}
                                             onMouseLeave={handleGifHoverEnd}
                                           />
-                                          <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+                                          <div className="absolute top-2 left-2 bg-black/60 text-white text-[8px] md:text-[10px] px-1.5 py-0.5 md:px-2 md:py-1 rounded-full backdrop-blur-sm">
                                             GIF
                                           </div>
                                           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
                                             <button
                                               onClick={() => handleAttachmentClick(att, globalIndex)}
-                                              className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+                                              className="p-1 md:p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
                                             >
-                                              <Maximize2 size={20} />
+                                              <Maximize2 size={16} />
                                             </button>
                                           </div>
                                         </div>
                                         {/* Time and status below GIF */}
                                         <div className="flex items-center justify-end gap-1 mt-1 px-1">
-                                          <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                                          <span className="text-[8px] md:text-[10px] text-gray-500 dark:text-gray-400">
                                             {formatTime(msg.timestamp)}
                                           </span>
                                           {renderMessageStatus(msg)}
@@ -2423,7 +2377,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                           {/* Text content with highlighting and code block support */}
                           {hasTextContent && (
                             <div
-                              className={`rounded-2xl p-3 ${
+                              className={`rounded-2xl p-2 md:p-3 ${
                                 msg.deleted 
                                   ? 'bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400'
                                   : isOwn
@@ -2432,7 +2386,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                               }`}
                             >
                               {msg.deleted ? (
-                                <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                                <p className="text-xs md:text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                               ) : (
                                 <MessageContent
                                   message={msg}
@@ -2448,7 +2402,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                           
                           {/* Reactions */}
                           {msg.reactions && msg.reactions.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1 px-2">
+                            <div className="flex flex-wrap gap-1 mt-1 px-1 md:px-2">
                               {Object.entries(
                                 msg.reactions.reduce((acc, r) => {
                                   acc[r.emoji] = (acc[r.emoji] || 0) + 1;
@@ -2457,7 +2411,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                               ).map(([emoji, count]) => (
                                 <span
                                   key={emoji}
-                                  className="text-xs bg-gray-100 dark:bg-[#101010] z-50 rounded-full px-2 py-1 flex items-center gap-1"
+                                  className="text-[10px] md:text-xs bg-gray-100 dark:bg-[#101010] z-50 rounded-full px-1.5 py-0.5 md:px-2 md:py-1 flex items-center gap-1"
                                 >
                                   <span>{emoji}</span>
                                   {count > 1 && <span className="text-gray-600 dark:text-gray-400">{count}</span>}
@@ -2474,13 +2428,13 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           )}
           
           {friendTyping && canSendMessages && (
-            <div className="flex items-center gap-2 transition-all duration-200 ease-in">
-              {renderAvatar(friend.avatar, friend.userName, "w-6 h-6")}
-              <div className="bg-white dark:bg-[#101010] border border-[#dadce0] dark:border-[#232529] rounded-2xl rounded-bl-none p-3">
+            <div className="flex items-center gap-1 md:gap-2 transition-all duration-200 ease-in">
+              {renderAvatar(friend.avatar, friend.userName, "w-5 h-5 md:w-6 md:h-6")}
+              <div className="bg-white dark:bg-[#101010] border border-[#dadce0] dark:border-[#232529] rounded-2xl rounded-bl-none p-2 md:p-3">
                 <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                  <span className="w-2 h-2 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                  <span className="w-2 h-2 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                  <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                  <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                 </div>
               </div>
             </div>
@@ -2509,9 +2463,9 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
         {/* Edit Message Bar */}
         {editingMessage && (
-          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-900/30 flex items-center gap-2">
+          <div className="p-2 md:p-3 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-900/30 flex items-center gap-2">
             <div className="flex-1">
-              <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Editing message</p>
+              <p className="text-[10px] md:text-xs text-blue-600 dark:text-blue-400 mb-1">Editing message</p>
               <input
                 type="text"
                 value={editText}
@@ -2522,236 +2476,437 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                     handleEditMessage();
                   }
                 }}
-                className="w-full px-3 py-2 border border-blue-300 dark:border-blue-700 bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-xl focus:ring focus:ring-blue-200 dark:focus:ring-blue-900 focus:border-blue-400 dark:focus:border-blue-600 focus:outline-none text-sm"
+                className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-blue-300 dark:border-blue-700 bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-xl focus:ring focus:ring-blue-200 dark:focus:ring-blue-900 focus:border-blue-400 dark:focus:border-blue-600 focus:outline-none text-xs md:text-sm"
                 autoFocus
               />
             </div>
             <button
               onClick={handleEditMessage}
-              className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
+              className="p-1.5 md:p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
             >
-              <Send size={18} />
+              <Send size={14} />
             </button>
             <button
               onClick={() => {
                 setEditingMessage(null);
                 setEditText("");
               }}
-              className="p-2 bg-gray-200 dark:bg-[#232529] text-gray-600 dark:text-gray-300 rounded-full hover:bg-gray-300 dark:hover:bg-[#181A1E] transition-colors"
+              className="p-1.5 md:p-2 bg-gray-200 dark:bg-[#232529] text-gray-600 dark:text-gray-300 rounded-full hover:bg-gray-300 dark:hover:bg-[#181A1E] transition-colors"
             >
-              <X size={18} />
+              <X size={14} />
             </button>
           </div>
         )}
 
-        {/* Message Input */}
-        <div className="p-4 border-t border-[#f1f3f4] dark:border-[#181A1E] bg-white dark:bg-[#0c0c0c] relative">
-          <div className="flex items-center gap-2">
-            {/* AI Enhancement Button */}
-            <button
-              onClick={() => {
-                if (!canSendMessages) {
-                  alert(getBlockMessage());
-                  return;
-                }
-                setShowAIEnhancement(true);
-              }}
-              className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group"
-              title="Enhance with AI"
-              disabled={!isConnected || !roomJoined || !canSendMessages}
-            >
-              <Sparkles size={20} className="text-purple-600 dark:text-purple-400" />
-              {newMessage.trim() && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
-              )}
-            </button>
+        {/* Message Input - Fixed */}
+        <div className={`flex-shrink-0 p-3 md:p-4 border-t border-[#f1f3f4] dark:border-[#181A1E] bg-white dark:bg-[#0c0c0c] ${isMobile ? 'sticky bottom-0 z-20' : ''}`}>
+          {isMobile ? (
+            /* Mobile Input Layout */
+            <>
+              {/* Input Controls */}
+              <div className="flex items-center gap-1 mb-2">
+                {/* AI Enhancement Button */}
+                <button
+                  onClick={() => {
+                    if (!canSendMessages) {
+                      alert(getBlockMessage());
+                      return;
+                    }
+                    setShowAIEnhancement(true);
+                  }}
+                  className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group"
+                  title="Enhance with AI"
+                  disabled={!isConnected || !roomJoined || !canSendMessages}
+                >
+                  <Sparkles size={18} className="text-purple-600 dark:text-purple-400" />
+                  {newMessage.trim() && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+                  )}
+                </button>
 
-            {/* Code Mode Button */}
-            <button
-              onClick={handleCodeModeToggle}
-              className={`p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors ${codeMode ? 'bg-green-100 dark:bg-green-900/30' : ''}`}
-              title="Code Mode"
-              disabled={!isConnected || !roomJoined || !canSendMessages}
-            >
-              <Code size={20} className={codeMode ? 'text-green-600 dark:text-green-400' : 'text-[#5f6368] dark:text-gray-400'} />
-            </button>
+                {/* Code Mode Button */}
+                <button
+                  onClick={handleCodeModeToggle}
+                  className={`p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors ${codeMode ? 'bg-green-100 dark:bg-green-900/30' : ''}`}
+                  title="Code Mode"
+                  disabled={!isConnected || !roomJoined || !canSendMessages}
+                >
+                  <Code size={18} className={codeMode ? 'text-green-600 dark:text-green-400' : 'text-[#5f6368] dark:text-gray-400'} />
+                </button>
 
-            {/* Attachment Button */}
-            <div className="relative" ref={attachmentPickerRef}>
-              <button
-                onClick={() => {
-                  if (!canSendMessages) {
-                    alert(getBlockMessage());
-                    return;
-                  }
-                  setShowAttachments(!showAttachments);
-                  setShowEmojiPicker(false);
-                  setShowGIFPicker(false);
-                }}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
-                disabled={!isConnected || !roomJoined || editingMessage || !canSendMessages}
-              >
-                <Paperclip size={20} className={!canSendMessages ? "text-gray-400 dark:text-gray-600" : "text-[#5f6368] dark:text-gray-400"} />
-              </button>
+                {/* Attachment Button */}
+                <div className="relative" ref={attachmentPickerRef}>
+                  <button
+                    onClick={() => {
+                      if (!canSendMessages) {
+                        alert(getBlockMessage());
+                        return;
+                      }
+                      setShowAttachments(!showAttachments);
+                      setShowEmojiPicker(false);
+                      setShowGIFPicker(false);
+                    }}
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
+                    disabled={!isConnected || !roomJoined || editingMessage || !canSendMessages}
+                  >
+                    <Paperclip size={18} className={!canSendMessages ? "text-gray-400 dark:text-gray-600" : "text-[#5f6368] dark:text-gray-400"} />
+                  </button>
 
-              {/* Attachment Picker Popup */}
-              {showAttachments && (
-                <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px] shadow-lg">
-                  <div className="space-y-2">
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
-                        <ImageIcon size={20} className="text-blue-600 dark:text-blue-400" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-sm font-medium text-[#202124] dark:text-white">Send Image</p>
-                        <p className="text-xs text-[#5f6368] dark:text-gray-400">Share photos</p>
-                      </div>
-                    </button>
+                  {showAttachments && (
+                    <div className="absolute bottom-12 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-2 min-w-[180px] shadow-lg">
+                      <div className="space-y-1">
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
+                            <ImageIcon size={16} className="text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p className="text-xs font-medium text-[#202124] dark:text-white">Image</p>
+                          </div>
+                        </button>
 
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
-                        <Video size={20} className="text-red-600 dark:text-red-400" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-sm font-medium text-[#202124] dark:text-white">Send Video</p>
-                        <p className="text-xs text-[#5f6368] dark:text-gray-400">Share videos</p>
-                      </div>
-                    </button>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
+                            <Video size={16} className="text-red-600 dark:text-red-400" />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p className="text-xs font-medium text-[#202124] dark:text-white">Video</p>
+                          </div>
+                        </button>
 
-                    {/* GIF Button */}
-                    <button
-                      onClick={() => {
-                        setShowGIFPicker(true);
-                        setShowAttachments(false);
-                      }}
-                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
-                        <span className="text-xl font-bold text-purple-600 dark:text-purple-400">GIF</span>
+                        <button
+                          onClick={() => {
+                            setShowGIFPicker(true);
+                            setShowAttachments(false);
+                          }}
+                          className="w-full flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
+                            <span className="text-sm font-bold text-purple-600 dark:text-purple-400">GIF</span>
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p className="text-xs font-medium text-[#202124] dark:text-white">GIF</p>
+                          </div>
+                        </button>
                       </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-sm font-medium text-[#202124] dark:text-white">Send GIF</p>
-                        <p className="text-xs text-[#5f6368] dark:text-gray-400">Animated GIFs</p>
-                      </div>
-                    </button>
-                  </div>
+                    </div>
+                  )}
+
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    accept="image/*,video/*"
+                    multiple
+                    className="hidden"
+                  />
                 </div>
-              )}
 
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                accept="image/*,video/*"
-                multiple
-                className="hidden"
-              />
-            </div>
+                {/* Emoji Button */}
+                <div className="relative" ref={emojiPickerRef}>
+                  <button
+                    onClick={() => {
+                      if (!canSendMessages) {
+                        alert(getBlockMessage());
+                        return;
+                      }
+                      setShowEmojiPicker(!showEmojiPicker);
+                      setShowAttachments(false);
+                      setShowGIFPicker(false);
+                    }}
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+                    disabled={!isConnected || !roomJoined || !canSendMessages}
+                  >
+                    <span className={`text-lg ${!canSendMessages ? 'opacity-50' : ''}`}>😊</span>
+                  </button>
+                  {showEmojiPicker && (
+                    <div className="absolute bottom-12 left-0 z-50">
+                      <EmojiPicker 
+                        onEmojiClick={onEmojiClick}
+                        width={280}
+                        height={350}
+                        theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'}
+                      />
+                    </div>
+                  )}
+                </div>
 
-            {/* GIF Picker */}
-            {showGIFPicker && (
-              <div 
-                ref={gifPickerRef}
-                className="absolute bottom-20 left-0 z-50"
-              >
-                <GIFPicker
-                  onSelect={handleSendGIF}
-                  onClose={() => setShowGIFPicker(false)}
-                />
+                {/* GIF Picker */}
+                {showGIFPicker && (
+                  <div 
+                    ref={gifPickerRef}
+                    className="absolute bottom-20 left-2 z-50"
+                  >
+                    <GIFPicker
+                      onSelect={handleSendGIF}
+                      onClose={() => setShowGIFPicker(false)}
+                    />
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Emoji Button */}
-            <div className="relative" ref={emojiPickerRef}>
+              {/* Text Input Row */}
+              <div className="flex items-center gap-2">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  onPaste={handlePaste}
+                  value={editingMessage ? editText : newMessage}
+                  onChange={editingMessage ? (e) => setEditText(e.target.value) : handleInputChange}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey && canSendMessages) {
+                      e.preventDefault();
+                      if (editingMessage) {
+                        handleEditMessage();
+                      } else if (attachments.length > 0) {
+                        handleSendWithAttachments();
+                      } else {
+                        handleSendMessage();
+                      }
+                    }
+                  }}
+                  placeholder={
+                    !canSendMessages 
+                      ? getBlockMessage()
+                      : (!isConnected ? "Connecting..." : !roomJoined ? "Joining..." : codeMode ? "Type your code..." : "Type a message...")
+                  }
+                  className="flex-1 px-3 py-2.5 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all text-sm"
+                  disabled={!isConnected || !roomJoined || uploading || !canSendMessages}
+                />
+                
+                <button
+                  onClick={editingMessage ? handleEditMessage : (attachments.length > 0 ? handleSendWithAttachments : handleSendMessage)}
+                  disabled={
+                    editingMessage 
+                      ? !editText.trim()
+                      : ((!newMessage.trim() && attachments.length === 0) || !isConnected || !roomJoined || uploading || !canSendMessages)
+                  }
+                  className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative"
+                >
+                  {uploading ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  ) : (
+                    <Send size={18} />
+                  )}
+                </button>
+              </div>
+            </>
+          ) : (
+            /* Desktop Input Layout */
+            <div className="flex items-center gap-2">
+              {/* AI Enhancement Button */}
               <button
                 onClick={() => {
                   if (!canSendMessages) {
                     alert(getBlockMessage());
                     return;
                   }
-                  setShowEmojiPicker(!showEmojiPicker);
-                  setShowAttachments(false);
-                  setShowGIFPicker(false);
+                  setShowAIEnhancement(true);
                 }}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+                className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group"
+                title="Enhance with AI"
                 disabled={!isConnected || !roomJoined || !canSendMessages}
               >
-                <span className={`text-xl ${!canSendMessages ? 'opacity-50' : ''}`}>😊</span>
+                <Sparkles size={20} className="text-purple-600 dark:text-purple-400" />
+                {newMessage.trim() && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+                )}
               </button>
-              {showEmojiPicker && (
-                <div className="absolute bottom-12 left-0 z-50">
-                  <EmojiPicker 
-                    onEmojiClick={onEmojiClick}
-                    theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'}
+
+              {/* Code Mode Button */}
+              <button
+                onClick={handleCodeModeToggle}
+                className={`p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors ${codeMode ? 'bg-green-100 dark:bg-green-900/30' : ''}`}
+                title="Code Mode"
+                disabled={!isConnected || !roomJoined || !canSendMessages}
+              >
+                <Code size={20} className={codeMode ? 'text-green-600 dark:text-green-400' : 'text-[#5f6368] dark:text-gray-400'} />
+              </button>
+
+              {/* Attachment Button */}
+              <div className="relative" ref={attachmentPickerRef}>
+                <button
+                  onClick={() => {
+                    if (!canSendMessages) {
+                      alert(getBlockMessage());
+                      return;
+                    }
+                    setShowAttachments(!showAttachments);
+                    setShowEmojiPicker(false);
+                    setShowGIFPicker(false);
+                  }}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
+                  disabled={!isConnected || !roomJoined || editingMessage || !canSendMessages}
+                >
+                  <Paperclip size={20} className={!canSendMessages ? "text-gray-400 dark:text-gray-600" : "text-[#5f6368] dark:text-gray-400"} />
+                </button>
+
+                {/* Attachment Picker Popup */}
+                {showAttachments && (
+                  <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px] shadow-lg">
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
+                          <ImageIcon size={20} className="text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium text-[#202124] dark:text-white">Send Image</p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">Share photos</p>
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
+                          <Video size={20} className="text-red-600 dark:text-red-400" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium text-[#202124] dark:text-white">Send Video</p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">Share videos</p>
+                        </div>
+                      </button>
+
+                      {/* GIF Button */}
+                      <button
+                        onClick={() => {
+                          setShowGIFPicker(true);
+                          setShowAttachments(false);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
+                          <span className="text-xl font-bold text-purple-600 dark:text-purple-400">GIF</span>
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium text-[#202124] dark:text-white">Send GIF</p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">Animated GIFs</p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  accept="image/*,video/*"
+                  multiple
+                  className="hidden"
+                />
+              </div>
+
+              {/* GIF Picker */}
+              {showGIFPicker && (
+                <div 
+                  ref={gifPickerRef}
+                  className="absolute bottom-20 left-0 z-50"
+                >
+                  <GIFPicker
+                    onSelect={handleSendGIF}
+                    onClose={() => setShowGIFPicker(false)}
                   />
                 </div>
               )}
-            </div>
-            
-            {/* Text Input */}
-            <input
-              ref={inputRef}
-              type="text"
-              onPaste={handlePaste}
-              value={editingMessage ? editText : newMessage}
-              onChange={editingMessage ? (e) => setEditText(e.target.value) : handleInputChange}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && canSendMessages) {
-                  e.preventDefault();
-                  if (editingMessage) {
-                    handleEditMessage();
-                  } else if (attachments.length > 0) {
-                    handleSendWithAttachments();
-                  } else {
-                    handleSendMessage();
+
+              {/* Emoji Button */}
+              <div className="relative" ref={emojiPickerRef}>
+                <button
+                  onClick={() => {
+                    if (!canSendMessages) {
+                      alert(getBlockMessage());
+                      return;
+                    }
+                    setShowEmojiPicker(!showEmojiPicker);
+                    setShowAttachments(false);
+                    setShowGIFPicker(false);
+                  }}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+                  disabled={!isConnected || !roomJoined || !canSendMessages}
+                >
+                  <span className={`text-xl ${!canSendMessages ? 'opacity-50' : ''}`}>😊</span>
+                </button>
+                {showEmojiPicker && (
+                  <div className="absolute bottom-12 left-0 z-50">
+                    <EmojiPicker 
+                      onEmojiClick={onEmojiClick}
+                      width={320}
+                      height={400}
+                      theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'}
+                    />
+                  </div>
+                )}
+              </div>
+              
+              {/* Text Input */}
+              <input
+                ref={inputRef}
+                type="text"
+                onPaste={handlePaste}
+                value={editingMessage ? editText : newMessage}
+                onChange={editingMessage ? (e) => setEditText(e.target.value) : handleInputChange}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && canSendMessages) {
+                    e.preventDefault();
+                    if (editingMessage) {
+                      handleEditMessage();
+                    } else if (attachments.length > 0) {
+                      handleSendWithAttachments();
+                    } else {
+                      handleSendMessage();
+                    }
                   }
+                }}
+                placeholder={
+                  !canSendMessages 
+                    ? getBlockMessage()
+                    : (!isConnected ? "Connecting..." : !roomJoined ? "Joining chat..." : codeMode ? "Type your code here... (```auto-detected)" : "Type a message... (✨ for AI, 📷 for GIF, </> for code)")
                 }
-              }}
-              placeholder={
-                !canSendMessages 
-                  ? getBlockMessage()
-                  : (!isConnected ? "Connecting..." : !roomJoined ? "Joining chat..." : codeMode ? "Type your code here... (```auto-detected)" : "Type a message... (✨ for AI, 📷 for GIF, </> for code)")
-              }
-              className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
-              disabled={!isConnected || !roomJoined || uploading || !canSendMessages}
-            />
-            
-            {/* Send Button */}
-            <button
-              onClick={editingMessage ? handleEditMessage : (attachments.length > 0 ? handleSendWithAttachments : handleSendMessage)}
-              disabled={
-                editingMessage 
-                  ? !editText.trim()
-                  : ((!newMessage.trim() && attachments.length === 0) || !isConnected || !roomJoined || uploading || !canSendMessages)
-              }
-              className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative"
-            >
-              {uploading ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-              ) : (
-                <Send size={20} />
-              )}
-            </button>
-          </div>
+                className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
+                disabled={!isConnected || !roomJoined || uploading || !canSendMessages}
+              />
+              
+              {/* Send Button */}
+              <button
+                onClick={editingMessage ? handleEditMessage : (attachments.length > 0 ? handleSendWithAttachments : handleSendMessage)}
+                disabled={
+                  editingMessage 
+                    ? !editText.trim()
+                    : ((!newMessage.trim() && attachments.length === 0) || !isConnected || !roomJoined || uploading || !canSendMessages)
+                }
+                className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative"
+              >
+                {uploading ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                ) : (
+                  <Send size={20} />
+                )}
+              </button>
+            </div>
+          )}
 
           {!isConnected && (
             <div className="absolute -top-8 left-0 right-0 text-center">
-              <span className="text-xs text-red-500 bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded-full">
-                ⚠️ Reconnecting to server...
+              <span className="text-[10px] md:text-xs text-red-500 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded-full">
+                ⚠️ Reconnecting...
               </span>
             </div>
           )}
           
           {isConnected && !roomJoined && canSendMessages && (
             <div className="absolute -top-8 left-0 right-0 text-center">
-              <span className="text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/30 px-3 py-1 rounded-full">
-                ⏳ Joining chat room...
+              <span className="text-[10px] md:text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/30 px-2 py-1 rounded-full">
+                ⏳ Joining chat...
               </span>
             </div>
           )}
@@ -2879,7 +3034,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         onVerificationChange={handleVerificationChange}
       />
 
-      {/* Add CSS styles for highlighting */}
+      {/* Add CSS styles */}
       <style jsx>{`
         mark {
           background-color: #fbbf24;
@@ -2927,7 +3082,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           overflow: hidden;
         }
         
-        /* GIF playback states */
         img[data-is-paused="true"] {
           filter: saturate(0.8);
           transition: filter 0.3s ease;
@@ -2945,7 +3099,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           text-decoration: underline;
         }
         
-        /* Ensure links in messages are properly styled */
         .message-content a {
           color: #1a73e8;
           word-break: break-all;
@@ -2955,7 +3108,6 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           color: #8ab4f8;
         }
         
-        /* Line clamp utilities */
         .line-clamp-1 {
           display: -webkit-box;
           -webkit-line-clamp: 1;
@@ -2970,20 +3122,55 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           overflow: hidden;
         }
         
-        /* Ensure code blocks don't overflow */
         .max-w-[70%] {
           max-width: min(70%, 600px);
         }
         
-        /* Better inline code styling */
+        @media (max-width: 768px) {
+          .max-w-[70%] {
+            max-width: 85%;
+          }
+        }
+        
         code {
           font-family: 'Fira Code', 'Courier New', monospace;
         }
         
-        /* Ensure line breaks are preserved in text */
         .whitespace-pre-wrap {
           white-space: pre-wrap !important;
           word-break: break-word;
+        }
+
+        /* Animation for fade in */
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .animate-fade-in {
+          animation: fadeIn 0.3s ease-out;
+        }
+
+        /* Safe area for mobile devices */
+        @supports (padding: max(0px)) {
+          .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom);
+          }
+          
+          .pt-safe {
+            padding-top: env(safe-area-inset-top);
+          }
+        }
+
+        /* Prevent body scroll when chat is open on mobile */
+        body:has(.fixed.inset-0) {
+          overflow: hidden;
         }
       `}</style>
     </>

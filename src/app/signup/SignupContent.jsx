@@ -54,69 +54,103 @@ export default function SignupContent() {
     setStep(2);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccessMessage('');
+ const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError('');
+  setSuccessMessage('');
 
-    if (!formData.password || !formData.confirmPassword) {
-      setError('Password and confirmation are required');
-      return;
-    }
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
+  if (!formData.password || !formData.confirmPassword) {
+    setError('Password and confirmation are required');
+    return;
+  }
+  if (formData.password !== formData.confirmPassword) {
+    setError('Passwords do not match');
+    return;
+  }
+  if (formData.password.length < 6) {
+    setError('Password must be at least 6 characters');
+    return;
+  }
 
-    setLoading(true);
+  setLoading(true);
+  console.log('Attempting signup with:', formData.email);
 
+  try {
+    // Add timeout to fetch
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+    const response = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        referralCode: formData.referralCode || undefined,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    console.log('Signup response status:', response.status);
+    
+    let data;
     try {
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          referralCode: formData.referralCode || undefined,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || 'Signup failed');
-        setLoading(false);
-        return;
-      }
-
-      // Store user name in localStorage for welcome page
-      localStorage.setItem('userName', data.user.name);
-      localStorage.setItem('userEmail', data.user.email);
-
-      // Show success message if there's one from the API
-      if (data.message) {
-        setSuccessMessage(data.message);
-      }
-
-      // Use the login function from context
-      login(data.user);
-
-      // Short delay to show success message before redirect
-      setTimeout(() => {
-        router.push('/welcome');
-      }, 1500);
-      
-    } catch (err) {
-      console.error('Signup error:', err);
-      setError('Something went wrong. Please try again.');
+      data = await response.json();
+      console.log('Signup response data:', data);
+    } catch (e) {
+      console.error('Failed to parse response:', e);
+      setError('Server returned an invalid response');
       setLoading(false);
+      return;
     }
-  };
+
+    if (!response.ok) {
+      setError(data.error || `Signup failed (${response.status})`);
+      setLoading(false);
+      return;
+    }
+
+    if (!data.user) {
+      setError('No user data received');
+      setLoading(false);
+      return;
+    }
+
+    // Store user data in localStorage
+    localStorage.setItem('userName', data.user.name || formData.name);
+    localStorage.setItem('userEmail', data.user.email);
+    if (data.user.id) localStorage.setItem('userId', data.user.id);
+
+    // Show success message if there's one from the API
+    if (data.message) {
+      setSuccessMessage(data.message);
+    }
+
+    // Use the login function from context
+    login(data.user);
+
+    console.log('Signup successful, redirecting to welcome...');
+
+    // Redirect to welcome page
+    router.push('/welcome');
+    
+  } catch (err) {
+    console.error('Signup error details:', err);
+    
+    if (err.name === 'AbortError') {
+      setError('Request timed out. Please check your connection.');
+    } else if (err.message === 'Failed to fetch') {
+      setError('Network error. Please check if the server is running.');
+    } else {
+      setError(err.message || 'Something went wrong. Please try again.');
+    }
+    
+    setLoading(false);
+  }
+};
 
   const handleCopyCode = () => {
     if (referralCodeFromUrl) {

@@ -1,8 +1,8 @@
 // app/api/auth/signup/route.js
-
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import clientPromise from '@/lib/mongodb';
+import { createToken, setTokenCookie } from '@/lib/auth';
 
 export async function POST(request) {
   try {
@@ -72,7 +72,6 @@ export async function POST(request) {
     } catch (keyError) {
       console.error('❌ Failed to generate encryption keys:', keyError);
       // Continue with signup even if key generation fails
-      // We can retry key generation later
     }
 
     // Initial points (start with 0)
@@ -86,7 +85,7 @@ export async function POST(request) {
       if (referrer) {
         referredBy = referrer.userId;
         
-        // NEW: Give 50 points to the new user
+        // Give 50 points to the new user
         initialPoints = 50;
         
         // Create points history entry for new user's referral bonus
@@ -177,9 +176,10 @@ export async function POST(request) {
     }
 
     // Create referral record for new user (for their own referral code)
+    const referralCode_ = userId.replace('user_', '').slice(0, 8).toUpperCase();
     await referrals.insertOne({
       userId,
-      referralCode: userId.replace('user_', '').slice(0, 8).toUpperCase(),
+      referralCode: referralCode_,
       referrals: [],
       totalReferrals: 0,
       referralPoints: 0,
@@ -187,20 +187,44 @@ export async function POST(request) {
       updatedAt: new Date()
     });
 
-    // Return user without password
-    const { password: _, ...userWithoutPassword } = newUser;
+    // Create token for authentication
+    const token = createToken({
+      id: userId,
+      email: email.toLowerCase(),
+      name: name.trim(),
+    });
 
-    return NextResponse.json({
+    // Prepare user data for response
+    const userData = {
+      id: userId,
+      email: email.toLowerCase(),
+      name: name.trim(),
+      preferredName: name.trim(),
+      points: initialPoints,
+      history: referralBonusEntry ? [referralBonusEntry] : [],
+      onboardingCompleted: false,
+      createdAt: newUser.createdAt,
+      referredBy: referredBy,
+      referralCode: referralCode_,
+    };
+
+    // Create response
+    const response = NextResponse.json({
       success: true,
-      user: userWithoutPassword,
+      user: userData,
       message: referralCode 
         ? 'Account created successfully! You received 50 bonus points from your referral! 🎉' 
         : 'Account created successfully!',
     });
+
+    // Set the authentication cookie using your existing function
+    setTokenCookie(response, token);
+
+    return response;
   } catch (error) {
     console.error('Signup error:', error);
     return NextResponse.json(
-      { error: 'Failed to create account', details: error.message },
+      { error: 'Failed to create account' },
       { status: 500 }
     );
   }

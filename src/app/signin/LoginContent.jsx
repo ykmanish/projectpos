@@ -32,28 +32,56 @@ export default function LoginContent() {
     }
 
     setLoading(true);
+    console.log('Attempting signin with:', formData.email);
 
     try {
+      // Add timeout to fetch
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
       const response = await fetch('/api/auth/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
+        signal: controller.signal,
       });
 
-      const data = await response.json();
+      clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        setError(data.error || 'Sign in failed');
+      console.log('Signin response status:', response.status);
+      
+      let data;
+      try {
+        data = await response.json();
+        console.log('Signin response data:', data);
+      } catch (e) {
+        console.error('Failed to parse response:', e);
+        setError('Server returned an invalid response');
         setLoading(false);
         return;
       }
 
-      // Store user name in localStorage for welcome page
-      localStorage.setItem('userName', data.user.name);
+      if (!response.ok) {
+        setError(data.error || `Sign in failed (${response.status})`);
+        setLoading(false);
+        return;
+      }
+
+      if (!data.user) {
+        setError('No user data received');
+        setLoading(false);
+        return;
+      }
+
+      // Store user data in localStorage
+      localStorage.setItem('userName', data.user.name || data.user.email);
       localStorage.setItem('userEmail', data.user.email);
+      if (data.user.id) localStorage.setItem('userId', data.user.id);
       
       // Use the login function from context
       login(data.user);
+
+      console.log('Login successful, onboardingCompleted:', data.user.onboardingCompleted);
 
       // Check if onboarding is completed
       if (!data.user.onboardingCompleted) {
@@ -62,8 +90,16 @@ export default function LoginContent() {
         router.push('/');
       }
     } catch (err) {
-      console.error('Signin error:', err);
-      setError('Something went wrong. Please try again.');
+      console.error('Signin error details:', err);
+      
+      if (err.name === 'AbortError') {
+        setError('Request timed out. Please check your connection.');
+      } else if (err.message === 'Failed to fetch') {
+        setError('Network error. Please check if the server is running.');
+      } else {
+        setError(err.message || 'Something went wrong. Please try again.');
+      }
+      
       setLoading(false);
     }
   };
@@ -118,6 +154,7 @@ export default function LoginContent() {
                 onChange={handleChange}
                 placeholder="you@example.com"
                 className="w-full px-4 py-4 border border-[#dadce0] rounded-2xl focus:ring-2 focus:ring-[#1a73e8] focus:border-[#1a73e8] focus:outline-none text-[#202124] transition-all"
+                disabled={loading}
               />
             </div>
 
@@ -133,11 +170,13 @@ export default function LoginContent() {
                   onChange={handleChange}
                   placeholder="••••••••"
                   className="w-full px-4 py-4 border border-[#dadce0] rounded-2xl focus:ring-2 focus:ring-[#1a73e8] focus:border-[#1a73e8] focus:outline-none text-[#202124] transition-all pr-12"
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-[#5f6368] hover:text-[#202124]"
+                  disabled={loading}
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>

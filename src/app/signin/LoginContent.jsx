@@ -73,19 +73,24 @@ export default function LoginContent() {
       localStorage.setItem('userName', data.user.name || data.user.email);
       localStorage.setItem('userEmail', data.user.email);
       if (data.user.id) localStorage.setItem('userId', data.user.id);
+      if (data.user.onboardingCompleted) {
+        localStorage.setItem('onboardingCompleted', 'true');
+      }
 
       login(data.user);
 
       console.log('Login successful, onboardingCompleted:', data.user.onboardingCompleted);
 
-      // ✅ FIXED: Reset loading before navigation
       setLoading(false);
 
+      // ✅ FIXED: Hard navigation — ensures middleware reads the fresh
+      // httpOnly cookie correctly on production (AWS/HTTPS)
       if (!data.user.onboardingCompleted) {
-        router.push('/welcome');
+        window.location.href = '/welcome';
       } else {
-        router.push('/');
+        window.location.href = '/';
       }
+
     } catch (err) {
       console.error('Signin error details:', err);
 

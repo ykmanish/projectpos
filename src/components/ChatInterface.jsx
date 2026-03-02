@@ -1494,7 +1494,7 @@ export default function ChatInterface({
       return;
 
     const now = new Date().toISOString();
-    const originalMessage = newMessage.trim();
+    const originalMessage = newMessage; // Keep original formatting including newlines
 
     let encryptedContent = null;
     let contentForDB = originalMessage;
@@ -1626,7 +1626,7 @@ export default function ChatInterface({
     ];
 
     const now = new Date().toISOString();
-    const originalMessage = newMessage.trim();
+    const originalMessage = newMessage; // Keep original formatting including newlines
 
     let encryptedContent = null;
     let contentForDB = originalMessage;
@@ -1730,7 +1730,7 @@ export default function ChatInterface({
 
     const updatedMessage = {
       ...editingMessage,
-      content: editText.trim(),
+      content: editText,
       edited: true,
       editedAt: new Date().toISOString(),
     };
@@ -1739,7 +1739,7 @@ export default function ChatInterface({
       roomId,
       timestamp: editingMessage.timestamp,
       senderId: editingMessage.senderId,
-      content: editText.trim(),
+      content: editText,
       isGroupMessage: false,
     });
 
@@ -1751,7 +1751,7 @@ export default function ChatInterface({
           roomId,
           timestamp: editingMessage.timestamp,
           senderId: editingMessage.senderId,
-          content: editText.trim(),
+          content: editText,
           isGroupMessage: false,
         }),
       });
@@ -2310,9 +2310,8 @@ export default function ChatInterface({
   return (
     <>
       <div
-        className={`h-full flex flex-col bg-white dark:bg-[#0c0c0c] rounded-3xl  border-none dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300 ${isMobile ? "fixed inset-0 z-50 rounded-none" : ""}`}
+        className={`h-full flex flex-col bg-white dark:bg-[#0c0c0c] rounded-3xl border-none dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300 ${isMobile ? "fixed inset-0 z-50 rounded-none" : ""}`}
       >
-        {/* Chat Header - Fixed */}
         {/* Chat Header - Fixed */}
         <div
           className={`flex-shrink-0 p-3 md:p-4 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between bg-white dark:bg-[#0c0c0c] ${isMobile ? "sticky top-0 z-20" : ""}`}
@@ -2756,18 +2755,18 @@ export default function ChatInterface({
               <p className="text-[10px] md:text-xs text-blue-600 dark:text-blue-400 mb-1">
                 Editing message
               </p>
-              <input
-                type="text"
+              <textarea
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
                     e.preventDefault();
                     handleEditMessage();
                   }
                 }}
-                className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-blue-300 dark:border-blue-700 bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-xl focus:ring focus:ring-blue-200 dark:focus:ring-blue-900 focus:border-blue-400 dark:focus:border-blue-600 focus:outline-none text-xs md:text-sm"
+                className="w-full px-2 md:px-3 py-1.5 md:py-2 border border-blue-300 dark:border-blue-700 bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-xl focus:ring focus:ring-blue-200 dark:focus:ring-blue-900 focus:border-blue-400 dark:focus:border-blue-600 focus:outline-none text-xs md:text-sm resize-none min-h-[44px] max-h-32"
                 autoFocus
+                rows={1}
               />
             </div>
             <button
@@ -2789,15 +2788,14 @@ export default function ChatInterface({
         )}
 
         {/* Message Input - Fixed */}
-        {/* Message Input - Fixed */}
         <div
-          className={`flex-shrink-0 p-3 md:p-4 border-t border-[#f1f3f4] dark:border-[#181A1E]  ${isMobile ? "sticky bottom-0 z-20" : ""}`}
+          className={`flex-shrink-0 p-3 md:p-4 border-t border-[#f1f3f4] dark:border-[#181A1E] ${isMobile ? "sticky bottom-0 z-20" : ""}`}
         >
           {isMobile ? (
             /* Mobile Input Layout - WhatsApp Style */
-            <div className="flex items-center gap-1 ">
+            <div className="flex items-end">
               {/* Input Container with integrated buttons */}
-              <div className="flex-1 flex items-center bg-gray-100 dark:bg-[#1a1a1a] rounded-3xl px-2 min-h-[44px]">
+              <div className="flex-1 flex items-end bg-gray-100 dark:bg-[#1a1a1a] rounded-3xl px-2 min-h-[44px]">
                 {/* AI Enhancement Button */}
                 <button
                   onClick={() => {
@@ -2807,7 +2805,7 @@ export default function ChatInterface({
                     }
                     setShowAIEnhancement(true);
                   }}
-                  className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors relative"
+                  className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors relative self-center"
                   disabled={!isConnected || !roomJoined || !canSendMessages}
                 >
                   <Sparkles
@@ -2819,12 +2817,9 @@ export default function ChatInterface({
                   )}
                 </button>
 
-                {/* Code Mode Button */}
-
-                {/* Text Input */}
-                <input
+                {/* Text Input - Changed to textarea */}
+                <textarea
                   ref={inputRef}
-                  type="text"
                   onPaste={handlePaste}
                   value={editingMessage ? editText : newMessage}
                   onChange={
@@ -2832,9 +2827,21 @@ export default function ChatInterface({
                       ? (e) => setEditText(e.target.value)
                       : handleInputChange
                   }
-                  onKeyPress={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && canSendMessages) {
+                  onKeyDown={(e) => {
+                    // Check for Ctrl+Shift+Enter to add new line
+                    if (e.key === 'Enter' && e.ctrlKey && e.shiftKey) {
+                      // Allow default behavior (new line)
+                      return;
+                    }
+                    // Regular Enter to send
+                    else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
                       e.preventDefault();
+
+                      if (!canSendMessages) {
+                        alert(getBlockMessage());
+                        return;
+                      }
+
                       if (editingMessage) {
                         handleEditMessage();
                       } else if (attachments.length > 0) {
@@ -2851,16 +2858,17 @@ export default function ChatInterface({
                         ? "Connecting..."
                         : !roomJoined
                           ? "Joining..."
-                          : "Message"
+                          : "Message..."
                   }
-                  className="flex-1 bg-transparent text-[#202124] dark:text-white placeholder-gray-500 dark:placeholder-gray-400 py-3 px-1 focus:outline-none text-base"
+                  className="flex-1 bg-transparent text-[#202124] dark:text-white placeholder-gray-500 dark:placeholder-gray-400 py-3 px-1 focus:outline-none text-base resize-none max-h-32"
                   disabled={
                     !isConnected || !roomJoined || uploading || !canSendMessages
                   }
+                  rows={1}
                 />
 
                 {/* Attachment Button */}
-                <div className="relative" ref={attachmentPickerRef}>
+                <div className="relative self-center" ref={attachmentPickerRef}>
                   <button
                     onClick={() => {
                       if (!canSendMessages) {
@@ -2955,7 +2963,7 @@ export default function ChatInterface({
                 </div>
 
                 {/* Emoji Button */}
-                <div className="relative" ref={emojiPickerRef}>
+                <div className="relative self-center" ref={emojiPickerRef}>
                   <button
                     onClick={() => {
                       if (!canSendMessages) {
@@ -2997,8 +3005,8 @@ export default function ChatInterface({
               </div>
             </div>
           ) : (
-            /* Desktop Input Layout - Keep existing desktop code */
-            <div className="flex items-center gap-2">
+            /* Desktop Input Layout */
+            <div className="flex items-end gap-2">
               {/* AI Enhancement Button */}
               <button
                 onClick={() => {
@@ -3008,7 +3016,7 @@ export default function ChatInterface({
                   }
                   setShowAIEnhancement(true);
                 }}
-                className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group"
+                className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group self-center"
                 title="Enhance with AI"
                 disabled={!isConnected || !roomJoined || !canSendMessages}
               >
@@ -3025,7 +3033,7 @@ export default function ChatInterface({
               
 
               {/* Attachment Button */}
-              <div className="relative" ref={attachmentPickerRef}>
+              <div className="relative self-center" ref={attachmentPickerRef}>
                 <button
                   onClick={() => {
                     if (!canSendMessages) {
@@ -3141,7 +3149,7 @@ export default function ChatInterface({
                   className={`absolute z-50 ${
                     isMobile
                       ? "bottom-24 left-1/2 transform -translate-x-1/2 w-[calc(100%-32px)] max-w-[350px]"
-                      : "bottom-28 right-80" // Position it near the attachment button
+                      : "bottom-28 right-80"
                   }`}
                 >
                   <GIFPicker
@@ -3152,7 +3160,7 @@ export default function ChatInterface({
               )}
 
               {/* Emoji Button */}
-              <div className="relative" ref={emojiPickerRef}>
+              <div className="relative self-center" ref={emojiPickerRef}>
                 <button
                   onClick={() => {
                     if (!canSendMessages) {
@@ -3172,12 +3180,16 @@ export default function ChatInterface({
                     😊
                   </span>
                 </button>
+
                 {showEmojiPicker && (
-                  <div className="absolute bottom-12 left-0 z-50">
+                  <div className="absolute bottom-14 left-0 z-50">
                     <EmojiPicker
                       onEmojiClick={onEmojiClick}
                       width={320}
                       height={400}
+                      searchDisabled
+                      skinTonesDisabled
+                      previewConfig={{ showPreview: false }}
                       theme={
                         document.documentElement.classList.contains("dark")
                           ? "dark"
@@ -3188,10 +3200,9 @@ export default function ChatInterface({
                 )}
               </div>
 
-              {/* Text Input */}
-              <input
+              {/* Text Input - Changed to textarea */}
+              <textarea
                 ref={inputRef}
-                type="text"
                 onPaste={handlePaste}
                 value={editingMessage ? editText : newMessage}
                 onChange={
@@ -3199,9 +3210,21 @@ export default function ChatInterface({
                     ? (e) => setEditText(e.target.value)
                     : handleInputChange
                 }
-                onKeyPress={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && canSendMessages) {
+                onKeyDown={(e) => {
+                  // Check for Ctrl+Shift+Enter to add new line
+                  if (e.key === 'Enter' && e.ctrlKey && e.shiftKey) {
+                    // Allow default behavior (new line)
+                    return;
+                  }
+                  // Regular Enter to send
+                  else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
                     e.preventDefault();
+
+                    if (!canSendMessages) {
+                      alert(getBlockMessage());
+                      return;
+                    }
+
                     if (editingMessage) {
                       handleEditMessage();
                     } else if (attachments.length > 0) {
@@ -3218,12 +3241,13 @@ export default function ChatInterface({
                       ? "Connecting..."
                       : !roomJoined
                         ? "Joining chat..."
-                        : "Type a message... (✨ for AI, 📷 for GIF, </> for code)"
+                        : "Type a message..."
                 }
-                className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
+                className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all resize-none min-h-[44px] max-h-32"
                 disabled={
                   !isConnected || !roomJoined || uploading || !canSendMessages
                 }
+                rows={1}
               />
 
               {/* Send Button */}
@@ -3244,7 +3268,7 @@ export default function ChatInterface({
                       uploading ||
                       !canSendMessages
                 }
-                className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative"
+                className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative self-center"
               >
                 {uploading ? (
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
@@ -3396,6 +3420,42 @@ export default function ChatInterface({
 
       {/* Add CSS styles */}
       <style jsx>{`
+        textarea {
+          field-sizing: content;
+        }
+
+        @supports not (field-sizing: content) {
+          textarea {
+            resize: none;
+            overflow-y: auto;
+          }
+        }
+
+        textarea::-webkit-scrollbar {
+          width: 4px;
+        }
+
+        textarea::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        textarea::-webkit-scrollbar-thumb {
+          background: #ccc;
+          border-radius: 4px;
+        }
+
+        .dark textarea::-webkit-scrollbar-thumb {
+          background: #444;
+        }
+
+        textarea::-webkit-scrollbar-thumb:hover {
+          background: #999;
+        }
+
+        .dark textarea::-webkit-scrollbar-thumb:hover {
+          background: #555;
+        }
+
         mark {
           background-color: #fbbf24;
           color: inherit;

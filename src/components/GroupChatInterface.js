@@ -4095,479 +4095,491 @@ export default function GroupChatInterface({
             </div>
           )}
 
-          {isMobile ? (
-            /* Mobile Input Layout - WhatsApp Style */
-            <div className="flex items-center">
-              {/* Input Container with integrated buttons */}
-              <div className="flex-1 flex items-center bg-gray-100 dark:bg-[#1a1a1a] rounded-3xl px-2 mb-2 min-h-[44px]">
-                {/* AI Enhancement Button */}
-                <button
-                  onClick={() => {
-                    if (!canSendMessage()) {
-                      alert(groupData.settings?.onlyAdminsCanMessage ? 
-                        "Only admins can send messages" : 
-                        slowModeSettings.enabled ? `Slow mode active (${timeRemaining}s)` : "Cannot send messages");
-                      return;
-                    }
-                    setShowAIEnhancement(true);
-                  }}
-                  className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors relative"
-                  disabled={!isConnected || !roomJoined || !canSendMessage()}
-                >
-                  <Sparkles
-                    size={20}
-                    className="text-purple-600 dark:text-purple-400"
-                  />
-                  {newMessage.trim() && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
-                  )}
-                </button>
+        {isMobile ? (
+  /* Mobile Input Layout - WhatsApp Style */
+  <div className="flex items-end pb-3">
+    {/* Input Container with integrated buttons */}
+    <div className="flex-1 flex items-end  bg-gray-100 dark:bg-[#1a1a1a] rounded-3xl px-2 min-h-[44px]">
+      {/* AI Enhancement Button */}
+      <button
+        onClick={() => {
+          if (!canSendMessage()) {
+            alert(groupData.settings?.onlyAdminsCanMessage ? 
+              "Only admins can send messages" : 
+              slowModeSettings.enabled ? `Slow mode active (${timeRemaining}s)` : "Cannot send messages");
+            return;
+          }
+          setShowAIEnhancement(true);
+        }}
+        className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors relative self-center"
+        disabled={!isConnected || !roomJoined || !canSendMessage()}
+      >
+        <Sparkles
+          size={20}
+          className="text-purple-600 dark:text-purple-400"
+        />
+        {newMessage.trim() && (
+          <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+        )}
+      </button>
 
-                {/* Text Input */}
-                <input
-                  ref={inputRef}
-                  type="text"
-                  onPaste={handlePaste}
-                  value={editingMessage ? editText : newMessage}
-                  onChange={
-                    editingMessage
-                      ? (e) => setEditText(e.target.value)
-                      : handleInputChange
-                  }
-                  onKeyPress={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
+      {/* Text Input - Changed to textarea */}
+      <textarea
+        ref={inputRef}
+        onPaste={handlePaste}
+        value={editingMessage ? editText : newMessage}
+        onChange={
+          editingMessage
+            ? (e) => setEditText(e.target.value)
+            : handleInputChange
+        }
+        onKeyDown={(e) => {
+          // Check for Ctrl+Shift+Enter to add new line
+          if (e.key === 'Enter' && e.ctrlKey && e.shiftKey) {
+            // Allow default behavior (new line)
+            return;
+          }
+          // Regular Enter to send
+          else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
+            e.preventDefault();
 
-                      // Check for slash command
-                      if (
-                        newMessage.startsWith("/") &&
-                        handleSlashCommand(newMessage)
-                      ) {
-                        return;
-                      }
+            // Check for slash command
+            if (
+              newMessage.startsWith("/") &&
+              handleSlashCommand(newMessage)
+            ) {
+              return;
+            }
 
-                      if (editingMessage) {
-                        handleEditMessage();
-                      } else if (attachments.length > 0) {
-                        handleSendWithAttachments();
-                      } else {
-                        handleSendMessage();
-                      }
-                    }
-                  }}
-                  placeholder={
-                    !isConnected
-                      ? "Connecting..."
-                      : !roomJoined
-                        ? "Joining chat..."
-                        : !canSendMessage()
-                          ? isCurrentUserAdmin
-                            ? "Admin (bypassing restrictions)"
-                            : groupData.settings?.onlyAdminsCanMessage
-                              ? "🔒 Only admins can message"
-                              : slowModeSettings.enabled && !canSendInSlowMode()
-                                ? `Slow mode (${timeRemaining}s)`
-                                : "Cannot send"
-                          : isCurrentUserAdmin
-                            ? "Message as admin..."
-                            : "Message..."
-                  }
-                  className="flex-1 bg-transparent text-[#202124] dark:text-white placeholder-gray-500 dark:placeholder-gray-400 py-3 px-1 focus:outline-none text-base"
-                  disabled={
-                    !isConnected ||
-                    !roomJoined ||
-                    uploading ||
-                    !canSendMessage()
-                  }
+            if (editingMessage) {
+              handleEditMessage();
+            } else if (attachments.length > 0) {
+              handleSendWithAttachments();
+            } else {
+              handleSendMessage();
+            }
+          }
+        }}
+        placeholder={
+          !isConnected
+            ? "Connecting..."
+            : !roomJoined
+              ? "Joining chat..."
+              : !canSendMessage()
+                ? isCurrentUserAdmin
+                  ? "Admin (bypassing restrictions)"
+                  : groupData.settings?.onlyAdminsCanMessage
+                    ? "🔒 Only admins can message"
+                    : slowModeSettings.enabled && !canSendInSlowMode()
+                      ? `Slow mode (${timeRemaining}s)`
+                      : "Cannot send"
+                : isCurrentUserAdmin
+                  ? "Message as admin..."
+                  : "Message... "
+        }
+        className="flex-1 bg-transparent text-[#202124] dark:text-white placeholder-gray-500 dark:placeholder-gray-400 py-3 px-1 focus:outline-none text-base resize-none max-h-32"
+        disabled={
+          !isConnected ||
+          !roomJoined ||
+          uploading ||
+          !canSendMessage()
+        }
+        rows={1}
+      />
+
+      {/* Attachment Button */}
+      <div className="relative self-center" ref={attachmentPickerRef}>
+        <button
+          onClick={() => {
+            if (!canSendMessage()) {
+              alert(groupData.settings?.onlyAdminsCanMessage ? 
+                "Only admins can send messages" : 
+                slowModeSettings.enabled ? `Slow mode active (${timeRemaining}s)` : "Cannot send messages");
+              return;
+            }
+            setShowAttachments(!showAttachments);
+            setShowEmojiPicker(false);
+            setShowGIFPicker(false);
+          }}
+          className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors"
+          disabled={
+            !isConnected ||
+            !roomJoined ||
+            editingMessage ||
+            !canSendMessage()
+          }
+        >
+          <Paperclip
+            size={20}
+            className={
+              !canSendMessage()
+                ? "text-gray-400 dark:text-gray-600"
+                : "text-[#5f6368] dark:text-gray-400"
+            }
+          />
+        </button>
+
+        {/* Mobile Attachment Picker - Compact version like ChatInterface */}
+        {showAttachments && (
+          <div className="absolute bottom-12 right-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl z-50 p-1 min-w-[160px] shadow-lg">
+            <button
+              onClick={() => {
+                fileInputRef.current?.click();
+                setShowAttachments(false);
+              }}
+              className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors"
+            >
+              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                <ImageIcon
+                  size={16}
+                  className="text-blue-600 dark:text-blue-400"
                 />
-
-                {/* Attachment Button */}
-                <div className="relative" ref={attachmentPickerRef}>
-                  <button
-                    onClick={() => {
-                      if (!canSendMessage()) {
-                        alert(groupData.settings?.onlyAdminsCanMessage ? 
-                          "Only admins can send messages" : 
-                          slowModeSettings.enabled ? `Slow mode active (${timeRemaining}s)` : "Cannot send messages");
-                        return;
-                      }
-                      setShowAttachments(!showAttachments);
-                      setShowEmojiPicker(false);
-                      setShowGIFPicker(false);
-                    }}
-                    className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors"
-                    disabled={
-                      !isConnected ||
-                      !roomJoined ||
-                      editingMessage ||
-                      !canSendMessage()
-                    }
-                  >
-                    <Paperclip
-                      size={20}
-                      className={
-                        !canSendMessage()
-                          ? "text-gray-400 dark:text-gray-600"
-                          : "text-[#5f6368] dark:text-gray-400"
-                      }
-                    />
-                  </button>
-
-                  {/* Mobile Attachment Picker - Compact version like ChatInterface */}
-                  {showAttachments && (
-                    <div className="absolute bottom-12 right-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl z-50 p-1 min-w-[160px] shadow-lg">
-                      <button
-                        onClick={() => {
-                          fileInputRef.current?.click();
-                          setShowAttachments(false);
-                        }}
-                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                          <ImageIcon
-                            size={16}
-                            className="text-blue-600 dark:text-blue-400"
-                          />
-                        </div>
-                        <span className="text-sm text-[#202124] dark:text-white">
-                          Image
-                        </span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          fileInputRef.current?.click();
-                          setShowAttachments(false);
-                        }}
-                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                          <Video
-                            size={16}
-                            className="text-red-600 dark:text-red-400"
-                          />
-                        </div>
-                        <span className="text-sm text-[#202124] dark:text-white">
-                          Video
-                        </span>
-                      </button>
-
-                      {/* GIF Button */}
-                      <button
-                        onClick={() => {
-                          console.log("GIF button clicked in group chat mobile");
-                          setShowAttachments(false);
-                          // Small delay to ensure attachment picker closes first
-                          setTimeout(() => {
-                            setShowGIFPicker(true);
-                          }, 50);
-                        }}
-                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                          <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
-                            GIF
-                          </span>
-                        </div>
-                        <span className="text-sm text-[#202124] dark:text-white">
-                          GIF
-                        </span>
-                      </button>
-                    </div>
-                  )}
-
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileSelect}
-                    accept="image/*,video/*"
-                    multiple
-                    className="hidden"
-                  />
-                </div>
-
-                {/* Emoji Button */}
-                <div className="relative" ref={emojiPickerRef}>
-                  <button
-                    onClick={() => {
-                      if (!canSendMessage()) return;
-                      setShowEmojiPicker(!showEmojiPicker);
-                      setShowAttachments(false);
-                      setShowGIFPicker(false);
-                    }}
-                    className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors"
-                    disabled={!isConnected || !roomJoined || !canSendMessage()}
-                  >
-                    <span className={`text-xl ${!canSendMessage() ? "opacity-50" : ""}`}>
-                      😊
-                    </span>
-                  </button>
-
-                  {showEmojiPicker && (
-                    <div className="absolute bottom-12 right-0 z-50">
-                      <EmojiPicker
-                        onEmojiClick={onEmojiClick}
-                        width={280}
-                        height={350}
-                        searchDisabled
-                        skinTonesDisabled
-                        previewConfig={{ showPreview: false }}
-                        theme={
-                          document.documentElement.classList.contains("dark")
-                            ? "dark"
-                            : "light"
-                        }
-                      />
-                    </div>
-                  )}
-                </div>
               </div>
-            </div>
-          ) : (
-            /* Desktop Input Layout */
-            <div className="flex items-center gap-2">
-              {/* AI Enhancement Button */}
-              <button
-                onClick={() => setShowAIEnhancement(true)}
-                className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group"
-                title="Enhance with AI"
-                disabled={!isConnected || !roomJoined || !canSendMessage()}
-              >
-                <Sparkles
+              <span className="text-sm text-[#202124] dark:text-white">
+                Image
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                fileInputRef.current?.click();
+                setShowAttachments(false);
+              }}
+              className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors"
+            >
+              <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                <Video
+                  size={16}
+                  className="text-red-600 dark:text-red-400"
+                />
+              </div>
+              <span className="text-sm text-[#202124] dark:text-white">
+                Video
+              </span>
+            </button>
+
+            {/* GIF Button */}
+            <button
+              onClick={() => {
+                console.log("GIF button clicked in group chat mobile");
+                setShowAttachments(false);
+                // Small delay to ensure attachment picker closes first
+                setTimeout(() => {
+                  setShowGIFPicker(true);
+                }, 50);
+              }}
+              className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors"
+            >
+              <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
+                  GIF
+                </span>
+              </div>
+              <span className="text-sm text-[#202124] dark:text-white">
+                GIF
+              </span>
+            </button>
+          </div>
+        )}
+
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          accept="image/*,video/*"
+          multiple
+          className="hidden"
+        />
+      </div>
+
+      {/* Emoji Button */}
+      <div className="relative self-center" ref={emojiPickerRef}>
+        <button
+          onClick={() => {
+            if (!canSendMessage()) return;
+            setShowEmojiPicker(!showEmojiPicker);
+            setShowAttachments(false);
+            setShowGIFPicker(false);
+          }}
+          className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors"
+          disabled={!isConnected || !roomJoined || !canSendMessage()}
+        >
+          <span className={`text-xl ${!canSendMessage() ? "opacity-50" : ""}`}>
+            😊
+          </span>
+        </button>
+
+        {showEmojiPicker && (
+          <div className="absolute bottom-12 right-0 z-50">
+            <EmojiPicker
+              onEmojiClick={onEmojiClick}
+              width={280}
+              height={350}
+              searchDisabled
+              skinTonesDisabled
+              previewConfig={{ showPreview: false }}
+              theme={
+                document.documentElement.classList.contains("dark")
+                  ? "dark"
+                  : "light"
+              }
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+) : (
+  /* Desktop Input Layout */
+  <div className="flex items-end gap-2">
+    {/* AI Enhancement Button */}
+    <button
+      onClick={() => setShowAIEnhancement(true)}
+      className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group self-center"
+      title="Enhance with AI"
+      disabled={!isConnected || !roomJoined || !canSendMessage()}
+    >
+      <Sparkles
+        size={20}
+        className="text-purple-600 dark:text-purple-400"
+      />
+      {newMessage.trim() && (
+        <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+      )}
+    </button>
+
+    {/* Attachment Button */}
+    <div className="relative self-center" ref={attachmentPickerRef}>
+      <button
+        onClick={() => {
+          if (!canSendMessage()) return;
+          setShowAttachments(!showAttachments);
+          setShowEmojiPicker(false);
+          setShowGIFPicker(false);
+        }}
+        className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
+        disabled={
+          !isConnected ||
+          !roomJoined ||
+          editingMessage ||
+          !canSendMessage()
+        }
+      >
+        <Paperclip
+          size={20}
+          className={
+            !canSendMessage()
+              ? "text-gray-400 dark:text-gray-600"
+              : "text-[#5f6368] dark:text-gray-400"
+          }
+        />
+      </button>
+
+      {showAttachments && (
+        <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px] shadow-lg">
+          <div className="space-y-2">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+            >
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
+                <ImageIcon
                   size={20}
-                  className="text-purple-600 dark:text-purple-400"
-                />
-                {newMessage.trim() && (
-                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
-                )}
-              </button>
-
-              {/* Attachment Button */}
-              <div className="relative" ref={attachmentPickerRef}>
-                <button
-                  onClick={() => {
-                    if (!canSendMessage()) return;
-                    setShowAttachments(!showAttachments);
-                    setShowEmojiPicker(false);
-                    setShowGIFPicker(false);
-                  }}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
-                  disabled={
-                    !isConnected ||
-                    !roomJoined ||
-                    editingMessage ||
-                    !canSendMessage()
-                  }
-                >
-                  <Paperclip
-                    size={20}
-                    className={
-                      !canSendMessage()
-                        ? "text-gray-400 dark:text-gray-600"
-                        : "text-[#5f6368] dark:text-gray-400"
-                    }
-                  />
-                </button>
-
-                {showAttachments && (
-                  <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px] shadow-lg">
-                    <div className="space-y-2">
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
-                          <ImageIcon
-                            size={20}
-                            className="text-blue-600 dark:text-blue-400"
-                          />
-                        </div>
-                        <div className="flex-1 text-left">
-                          <p className="text-sm font-medium text-[#202124] dark:text-white">
-                            Send Image
-                          </p>
-                          <p className="text-xs text-[#5f6368] dark:text-gray-400">
-                            Share photos
-                          </p>
-                        </div>
-                      </button>
-
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
-                          <Video
-                            size={20}
-                            className="text-red-600 dark:text-red-400"
-                          />
-                        </div>
-                        <div className="flex-1 text-left">
-                          <p className="text-sm font-medium text-[#202124] dark:text-white">
-                            Send Video
-                          </p>
-                          <p className="text-xs text-[#5f6368] dark:text-gray-400">
-                            Share videos
-                          </p>
-                        </div>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setShowGIFPicker(true);
-                          setShowAttachments(false);
-                        }}
-                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
-                          <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
-                            GIF
-                          </span>
-                        </div>
-                        <div className="flex-1 text-left">
-                          <p className="text-sm font-medium text-[#202124] dark:text-white">
-                            Send GIF
-                          </p>
-                          <p className="text-xs text-[#5f6368] dark:text-gray-400">
-                            Animated GIFs
-                          </p>
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                  accept="image/*,video/*"
-                  multiple
-                  className="hidden"
+                  className="text-blue-600 dark:text-blue-400"
                 />
               </div>
-
-              {/* Emoji Button */}
-              <div className="relative" ref={emojiPickerRef}>
-                <button
-                  onClick={() => {
-                    if (!canSendMessage()) return;
-                    setShowEmojiPicker(!showEmojiPicker);
-                    setShowAttachments(false);
-                    setShowGIFPicker(false);
-                  }}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
-                  disabled={!isConnected || !roomJoined || !canSendMessage()}
-                >
-                  <span
-                    className={`text-xl ${!canSendMessage() ? "opacity-50" : ""}`}
-                  >
-                    😊
-                  </span>
-                </button>
-
-                {showEmojiPicker && (
-                  <div className="absolute bottom-14 left-0 z-50">
-                    <EmojiPicker
-                      onEmojiClick={onEmojiClick}
-                      width={320}
-                      height={400}
-                      searchDisabled
-                      skinTonesDisabled
-                      previewConfig={{ showPreview: false }}
-                      theme={
-                        document.documentElement.classList.contains("dark")
-                          ? "dark"
-                          : "light"
-                      }
-                    />
-                  </div>
-                )}
+              <div className="flex-1 text-left">
+                <p className="text-sm font-medium text-[#202124] dark:text-white">
+                  Send Image
+                </p>
+                <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                  Share photos
+                </p>
               </div>
+            </button>
 
-              {/* Text Input */}
-              <input
-                ref={inputRef}
-                type="text"
-                onPaste={handlePaste}
-                value={editingMessage ? editText : newMessage}
-                onChange={
-                  editingMessage
-                    ? (e) => setEditText(e.target.value)
-                    : handleInputChange
-                }
-                onKeyPress={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+            >
+              <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
+                <Video
+                  size={20}
+                  className="text-red-600 dark:text-red-400"
+                />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="text-sm font-medium text-[#202124] dark:text-white">
+                  Send Video
+                </p>
+                <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                  Share videos
+                </p>
+              </div>
+            </button>
 
-                    // Check for slash command
-                    if (
-                      newMessage.startsWith("/") &&
-                      handleSlashCommand(newMessage)
-                    ) {
-                      return;
-                    }
+            <button
+              onClick={() => {
+                setShowGIFPicker(true);
+                setShowAttachments(false);
+              }}
+              className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+            >
+              <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
+                <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                  GIF
+                </span>
+              </div>
+              <div className="flex-1 text-left">
+                <p className="text-sm font-medium text-[#202124] dark:text-white">
+                  Send GIF
+                </p>
+                <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                  Animated GIFs
+                </p>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
 
-                    if (editingMessage) {
-                      handleEditMessage();
-                    } else if (attachments.length > 0) {
-                      handleSendWithAttachments();
-                    } else {
-                      handleSendMessage();
-                    }
-                  }
-                }}
-                placeholder={
-                  !isConnected
-                    ? "Connecting..."
-                    : !roomJoined
-                      ? "Joining chat..."
-                      : !canSendMessage()
-                        ? isCurrentUserAdmin
-                          ? "You are an admin (bypassing restrictions)"
-                          : groupData.settings?.onlyAdminsCanMessage
-                            ? "🔒 Only admins can send messages"
-                            : slowModeSettings.enabled && !canSendInSlowMode()
-                              ? `Slow mode active (${timeRemaining}s)`
-                              : "You cannot send messages"
-                        : isCurrentUserAdmin
-                          ? "Type a message as admin... (Use @ to mention, ✨ for AI, 📷 for GIF, /split for bills)"
-                          : "Type a message... (Use @ to mention, ✨ for AI, 📷 for GIF, /split for bills)"
-                }
-                className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
-                disabled={
-                  !isConnected || !roomJoined || uploading || !canSendMessage()
-                }
-              />
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileSelect}
+        accept="image/*,video/*"
+        multiple
+        className="hidden"
+      />
+    </div>
 
-              {/* Send Button */}
-              <button
-                onClick={
-                  editingMessage
-                    ? handleEditMessage
-                    : attachments.length > 0
-                      ? handleSendWithAttachments
-                      : handleSendMessage
-                }
-                disabled={
-                  editingMessage
-                    ? !editText.trim()
-                    : (!newMessage.trim() && attachments.length === 0) ||
-                      !isConnected ||
-                      !roomJoined ||
-                      uploading ||
-                      !canSendMessage()
-                }
-                className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative"
-              >
-                {uploading ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                ) : (
-                  <Send size={20} />
-                )}
-              </button>
-            </div>
-          )}
+    {/* Emoji Button */}
+    <div className="relative self-center" ref={emojiPickerRef}>
+      <button
+        onClick={() => {
+          if (!canSendMessage()) return;
+          setShowEmojiPicker(!showEmojiPicker);
+          setShowAttachments(false);
+          setShowGIFPicker(false);
+        }}
+        className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+        disabled={!isConnected || !roomJoined || !canSendMessage()}
+      >
+        <span
+          className={`text-xl ${!canSendMessage() ? "opacity-50" : ""}`}
+        >
+          😊
+        </span>
+      </button>
+
+      {showEmojiPicker && (
+        <div className="absolute bottom-14 left-0 z-50">
+          <EmojiPicker
+            onEmojiClick={onEmojiClick}
+            width={320}
+            height={400}
+            searchDisabled
+            skinTonesDisabled
+            previewConfig={{ showPreview: false }}
+            theme={
+              document.documentElement.classList.contains("dark")
+                ? "dark"
+                : "light"
+            }
+          />
+        </div>
+      )}
+    </div>
+
+    {/* Text Input - Changed to textarea */}
+    <textarea
+      ref={inputRef}
+      onPaste={handlePaste}
+      value={editingMessage ? editText : newMessage}
+      onChange={
+        editingMessage
+          ? (e) => setEditText(e.target.value)
+          : handleInputChange
+      }
+      onKeyDown={(e) => {
+        // Check for Ctrl+Shift+Enter to add new line
+        if (e.key === 'Enter' && e.ctrlKey && e.shiftKey) {
+          // Allow default behavior (new line)
+          return;
+        }
+        // Regular Enter to send
+        else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) {
+          e.preventDefault();
+
+          // Check for slash command
+          if (
+            newMessage.startsWith("/") &&
+            handleSlashCommand(newMessage)
+          ) {
+            return;
+          }
+
+          if (editingMessage) {
+            handleEditMessage();
+          } else if (attachments.length > 0) {
+            handleSendWithAttachments();
+          } else {
+            handleSendMessage();
+          }
+        }
+      }}
+      placeholder={
+        !isConnected
+          ? "Connecting..."
+          : !roomJoined
+            ? "Joining chat..."
+            : !canSendMessage()
+              ? isCurrentUserAdmin
+                ? "You are an admin (bypassing restrictions)"
+                : groupData.settings?.onlyAdminsCanMessage
+                  ? "🔒 Only admins can send messages"
+                  : slowModeSettings.enabled && !canSendInSlowMode()
+                    ? `Slow mode active (${timeRemaining}s)`
+                    : "You cannot send messages"
+              : isCurrentUserAdmin
+                ? "Type a message a"
+                : "Type a message... "
+      }
+      className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all resize-none min-h-[44px] max-h-32"
+      disabled={
+        !isConnected || !roomJoined || uploading || !canSendMessage()
+      }
+      rows={1}
+    />
+
+    {/* Send Button */}
+    <button
+      onClick={
+        editingMessage
+          ? handleEditMessage
+          : attachments.length > 0
+            ? handleSendWithAttachments
+            : handleSendMessage
+      }
+      disabled={
+        editingMessage
+          ? !editText.trim()
+          : (!newMessage.trim() && attachments.length === 0) ||
+            !isConnected ||
+            !roomJoined ||
+            uploading ||
+            !canSendMessage()
+      }
+      className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative self-center"
+    >
+      {uploading ? (
+        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+      ) : (
+        <Send size={20} />
+      )}
+    </button>
+  </div>
+)}
 
           {!isConnected && (
             <div className="absolute -top-8 left-0 right-0 text-center">
@@ -4967,6 +4979,44 @@ export default function GroupChatInterface({
         .dark ::placeholder {
           color: #6b7280;
         }
+          /* Textarea auto-resize */
+textarea {
+  field-sizing: content;
+}
+
+/* Fallback for browsers that don't support field-sizing */
+@supports not (field-sizing: content) {
+  textarea {
+    resize: none;
+    overflow-y: auto;
+  }
+}
+
+/* Scrollbar styling for textarea */
+textarea::-webkit-scrollbar {
+  width: 4px;
+}
+
+textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+textarea::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 4px;
+}
+
+.dark textarea::-webkit-scrollbar-thumb {
+  background: #444;
+}
+
+textarea::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+.dark textarea::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
       `}</style>
     </>
   );

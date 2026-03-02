@@ -5,10 +5,17 @@ import clientPromise from '@/lib/mongodb';
 import { createToken, setTokenCookie } from '@/lib/auth';
 
 export async function POST(request) {
+  console.log('=== SIGNUP API CALLED ===');
+  
   try {
-    const { name, email, password, referralCode } = await request.json();
+    const body = await request.json();
+    console.log('Request body:', { ...body, password: '[REDACTED]' });
+    
+    const { name, email, password, referralCode } = body;
 
+    // Validation
     if (!name || !email || !password) {
+      console.log('Validation failed: missing fields');
       return NextResponse.json(
         { error: 'All fields are required' },
         { status: 400 }
@@ -18,6 +25,7 @@ export async function POST(request) {
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
+      console.log('Validation failed: invalid email');
       return NextResponse.json(
         { error: 'Invalid email format' },
         { status: 400 }
@@ -26,32 +34,42 @@ export async function POST(request) {
 
     // Password validation
     if (password.length < 6) {
+      console.log('Validation failed: password too short');
       return NextResponse.json(
         { error: 'Password must be at least 6 characters' },
         { status: 400 }
       );
     }
 
+    console.log('Connecting to MongoDB...');
     const client = await clientPromise;
+    console.log('MongoDB connected successfully');
+    
     const db = client.db('positivity');
     const users = db.collection('users');
     const referrals = db.collection('referrals');
     const encryptionKeys = db.collection('encryptionKeys');
 
     // Check if user already exists
+    console.log('Checking for existing user...');
     const existingUser = await users.findOne({ email: email.toLowerCase() });
     if (existingUser) {
+      console.log('User already exists');
       return NextResponse.json(
         { error: 'Email already registered' },
         { status: 409 }
       );
     }
+    console.log('No existing user found');
 
     // Hash password
+    console.log('Hashing password...');
     const hashedPassword = await bcrypt.hash(password, 10);
+    console.log('Password hashed successfully');
 
     // Generate userId
     const userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    console.log('Generated userId:', userId);
 
     // Generate encryption keys for the new user
     console.log('🔐 Generating encryption keys for new user:', userId);
@@ -81,8 +99,10 @@ export async function POST(request) {
 
     // If referral code was provided, process it
     if (referralCode) {
+      console.log('Processing referral code:', referralCode);
       const referrer = await referrals.findOne({ referralCode });
       if (referrer) {
+        console.log('Referrer found:', referrer.userId);
         referredBy = referrer.userId;
         
         // Give 50 points to the new user
@@ -141,10 +161,14 @@ export async function POST(request) {
             $set: { updatedAt: new Date() }
           }
         );
+        console.log('Referral processing complete');
+      } else {
+        console.log('No referrer found for code:', referralCode);
       }
     }
 
     // Create new user
+    console.log('Creating new user document...');
     const newUser = {
       userId,
       email: email.toLowerCase(),
@@ -160,10 +184,12 @@ export async function POST(request) {
       updatedAt: new Date(),
     };
 
-    await users.insertOne(newUser);
+    const insertResult = await users.insertOne(newUser);
+    console.log('User inserted with ID:', insertResult.insertedId);
 
     // Store encryption keys if they were generated successfully
     if (publicKey && privateKey) {
+      console.log('Storing encryption keys...');
       await encryptionKeys.insertOne({
         userId,
         publicKey,
@@ -177,6 +203,8 @@ export async function POST(request) {
 
     // Create referral record for new user (for their own referral code)
     const referralCode_ = userId.replace('user_', '').slice(0, 8).toUpperCase();
+    console.log('Creating referral record with code:', referralCode_);
+    
     await referrals.insertOne({
       userId,
       referralCode: referralCode_,
@@ -186,13 +214,16 @@ export async function POST(request) {
       createdAt: new Date(),
       updatedAt: new Date()
     });
+    console.log('Referral record created');
 
     // Create token for authentication
+    console.log('Creating auth token...');
     const token = createToken({
       id: userId,
       email: email.toLowerCase(),
       name: name.trim(),
     });
+    console.log('Token created');
 
     // Prepare user data for response
     const userData = {
@@ -209,6 +240,7 @@ export async function POST(request) {
     };
 
     // Create response
+    console.log('Creating response...');
     const response = NextResponse.json({
       success: true,
       user: userData,
@@ -217,14 +249,20 @@ export async function POST(request) {
         : 'Account created successfully!',
     });
 
-    // Set the authentication cookie using your existing function
+    // Set the authentication cookie
+    console.log('Setting auth cookie...');
     setTokenCookie(response, token);
+    console.log('=== SIGNUP COMPLETED SUCCESSFULLY ===');
 
     return response;
   } catch (error) {
-    console.error('Signup error:', error);
+    console.error('=== SIGNUP ERROR ===');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    
     return NextResponse.json(
-      { error: 'Failed to create account' },
+      { error: 'Failed to create account', details: error.message },
       { status: 500 }
     );
   }

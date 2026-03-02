@@ -1,5 +1,3 @@
-// context/UserContext.js
-
 'use client';
 
 import { createContext, useContext, useState, useEffect } from 'react';
@@ -19,12 +17,10 @@ export function UserProvider({ children }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
-  
-  // Feed related states
+
   const [feedPosts, setFeedPosts] = useState([]);
   const [loadingFeed, setLoadingFeed] = useState(false);
-  
-  // Referral related states
+
   const [referralCode, setReferralCode] = useState('');
   const [referrals, setReferrals] = useState([]);
   const [totalReferrals, setTotalReferrals] = useState(0);
@@ -74,26 +70,28 @@ export function UserProvider({ children }) {
     return Math.min(100, Math.round((progress / range) * 100));
   };
 
-  // Generate referral code from userId
   const generateReferralCode = (id) => {
     if (!id) return '';
-    const code = id.replace('user_', '').slice(0, 8).toUpperCase();
-    return code;
+    return id.replace('user_', '').slice(0, 8).toUpperCase();
   };
 
-  // Initialize user data from localStorage (only on mount)
+  // Initialize from localStorage on mount
   useEffect(() => {
     const storedUserId = localStorage.getItem('userId');
     const storedUserName = localStorage.getItem('userName');
     const storedUserEmail = localStorage.getItem('userEmail');
     const storedUsername = localStorage.getItem('username');
     const storedAvatar = localStorage.getItem('avatar');
+    // ✅ FIXED: Read onboardingCompleted from localStorage
+    const storedOnboarding = localStorage.getItem('onboardingCompleted');
 
     if (storedUserId && storedUserName) {
       setUserId(storedUserId);
       setUserName(storedUserName);
       setUserEmail(storedUserEmail || '');
       setUsername(storedUsername || '');
+      // ✅ FIXED: Restore onboardingCompleted so middleware/pages don't re-redirect
+      if (storedOnboarding === 'true') setOnboardingCompleted(true);
       if (storedAvatar) {
         try {
           setAvatar(JSON.parse(storedAvatar));
@@ -105,17 +103,16 @@ export function UserProvider({ children }) {
     }
   }, []);
 
-  // Fetch user data and daily content when userId is available
+  // Fetch all data when userId is ready
   useEffect(() => {
     if (userId && isInitialized) {
       fetchUserData();
       fetchDailyContent();
       fetchReferralData();
-      fetchFeedPosts(); // Fetch feed posts when user logs in
+      fetchFeedPosts();
     }
   }, [userId, isInitialized]);
 
-  // Fetch referral data
   const fetchReferralData = async () => {
     try {
       const res = await fetch(`/api/referrals?userId=${encodeURIComponent(userId)}`);
@@ -131,18 +128,13 @@ export function UserProvider({ children }) {
     }
   };
 
-  // NEW: Fetch feed posts
   const fetchFeedPosts = async () => {
     if (!userId) return;
-    
     setLoadingFeed(true);
     try {
       const response = await fetch(`/api/feed?userId=${encodeURIComponent(userId)}`);
       const data = await response.json();
-      
-      if (data.success) {
-        setFeedPosts(data.posts || []);
-      }
+      if (data.success) setFeedPosts(data.posts || []);
     } catch (error) {
       console.error('Error fetching feed:', error);
     } finally {
@@ -150,34 +142,26 @@ export function UserProvider({ children }) {
     }
   };
 
-  // NEW: Like a post
   const likePost = async (postId) => {
     if (!userId) return;
-
     try {
       const response = await fetch('/api/feed/like', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          postId,
-          userId
-        }),
+        body: JSON.stringify({ postId, userId }),
       });
-
       const data = await response.json();
-      
       if (data.success) {
-        // Update local state
-        setFeedPosts(prevPosts =>
-          prevPosts.map(post => {
+        setFeedPosts((prevPosts) =>
+          prevPosts.map((post) => {
             if (post._id === postId) {
               const hasLiked = post.likes?.includes(userId);
               return {
                 ...post,
                 likes: hasLiked
-                  ? post.likes.filter(id => id !== userId)
+                  ? post.likes.filter((id) => id !== userId)
                   : [...(post.likes || []), userId],
-                likeCount: hasLiked ? (post.likeCount || 1) - 1 : (post.likeCount || 0) + 1
+                likeCount: hasLiked ? (post.likeCount || 1) - 1 : (post.likeCount || 0) + 1,
               };
             }
             return post;
@@ -189,34 +173,23 @@ export function UserProvider({ children }) {
     }
   };
 
-  // NEW: Add comment to post
   const addComment = async (postId, comment) => {
     if (!userId || !comment.trim()) return false;
-
     try {
       const response = await fetch('/api/feed/comment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          postId,
-          userId,
-          userName,
-          avatar,
-          comment: comment.trim()
-        }),
+        body: JSON.stringify({ postId, userId, userName, avatar, comment: comment.trim() }),
       });
-
       const data = await response.json();
-      
       if (data.success) {
-        // Update local state
-        setFeedPosts(prevPosts =>
-          prevPosts.map(post => {
+        setFeedPosts((prevPosts) =>
+          prevPosts.map((post) => {
             if (post._id === postId) {
               return {
                 ...post,
                 comments: [data.comment, ...(post.comments || [])],
-                commentCount: (post.commentCount || 0) + 1
+                commentCount: (post.commentCount || 0) + 1,
               };
             }
             return post;
@@ -237,7 +210,11 @@ export function UserProvider({ children }) {
       if (data.user) {
         setPoints(data.user.points || 0);
         setPointsHistory(data.user.history || []);
-        setOnboardingCompleted(data.user.onboardingCompleted || false);
+        // ✅ Sync onboardingCompleted from DB and persist to localStorage
+        const completed = data.user.onboardingCompleted || false;
+        setOnboardingCompleted(completed);
+        if (completed) localStorage.setItem('onboardingCompleted', 'true');
+
         setUsername(data.user.username || '');
         if (data.user.avatar) {
           try {
@@ -254,12 +231,14 @@ export function UserProvider({ children }) {
           localStorage.setItem('userName', data.user.preferredName);
         }
 
-        // FIXED: Only check for daily completion entries, not referral entries
         const todayStr = new Date().toLocaleDateString('en-CA');
-        const hasCompletedToday = data.user.history?.some(
-          (entry) => entry.date === todayStr && entry.type !== 'referral' && entry.type !== 'referral_bonus'
-        ) || false;
-        
+        const hasCompletedToday =
+          data.user.history?.some(
+            (entry) =>
+              entry.date === todayStr &&
+              entry.type !== 'referral' &&
+              entry.type !== 'referral_bonus'
+          ) || false;
         setCompletedToday(hasCompletedToday);
       }
     } catch (error) {
@@ -272,8 +251,7 @@ export function UserProvider({ children }) {
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const today = new Date().toLocaleDateString('en-CA', { timeZone: timezone });
-      
-      // Check localStorage cache first
+
       const cachedContent = localStorage.getItem(`dailyContent_${userId}`);
       const cachedDate = localStorage.getItem(`dailyContentDate_${userId}`);
 
@@ -291,8 +269,6 @@ export function UserProvider({ children }) {
       setContent(data);
       localStorage.setItem(`dailyContent_${userId}`, JSON.stringify(data));
       localStorage.setItem(`dailyContentDate_${userId}`, today);
-
-      setIsLoading(false);
     } catch (error) {
       console.error('❌ Error fetching daily content:', error);
       setContent({
@@ -300,6 +276,7 @@ export function UserProvider({ children }) {
         author: 'Walt Whitman',
         goodDeed: 'Send a message of appreciation to someone who helped you recently.',
       });
+    } finally {
       setIsLoading(false);
     }
   };
@@ -310,114 +287,99 @@ export function UserProvider({ children }) {
     setIsInitialized(true);
   };
 
-  // In context/UserContext.js - replace the submitReflection function
+  const submitReflection = async (reflectionText, attachments = []) => {
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA');
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-// In context/UserContext.js - Replace the submitReflection function
+    const newEntry = {
+      date: todayStr,
+      time: timeStr,
+      reflection: reflectionText.trim() || 'No reflection provided',
+      points: 1,
+      type: 'daily',
+    };
 
-const submitReflection = async (reflectionText, attachments = []) => {
-  const now = new Date();
-  const todayStr = now.toLocaleDateString('en-CA');
-  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    try {
+      const res = await fetch('/api/user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, action: 'addPoint', entry: newEntry }),
+      });
+      const data = await res.json();
 
-  const newEntry = {
-    date: todayStr,
-    time: timeStr,
-    reflection: reflectionText.trim() || 'No reflection provided',
-    points: 1,
-    type: 'daily',
-  };
+      if (data.user) {
+        setPoints(data.user.points);
+        setPointsHistory(data.user.history);
+        setCompletedToday(true);
 
-  try {
-    const res = await fetch('/api/user', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        action: 'addPoint',
-        entry: newEntry,
-      }),
-    });
-    const data = await res.json();
-    
-    if (data.user) {
-      setPoints(data.user.points);
-      setPointsHistory(data.user.history);
-      setCompletedToday(true);
-      
-      // Create feed post after successful reflection
-      if (content) {
-        try {
-          // Make sure avatar is properly stringified if it exists
-          const avatarToSend = avatar ? (typeof avatar === 'object' ? JSON.stringify(avatar) : avatar) : null;
-          
-          // Process attachments to ensure they're in the correct format
-          const processedAttachments = attachments.map(att => {
-            if (att.type === 'link') {
-              return {
-                id: att.id,
-                type: 'link',
-                url: att.url,
-                preview: att.preview || {
-                  title: att.url,
-                  url: att.url
-                }
-              };
+        if (content) {
+          try {
+            const avatarToSend = avatar
+              ? typeof avatar === 'object'
+                ? JSON.stringify(avatar)
+                : avatar
+              : null;
+
+            const processedAttachments = attachments.map((att) => {
+              if (att.type === 'link') {
+                return {
+                  id: att.id,
+                  type: 'link',
+                  url: att.url,
+                  preview: att.preview || { title: att.url, url: att.url },
+                };
+              }
+              return { id: att.id, type: att.type, url: att.url, name: att.name, mimeType: att.mimeType };
+            });
+
+            const feedResponse = await fetch('/api/feed', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId,
+                reflection: reflectionText.trim(),
+                goodDeed: content.goodDeed,
+                userName,
+                userUsername: username,
+                userAvatar: avatarToSend,
+                attachments: processedAttachments,
+              }),
+            });
+
+            const feedData = await feedResponse.json();
+            if (feedData.success) {
+              fetchFeedPosts();
+              return true;
             } else {
-              return {
-                id: att.id,
-                type: att.type,
-                url: att.url,
-                name: att.name,
-                mimeType: att.mimeType
-              };
+              console.error('Feed post creation failed:', feedData.error);
+              return false;
             }
-          });
-          
-          const feedResponse = await fetch('/api/feed', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId,
-              reflection: reflectionText.trim(),
-              goodDeed: content.goodDeed,
-              userName,
-              userUsername: username,
-              userAvatar: avatarToSend,
-              attachments: processedAttachments // Send the attachments
-            }),
-          });
-          
-          const feedData = await feedResponse.json();
-          if (feedData.success) {
-            // Refresh feed after new post
-            fetchFeedPosts();
-            return true;
-          } else {
-            console.error('Feed post creation failed:', feedData.error);
+          } catch (feedError) {
+            console.error('Error creating feed post:', feedError);
             return false;
           }
-        } catch (feedError) {
-          console.error('Error creating feed post:', feedError);
-          return false;
         }
       }
+      return true;
+    } catch (error) {
+      console.error('Error saving point:', error);
+      setPoints((prev) => prev + 1);
+      setPointsHistory((prev) => [newEntry, ...prev]);
+      setCompletedToday(true);
+      return false;
     }
-    return true;
-  } catch (error) {
-    console.error('Error saving point:', error);
-    // Fallback for offline/error
-    setPoints((prev) => prev + 1);
-    setPointsHistory((prev) => [newEntry, ...prev]);
-    setCompletedToday(true);
-    return false;
-  }
-};
+  };
 
+  // ✅ FIXED: Read userData.id (not userData.userId) — matches what signup/signin APIs return
   const login = (userData) => {
-    setUserId(userData.userId);
+    const id = userData.id || userData.userId; // ← CORE FIX
+    setUserId(id);
     setUserName(userData.preferredName || userData.name);
     setUserEmail(userData.email);
     setUsername(userData.username || '');
+    setOnboardingCompleted(userData.onboardingCompleted || false);
+
     if (userData.avatar) {
       try {
         const parsed = JSON.parse(userData.avatar);
@@ -427,12 +389,17 @@ const submitReflection = async (reflectionText, attachments = []) => {
         console.error('Failed to parse avatar during login', e);
       }
     }
+
     setIsInitialized(true);
 
-    localStorage.setItem('userId', userData.userId);
+    // ✅ FIXED: Store id (not undefined userId)
+    localStorage.setItem('userId', id);
     localStorage.setItem('userName', userData.preferredName || userData.name);
     localStorage.setItem('userEmail', userData.email);
     if (userData.username) localStorage.setItem('username', userData.username);
+    if (userData.onboardingCompleted) {
+      localStorage.setItem('onboardingCompleted', 'true');
+    }
   };
 
   const updateProfile = async ({ preferredName, username, avatar }) => {
@@ -472,7 +439,9 @@ const submitReflection = async (reflectionText, attachments = []) => {
 
   const checkUsername = async (username) => {
     try {
-      const res = await fetch(`/api/user/check-username?username=${encodeURIComponent(username)}&userId=${encodeURIComponent(userId)}`);
+      const res = await fetch(
+        `/api/user/check-username?username=${encodeURIComponent(username)}&userId=${encodeURIComponent(userId)}`
+      );
       const data = await res.json();
       return data.available;
     } catch {
@@ -488,8 +457,7 @@ const submitReflection = async (reflectionText, attachments = []) => {
         body: JSON.stringify({ userId, currentPassword, newPassword }),
       });
       const data = await res.json();
-      if (res.ok) return { success: true };
-      else return { success: false, error: data.error };
+      return res.ok ? { success: true } : { success: false, error: data.error };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -501,7 +469,9 @@ const submitReflection = async (reflectionText, attachments = []) => {
     localStorage.removeItem('userEmail');
     localStorage.removeItem('username');
     localStorage.removeItem('avatar');
-    
+    // ✅ FIXED: Clear onboardingCompleted on logout
+    localStorage.removeItem('onboardingCompleted');
+
     setUserId('');
     setUserName('');
     setUserEmail('');
@@ -510,12 +480,13 @@ const submitReflection = async (reflectionText, attachments = []) => {
     setPoints(0);
     setPointsHistory([]);
     setIsInitialized(false);
+    setOnboardingCompleted(false);
     setReferralCode('');
     setReferrals([]);
     setTotalReferrals(0);
     setReferralPoints(0);
-    setFeedPosts([]); // Clear feed on logout
-    
+    setFeedPosts([]);
+
     window.location.href = '/signin';
   };
 
@@ -526,42 +497,15 @@ const submitReflection = async (reflectionText, attachments = []) => {
   };
 
   const value = {
-    userName,
-    userId,
-    userEmail,
-    username,
-    avatar,
-    points,
-    pointsHistory,
-    completedToday,
-    content,
-    isLoading,
-    isInitialized,
-    onboardingCompleted,
-    levelThresholds,
-    getCurrentLevel,
-    getNextLevelPoints,
-    getProgressPercent,
-    saveUserName,
-    submitReflection,
-    fetchUserData,
-    logout,
-    login,
-    updateProfile,
-    checkUsername,
-    changePassword,
-    referralCode,
-    referrals,
-    totalReferrals,
-    referralPoints,
-    fetchReferralData,
-    copyReferralLink,
-    // Feed related exports
-    feedPosts,
-    loadingFeed,
-    fetchFeedPosts,
-    likePost,
-    addComment,
+    userName, userId, userEmail, username, avatar,
+    points, pointsHistory, completedToday,
+    content, isLoading, isInitialized, onboardingCompleted,
+    levelThresholds, getCurrentLevel, getNextLevelPoints, getProgressPercent,
+    saveUserName, submitReflection, fetchUserData, logout, login,
+    updateProfile, checkUsername, changePassword,
+    referralCode, referrals, totalReferrals, referralPoints,
+    fetchReferralData, copyReferralLink,
+    feedPosts, loadingFeed, fetchFeedPosts, likePost, addComment,
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
@@ -569,8 +513,6 @@ const submitReflection = async (reflectionText, attachments = []) => {
 
 export function useUser() {
   const context = useContext(UserContext);
-  if (!context) {
-    throw new Error('useUser must be used within UserProvider');
-  }
+  if (!context) throw new Error('useUser must be used within UserProvider');
   return context;
 }

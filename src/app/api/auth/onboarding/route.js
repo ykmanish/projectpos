@@ -27,25 +27,28 @@ export async function POST(request) {
     if (reminderTime) updateData.reminderTime = reminderTime;
     if (currentMood) updateData.currentMood = currentMood;
 
-    const result = await users.findOneAndUpdate(
+    // ✅ FIXED: MongoDB Driver v5+ returns the document directly, not result.value
+    const updatedUser = await users.findOneAndUpdate(
       { userId },
       { $set: updateData },
       { returnDocument: 'after' }
     );
 
-    if (!result.value) {
+    // ✅ FIXED: Check the result directly, not result.value
+    if (!updatedUser) {
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }
       );
     }
 
-    const { password: _, ...userWithoutPassword } = result.value;
+    const { password: _, ...userWithoutPassword } = updatedUser;
 
     return NextResponse.json({
       success: true,
       user: userWithoutPassword,
     });
+
   } catch (error) {
     console.error('Onboarding error:', error);
     return NextResponse.json(

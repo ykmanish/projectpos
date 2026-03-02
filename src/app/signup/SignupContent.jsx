@@ -10,7 +10,7 @@ export default function SignupContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const referralCodeFromUrl = searchParams.get('ref');
-  
+
   const { login } = useUser();
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -29,10 +29,7 @@ export default function SignupContent() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    // If referral code is in URL, show the bonus message
-    if (referralCodeFromUrl) {
-      setShowReferralInput(true);
-    }
+    if (referralCodeFromUrl) setShowReferralInput(true);
   }, [referralCodeFromUrl]);
 
   const handleChange = (e) => {
@@ -54,103 +51,102 @@ export default function SignupContent() {
     setStep(2);
   };
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
-  setError('');
-  setSuccessMessage('');
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMessage('');
 
-  if (!formData.password || !formData.confirmPassword) {
-    setError('Password and confirmation are required');
-    return;
-  }
-  if (formData.password !== formData.confirmPassword) {
-    setError('Passwords do not match');
-    return;
-  }
-  if (formData.password.length < 6) {
-    setError('Password must be at least 6 characters');
-    return;
-  }
+    if (!formData.password || !formData.confirmPassword) {
+      setError('Password and confirmation are required');
+      return;
+    }
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
 
-  setLoading(true);
-  console.log('Attempting signup with:', formData.email);
+    setLoading(true);
+    console.log('Attempting signup with:', formData.email);
 
-  try {
-    // Add timeout to fetch
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-    const response = await fetch('/api/auth/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        referralCode: formData.referralCode || undefined,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    console.log('Signup response status:', response.status);
-    
-    let data;
     try {
-      data = await response.json();
-      console.log('Signup response data:', data);
-    } catch (e) {
-      console.error('Failed to parse response:', e);
-      setError('Server returned an invalid response');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          referralCode: formData.referralCode || undefined,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      console.log('Signup response status:', response.status);
+
+      let data;
+      try {
+        data = await response.json();
+        console.log('Signup response data:', data);
+      } catch (e) {
+        console.error('Failed to parse response:', e);
+        setError('Server returned an invalid response');
+        setLoading(false);
+        return;
+      }
+
+      if (!response.ok) {
+        setError(data.error || `Signup failed (${response.status})`);
+        setLoading(false);
+        return;
+      }
+
+      if (!data.user) {
+        setError('No user data received');
+        setLoading(false);
+        return;
+      }
+
+      // Store user data in localStorage
+      localStorage.setItem('userName', data.user.name || formData.name);
+      localStorage.setItem('userEmail', data.user.email);
+      if (data.user.id) localStorage.setItem('userId', data.user.id);
+
+      if (data.message) setSuccessMessage(data.message);
+
+      login(data.user);
+
+      console.log('Signup successful, redirecting to welcome...');
+
+      // ✅ FIXED: Reset loading before navigation
       setLoading(false);
-      return;
-    }
 
-    if (!response.ok) {
-      setError(data.error || `Signup failed (${response.status})`);
+      // ✅ FIXED: Hard navigation so the browser sends the fresh auth cookie
+      // to the middleware (router.push does soft nav and middleware misses the cookie)
+      window.location.href = '/welcome';
+
+    } catch (err) {
+      console.error('Signup error details:', err);
+
+      if (err.name === 'AbortError') {
+        setError('Request timed out. Please check your connection.');
+      } else if (err.message === 'Failed to fetch') {
+        setError('Network error. Please check if the server is running.');
+      } else {
+        setError(err.message || 'Something went wrong. Please try again.');
+      }
+
       setLoading(false);
-      return;
     }
-
-    if (!data.user) {
-      setError('No user data received');
-      setLoading(false);
-      return;
-    }
-
-    // Store user data in localStorage
-    localStorage.setItem('userName', data.user.name || formData.name);
-    localStorage.setItem('userEmail', data.user.email);
-    if (data.user.id) localStorage.setItem('userId', data.user.id);
-
-    // Show success message if there's one from the API
-    if (data.message) {
-      setSuccessMessage(data.message);
-    }
-
-    // Use the login function from context
-    login(data.user);
-
-    console.log('Signup successful, redirecting to welcome...');
-
-    // Redirect to welcome page
-    router.push('/welcome');
-    
-  } catch (err) {
-    console.error('Signup error details:', err);
-    
-    if (err.name === 'AbortError') {
-      setError('Request timed out. Please check your connection.');
-    } else if (err.message === 'Failed to fetch') {
-      setError('Network error. Please check if the server is running.');
-    } else {
-      setError(err.message || 'Something went wrong. Please try again.');
-    }
-    
-    setLoading(false);
-  }
-};
+  };
 
   const handleCopyCode = () => {
     if (referralCodeFromUrl) {
@@ -174,7 +170,7 @@ export default function SignupContent() {
     </div>
   );
 
-  // If there's a referral code, show two-column layout
+  // Two-column layout when referral code is in URL
   if (referralCodeFromUrl) {
     return (
       <div className="relative min-h-screen flex flex-col items-center justify-center text-[#202124] p-6" style={bgimage}>
@@ -202,7 +198,6 @@ export default function SignupContent() {
                 Join with this special referral and get bonus points!
               </p>
 
-              {/* Referral Code Display */}
               <div className="bg-gradient-to-r from-[#f39c12]/10 to-[#f1c40f]/10 rounded-3xl p-6 mb-6 border border-[#f39c12]/30">
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-sm font-medium text-[#5f6368]">Your Referral Code</span>
@@ -230,7 +225,6 @@ export default function SignupContent() {
                 </div>
               </div>
 
-              {/* Bonus Stats */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="flex items-center gap-3 p-4 bg-[#f8f9fa] rounded-3xl">
                   <div className="w-12 h-12 rounded-full bg-[#34a853]/20 flex items-center justify-center">
@@ -263,7 +257,7 @@ export default function SignupContent() {
               </div>
 
               <div className="text-center mb-6">
-                <h1 className="text-3xl small font-semibold text-[#000000] mb-2">
+                <h1 className="text-3xl font-semibold text-[#000000] mb-2">
                   {step === 1 ? 'Create Account' : 'Set Your Password'}
                 </h1>
                 <p className="text-base text-[#5f6368]">
@@ -273,7 +267,6 @@ export default function SignupContent() {
                 </p>
               </div>
 
-              {/* Success Message */}
               {successMessage && (
                 <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-2xl animate-fade-in">
                   <div className="flex items-center gap-3">
@@ -297,9 +290,7 @@ export default function SignupContent() {
               {step === 1 ? (
                 <form onSubmit={handleNextStep} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-[#5f6368] mb-2">
-                      Full Name
-                    </label>
+                    <label className="block text-sm font-medium text-[#5f6368] mb-2">Full Name</label>
                     <input
                       type="text"
                       name="name"
@@ -310,9 +301,7 @@ export default function SignupContent() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[#5f6368] mb-2">
-                      Email Address
-                    </label>
+                    <label className="block text-sm font-medium text-[#5f6368] mb-2">Email Address</label>
                     <input
                       type="email"
                       name="email"
@@ -322,7 +311,6 @@ export default function SignupContent() {
                       className="w-full px-4 py-4 border border-[#dadce0] rounded-2xl focus:ring-2 focus:ring-[#1a73e8] focus:border-[#1a73e8] focus:outline-none text-[#202124] transition-all"
                     />
                   </div>
-
                   <button
                     type="submit"
                     className="w-full px-6 py-3 bg-[#1a73e8] text-white rounded-xl hover:bg-[#1765cc] font-medium text-base transition-all mt-6"
@@ -333,9 +321,7 @@ export default function SignupContent() {
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-[#5f6368] mb-2">
-                      Password
-                    </label>
+                    <label className="block text-sm font-medium text-[#5f6368] mb-2">Password</label>
                     <div className="relative">
                       <input
                         type={showPassword ? 'text' : 'password'}
@@ -355,9 +341,7 @@ export default function SignupContent() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[#5f6368] mb-2">
-                      Confirm Password
-                    </label>
+                    <label className="block text-sm font-medium text-[#5f6368] mb-2">Confirm Password</label>
                     <div className="relative">
                       <input
                         type={showConfirmPassword ? 'text' : 'password'}
@@ -408,28 +392,18 @@ export default function SignupContent() {
           </div>
         </div>
 
-        {/* Animation styles */}
         <style jsx>{`
           @keyframes fade-in {
-            from {
-              opacity: 0;
-              transform: translateY(20px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
           }
-
-          .animate-fade-in {
-            animation: fade-in 0.6s ease-out;
-          }
+          .animate-fade-in { animation: fade-in 0.6s ease-out; }
         `}</style>
       </div>
     );
   }
 
-  // Original single-column layout for normal signup (no referral)
+  // Single-column layout (no referral)
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center text-[#202124] p-6" style={bgimage}>
       <div className="absolute inset-0 bg-black/40 z-0"></div>
@@ -448,7 +422,7 @@ export default function SignupContent() {
           </div>
 
           <div className="text-center mb-6">
-            <h1 className="text-3xl small font-semibold text-[#000000] mb-2">
+            <h1 className="text-3xl font-semibold text-[#000000] mb-2">
               {step === 1 ? 'Create Account' : 'Set Your Password'}
             </h1>
             <p className="text-base text-[#5f6368]">
@@ -458,7 +432,6 @@ export default function SignupContent() {
             </p>
           </div>
 
-          {/* Success Message */}
           {successMessage && (
             <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-2xl animate-fade-in">
               <div className="flex items-center gap-3">
@@ -468,7 +441,6 @@ export default function SignupContent() {
             </div>
           )}
 
-          {/* Referral Points Preview on Step 2 */}
           {step === 2 && formData.referralCode && !successMessage && (
             <div className="mb-6 p-4 bg-[#e8f0fe] rounded-2xl border border-[#1a73e8]/30 animate-fade-in">
               <div className="flex items-center gap-3">
@@ -499,9 +471,7 @@ export default function SignupContent() {
           {step === 1 ? (
             <form onSubmit={handleNextStep} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[#5f6368] mb-2">
-                  Full Name
-                </label>
+                <label className="block text-sm font-medium text-[#5f6368] mb-2">Full Name</label>
                 <input
                   type="text"
                   name="name"
@@ -512,9 +482,7 @@ export default function SignupContent() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#5f6368] mb-2">
-                  Email Address
-                </label>
+                <label className="block text-sm font-medium text-[#5f6368] mb-2">Email Address</label>
                 <input
                   type="email"
                   name="email"
@@ -525,7 +493,6 @@ export default function SignupContent() {
                 />
               </div>
 
-              {/* Referral Code Toggle */}
               <div>
                 <button
                   type="button"
@@ -535,12 +502,10 @@ export default function SignupContent() {
                   <Users size={16} />
                   {showReferralInput ? 'Hide referral code' : 'Have a referral code?'}
                 </button>
-                
+
                 {showReferralInput && (
                   <div className="mt-3 animate-slide-down">
-                    <label className="block text-sm font-medium text-[#5f6368] mb-2">
-                      Referral Code
-                    </label>
+                    <label className="block text-sm font-medium text-[#5f6368] mb-2">Referral Code</label>
                     <input
                       type="text"
                       name="referralCode"
@@ -567,9 +532,7 @@ export default function SignupContent() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[#5f6368] mb-2">
-                  Password
-                </label>
+                <label className="block text-sm font-medium text-[#5f6368] mb-2">Password</label>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
@@ -589,9 +552,7 @@ export default function SignupContent() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#5f6368] mb-2">
-                  Confirm Password
-                </label>
+                <label className="block text-sm font-medium text-[#5f6368] mb-2">Confirm Password</label>
                 <div className="relative">
                   <input
                     type={showConfirmPassword ? 'text' : 'password'}
@@ -611,7 +572,6 @@ export default function SignupContent() {
                 </div>
               </div>
 
-              {/* Show referral code summary if entered */}
               {formData.referralCode && (
                 <div className="p-4 bg-gradient-to-r from-[#34a853]/10 to-[#1a73e8]/10 rounded-xl border border-[#34a853]/30">
                   <div className="flex items-center gap-2">
@@ -663,37 +623,17 @@ export default function SignupContent() {
         </p>
       </div>
 
-      {/* Animation styles */}
       <style jsx>{`
         @keyframes fade-in {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-
         @keyframes slide-down {
-          from {
-            opacity: 0;
-            transform: translateY(-10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-
-        .animate-fade-in {
-          animation: fade-in 0.6s ease-out;
-        }
-
-        .animate-slide-down {
-          animation: slide-down 0.3s ease-out;
-        }
+        .animate-fade-in { animation: fade-in 0.6s ease-out; }
+        .animate-slide-down { animation: slide-down 0.3s ease-out; }
       `}</style>
     </div>
   );

@@ -1,6 +1,5 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { serialize } from 'cookie';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not defined');
@@ -25,30 +24,39 @@ export const verifyToken = (token) => {
   }
 };
 
-// Set JWT as http‑only cookie
-export const setTokenCookie = (res, token) => {
-  res.setHeader('Set-Cookie', serialize('token', token, {
+// ✅ App Router: use response.cookies.set() — NOT res.setHeader()
+export const setTokenCookie = (response, token) => {
+  response.cookies.set('token', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7, // 7 days in seconds
     path: '/',
-  }));
+  });
 };
 
-// Clear cookie on logout
-export const clearTokenCookie = (res) => {
-  res.setHeader('Set-Cookie', serialize('token', '', {
+// ✅ App Router: clear cookie using expires in the past
+export const clearTokenCookie = (response) => {
+  response.cookies.set('token', '', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     expires: new Date(0),
     path: '/',
-  }));
+  });
 };
 
-// Verify token from request cookies
-export const getTokenFromRequest = (req) => {
-  const cookies = req.cookies;
-  return cookies?.token || null;
+// ✅ App Router: read cookie from NextRequest
+export const getTokenFromRequest = (request) => {
+  // From cookie (App Router NextRequest)
+  const cookieToken = request.cookies.get('token')?.value;
+  if (cookieToken) return cookieToken;
+
+  // Fallback: Authorization Bearer header
+  const authHeader = request.headers.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+
+  return null;
 };

@@ -9,10 +9,7 @@ import { useUser } from '@/context/UserContext';
 export default function LoginContent() {
   const router = useRouter();
   const { login } = useUser();
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
+  const [formData, setFormData] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,9 +32,8 @@ export default function LoginContent() {
     console.log('Attempting signin with:', formData.email);
 
     try {
-      // Add timeout to fetch
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       const response = await fetch('/api/auth/signin', {
         method: 'POST',
@@ -49,7 +45,7 @@ export default function LoginContent() {
       clearTimeout(timeoutId);
 
       console.log('Signin response status:', response.status);
-      
+
       let data;
       try {
         data = await response.json();
@@ -73,17 +69,18 @@ export default function LoginContent() {
         return;
       }
 
-      // Store user data in localStorage
+      // Store user data
       localStorage.setItem('userName', data.user.name || data.user.email);
       localStorage.setItem('userEmail', data.user.email);
       if (data.user.id) localStorage.setItem('userId', data.user.id);
-      
-      // Use the login function from context
+
       login(data.user);
 
       console.log('Login successful, onboardingCompleted:', data.user.onboardingCompleted);
 
-      // Check if onboarding is completed
+      // ✅ FIXED: Reset loading before navigation
+      setLoading(false);
+
       if (!data.user.onboardingCompleted) {
         router.push('/welcome');
       } else {
@@ -91,7 +88,7 @@ export default function LoginContent() {
       }
     } catch (err) {
       console.error('Signin error details:', err);
-      
+
       if (err.name === 'AbortError') {
         setError('Request timed out. Please check your connection.');
       } else if (err.message === 'Failed to fetch') {
@@ -99,7 +96,7 @@ export default function LoginContent() {
       } else {
         setError(err.message || 'Something went wrong. Please try again.');
       }
-      
+
       setLoading(false);
     }
   };
@@ -111,7 +108,10 @@ export default function LoginContent() {
   };
 
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center text-[#202124] p-6" style={bgimage}>
+    <div
+      className="relative min-h-screen flex flex-col items-center justify-center text-[#202124] p-6"
+      style={bgimage}
+    >
       <div className="absolute inset-0 bg-black/40 z-0"></div>
 
       <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
@@ -128,7 +128,7 @@ export default function LoginContent() {
           </div>
 
           <div className="text-center mb-6">
-            <h1 className="text-3xl small font-semibold text-[#000000] mb-2">
+            <h1 className="text-3xl font-semibold text-[#000000] mb-2">
               Welcome Back
             </h1>
             <p className="text-base text-[#5f6368]">
@@ -201,7 +201,6 @@ export default function LoginContent() {
         </div>
       </div>
 
-      {/* Animation styles */}
       <style jsx>{`
         @keyframes fade-in {
           from {
@@ -213,7 +212,6 @@ export default function LoginContent() {
             transform: translateY(0);
           }
         }
-
         .animate-fade-in {
           animation: fade-in 0.6s ease-out;
         }

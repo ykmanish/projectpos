@@ -198,18 +198,67 @@ export default function GroupChatInterface({
   const { socket, isConnected, getUserOnlineStatus } = useSocket();
   const roomId = group.groupId;
 
-  // ==================== DETECT MOBILE ====================
-  // ==================== DETECT MOBILE ====================
-useEffect(() => {
-  const checkMobile = () => {
-    setIsMobile(window.innerWidth < 768);
+  // ==================== GIF COMPONENT ====================
+  const GifWithHoverPlay = ({ src, alt, className, onClick }) => {
+    const [isHovered, setIsHovered] = useState(false);
+    const videoRef = useRef(null);
+
+    useEffect(() => {
+      const video = videoRef.current;
+      if (!video) return;
+
+      if (isHovered) {
+        // When hovered, play the video
+        video.play().catch(e => console.log('Play failed:', e));
+      } else {
+        // When not hovered, pause and reset to first frame
+        video.pause();
+        video.currentTime = 0;
+      }
+    }, [isHovered]);
+
+    return (
+      <div 
+        className="relative"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <video
+          ref={videoRef}
+          src={src}
+          alt={alt}
+          className={className}
+          onClick={onClick}
+          muted
+          playsInline
+          loop
+          preload="auto"
+        />
+        
+        {/* Play button overlay when paused */}
+        {!isHovered && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl opacity-0 hover:opacity-100 transition-opacity">
+            <div className="bg-black/60 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-1">
+              <span>▶</span>
+              <span>Hover to play</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
-  
-  checkMobile();
-  window.addEventListener('resize', checkMobile);
-  
-  return () => window.removeEventListener('resize', checkMobile);
-}, []);
+
+  // ==================== DETECT MOBILE ====================
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   // ==================== HELPER FUNCTIONS ====================
 
@@ -740,14 +789,13 @@ useEffect(() => {
     setMessages((prev) =>
       prev.map((msg) => {
         if (msg.billId === bill.id) {
-          const paidCount = bill.splits?.filter(
-            (s) => s.status === "paid"
-          ).length || 0;
+          const paidCount =
+            bill.splits?.filter((s) => s.status === "paid").length || 0;
           const totalCount = bill.splits?.length || 0;
-          
+
           // Get payer name
           const paidByMember = bill.splits?.find(
-            (s) => s.userId === bill.paidBy
+            (s) => s.userId === bill.paidBy,
           );
           const paidByName = paidByMember?.userName || "Someone";
 
@@ -768,7 +816,8 @@ useEffect(() => {
               paidCount,
               totalCount,
               pendingCount: totalCount - paidCount,
-              paidPercentage: bill.totalAmount > 0 ? (paidCount / totalCount) * 100 : 0,
+              paidPercentage:
+                bill.totalAmount > 0 ? (paidCount / totalCount) * 100 : 0,
               splits: bill.splits || [],
             },
           };
@@ -1676,6 +1725,9 @@ useEffect(() => {
       };
     }
 
+    // Check if it's a GIF from Tenor/Giphy (usually MP4)
+    const isVideoGif = gif.media?.gif?.url || gif.media?.mp4?.url;
+    
     const messageData = {
       roomId,
       senderId: currentUserId,
@@ -1685,16 +1737,17 @@ useEffect(() => {
       content: "",
       attachments: [
         {
-          url: gif.url,
+          url: gif.url || gif.media?.mp4?.url || gif.media?.gif?.url,
           type: "gif",
-          name: gif.name || "GIF",
-          gifId: gif.gifId,
+          name: gif.name || gif.title || "GIF",
+          gifId: gif.id || gif.gifId,
           gifData: gif,
+          isVideo: !!isVideoGif, // Flag to indicate if it should be rendered as video
         },
       ],
       replyTo: replyTo,
       timestamp: now,
-      delivered: false, // Start as false for offline members
+      delivered: false,
       deliveredAt: null,
       read: false,
       readBy: [currentUserId],
@@ -2434,19 +2487,19 @@ useEffect(() => {
 
   // Handle bill creation success
   const handleBillCreated = async (bill) => {
-    console.log('💰 Bill created with data from API:', bill);
-    
+    console.log("💰 Bill created with data from API:", bill);
+
     // The API already saved the message to the database and will emit socket events
     // So we don't need to create another message here
     // Just fetch messages to ensure we have the latest
     await fetchMessages();
-    
+
     // Also emit a direct socket event to ensure real-time update
     if (socket && isConnected) {
       socket.emit("bill-created", {
         roomId: roomId,
         bill: bill,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
   };
@@ -2939,7 +2992,7 @@ useEffect(() => {
         // The message will be added via the regular message handler
         // But we need to fetch messages to ensure we have it
         fetchMessages();
-        
+
         // Also add a temporary notification for better UX
         const notification = {
           id: `bill-${data.timestamp}`,
@@ -2948,9 +3001,9 @@ useEffect(() => {
           userName: data.bill?.paidByName || "Someone",
           timestamp: data.timestamp,
         };
-        
+
         setJoinNotifications((prev) => [...prev, notification]);
-        
+
         // Remove notification after 3 seconds
         setTimeout(() => {
           setJoinNotifications((prev) =>
@@ -2994,13 +3047,13 @@ useEffect(() => {
         setMessages((prev) => {
           // Check if message already exists
           const exists = prev.some(
-            (m) => m.timestamp === data.message.timestamp
+            (m) => m.timestamp === data.message.timestamp,
           );
-          
+
           if (exists) {
             return prev;
           }
-          
+
           return [...prev, data.message];
         });
       }
@@ -3169,131 +3222,138 @@ useEffect(() => {
 
   return (
     <>
-      <div className={`h-full flex flex-col bg-white dark:bg-[#0c0c0c] rounded-3xl border border-none dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300 ${isMobile ? 'fixed inset-0 z-50 rounded-none' : ''}`}>
-        {/* Chat Header - Fixed */}
-        {/* Chat Header - Fixed */}
-<div className={`flex-shrink-0 p-3 md:p-4 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between bg-white dark:bg-[#0c0c0c] ${isMobile ? 'sticky top-0 z-20' : ''}`}>
-  <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-    {/* Back button - only show on mobile */}
-    {isMobile && (
-      <button
-        onClick={onClose}
-        className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+      <div
+        className={`h-full flex flex-col bg-white dark:bg-[#0c0c0c] rounded-3xl border-none dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300 ${isMobile ? "fixed inset-0 z-50 rounded-none" : ""}`}
       >
-        <ChevronLeft
-          size={20}
-          className="text-[#202124] dark:text-white"
-        />
-      </button>
-    )}
+        {/* Chat Header */}
+        <div
+          className={`flex-shrink-0 p-3 md:p-4 border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between bg-white dark:bg-[#0c0c0c] ${isMobile ? "sticky top-0 z-20" : ""}`}
+        >
+          <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+            {/* Back button - only show on mobile */}
+            {isMobile && (
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+              >
+                <ChevronLeft
+                  size={20}
+                  className="text-[#202124] dark:text-white"
+                />
+              </button>
+            )}
 
-    <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden bg-zinc-100 dark:bg-[#232529] flex items-center justify-center text-[#202124] dark:text-white font-semibold text-base md:text-lg flex-shrink-0">
-      {(() => {
-        let groupAvatar = null;
-        if (groupData.avatar) {
-          try {
-            groupAvatar =
-              typeof groupData.avatar === "string"
-                ? JSON.parse(groupData.avatar)
-                : groupData.avatar;
-          } catch (e) {
-            console.error("Failed to parse group avatar", e);
-          }
-        }
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full overflow-hidden bg-zinc-100 dark:bg-[#232529] flex items-center justify-center text-[#202124] dark:text-white font-semibold text-base md:text-lg flex-shrink-0">
+              {(() => {
+                let groupAvatar = null;
+                if (groupData.avatar) {
+                  try {
+                    groupAvatar =
+                      typeof groupData.avatar === "string"
+                        ? JSON.parse(groupData.avatar)
+                        : groupData.avatar;
+                  } catch (e) {
+                    console.error("Failed to parse group avatar", e);
+                  }
+                }
 
-        if (groupAvatar?.beanConfig) {
-          return <BeanHead {...groupAvatar.beanConfig} />;
-        } else {
-          const groupName =
-            groupData.groupName || groupData.name || "Group";
-          return groupName
-            .split(" ")
-            .map((w) => w[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2);
-        }
-      })()}
-    </div>
+                if (groupAvatar?.beanConfig) {
+                  return <BeanHead {...groupAvatar.beanConfig} />;
+                } else {
+                  const groupName =
+                    groupData.groupName || groupData.name || "Group";
+                  return groupName
+                    .split(" ")
+                    .map((w) => w[0])
+                    .join("")
+                    .toUpperCase()
+                    .slice(0, 2);
+                }
+              })()}
+            </div>
 
-    <div className="flex-1 min-w-0">
-      <h3 className="text-sm md:text-base text-[#202124] dark:text-white truncate flex items-center gap-2">
-        {groupData.groupName || groupData.name}
-        {isCurrentUserAdmin && (
-          <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full">
-            Admin
-          </span>
-        )}
-        {groupData.settings?.onlyAdminsCanMessage &&
-          !isCurrentUserAdmin && (
-            <Lock
-              size={12}
-              className="text-[#5f6368] dark:text-gray-400"
-            />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm md:text-base text-[#202124] dark:text-white truncate flex items-center gap-2">
+                {groupData.groupName || groupData.name}
+                {isCurrentUserAdmin && (
+                  <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full">
+                    Admin
+                  </span>
+                )}
+                {groupData.settings?.onlyAdminsCanMessage &&
+                  !isCurrentUserAdmin && (
+                    <Lock
+                      size={12}
+                      className="text-[#5f6368] dark:text-gray-400"
+                    />
+                  )}
+              </h3>
+              <div className="flex flex-wrap items-center gap-1 md:gap-2 text-xs">
+                <div className="flex items-center gap-1 text-[#5f6368] dark:text-gray-400">
+                  <Users size={12} />
+                  <span className="hidden xs:inline">
+                    {groupData.members?.length || 0} members
+                  </span>
+                  <span className="xs:hidden">
+                    {groupData.members?.length || 0}
+                  </span>
+                  <span className="mx-1 hidden xs:inline">•</span>
+                  <span className="text-green-600 dark:text-green-400 whitespace-nowrap">
+                    {onlineMembers.size} online
+                  </span>
+                </div>
+                {groupTyping.length > 0 && (
+                  <span className="text-green-600 dark:text-green-400 animate-pulse text-xs truncate max-w-[120px] md:max-w-none">
+                    {groupTyping.length === 1
+                      ? `${getMemberName(groupTyping[0]).split(" ")[0]} is typing...`
+                      : `${groupTyping.length} typing...`}
+                  </span>
+                )}
+                {cooldownActive && !isCurrentUserAdmin && (
+                  <SlowModeBadge timeRemaining={timeRemaining} />
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Three Dots Dropdown */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+            >
+              <MoreVertical
+                size={18}
+                className="text-[#5f6368] dark:text-gray-400"
+              />
+            </button>
+
+            {showDropdown && (
+              <div className="absolute right-0 mt-2 w-48 md:w-56 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl z-50 py-2">
+                {dropdownItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={item.onClick}
+                    className={`w-full flex items-center gap-3 px-3 md:px-4 py-2.5 md:py-3 hover:bg-gray-100 dark:hover:bg-[#101010] transition-colors text-sm ${item.className || "text-[#202124] dark:text-white"}`}
+                  >
+                    <item.icon size={16} />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Close button - only show on desktop */}
+          {!isMobile && (
+            <button
+              onClick={onClose}
+              className="p-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors ml-1 md:ml-2"
+            >
+              <X size={16} className="text-red-600 dark:text-red-400" />
+            </button>
           )}
-      </h3>
-      <div className="flex flex-wrap items-center gap-1 md:gap-2 text-xs">
-        <div className="flex items-center gap-1 text-[#5f6368] dark:text-gray-400">
-          <Users size={12} />
-          <span className="hidden xs:inline">{groupData.members?.length || 0} members</span>
-          <span className="xs:hidden">{groupData.members?.length || 0}</span>
-          <span className="mx-1 hidden xs:inline">•</span>
-          <span className="text-green-600 dark:text-green-400 whitespace-nowrap">
-            {onlineMembers.size} online
-          </span>
         </div>
-        {groupTyping.length > 0 && (
-          <span className="text-green-600 dark:text-green-400 animate-pulse text-xs truncate max-w-[120px] md:max-w-none">
-            {groupTyping.length === 1
-              ? `${getMemberName(groupTyping[0]).split(' ')[0]} is typing...`
-              : `${groupTyping.length} typing...`}
-          </span>
-        )}
-        {cooldownActive && !isCurrentUserAdmin && (
-          <SlowModeBadge timeRemaining={timeRemaining} />
-        )}
-      </div>
-    </div>
-  </div>
-
-  {/* Three Dots Dropdown */}
-  <div className="relative" ref={dropdownRef}>
-    <button
-      onClick={() => setShowDropdown(!showDropdown)}
-      className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
-    >
-      <MoreVertical
-        size={18}
-        className="text-[#5f6368] dark:text-gray-400"
-      />
-    </button>
-
-    {showDropdown && (
-      <div className="absolute right-0 mt-2 w-48 md:w-56 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl z-50 py-2">
-        {dropdownItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={item.onClick}
-            className={`w-full flex items-center gap-3 px-3 md:px-4 py-2.5 md:py-3 hover:bg-gray-100 dark:hover:bg-[#101010] transition-colors text-sm ${item.className || "text-[#202124] dark:text-white"}`}
-          >
-            <item.icon size={16} />
-            <span>{item.label}</span>
-          </button>
-        ))}
-      </div>
-    )}
-  </div>
-
-  {/* Close button - only show on desktop */}
-  {!isMobile && (
-    <button
-      onClick={onClose}
-      className="p-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors ml-1 md:ml-2"
-    >
-      <X size={16} className="text-red-600 dark:text-red-400" />
-    </button>
-  )}
-</div>
 
         {/* Search Bar */}
         {showSearch && (
@@ -3564,12 +3624,33 @@ useEffect(() => {
                                       ) : att.type === "gif" ? (
                                         <div className="flex flex-col">
                                           <div className="relative">
-                                            <img
-                                              src={att.url}
-                                              alt={att.name || "GIF"}
-                                              className="max-w-full rounded-2xl max-h-48 md:max-h-64 object-cover transition-opacity"
-                                              loading="lazy"
-                                            />
+                                            {/* Check if it's a video-based GIF or image-based GIF */}
+                                            {att.url.match(/\.(mp4|webm|ogg)$/i) || att.isVideo ? (
+                                              <GifWithHoverPlay
+                                                src={att.url}
+                                                alt={att.name || "GIF"}
+                                                className="max-w-full rounded-2xl max-h-48 md:max-h-64 object-cover cursor-pointer transition-opacity"
+                                                onClick={() =>
+                                                  handleAttachmentClick(
+                                                    att,
+                                                    globalIndex,
+                                                  )
+                                                }
+                                              />
+                                            ) : (
+                                              <img
+                                                src={att.url}
+                                                alt={att.name || "GIF"}
+                                                className="max-w-full rounded-2xl max-h-48 md:max-h-64 object-cover cursor-pointer transition-opacity"
+                                                onClick={() =>
+                                                  handleAttachmentClick(
+                                                    att,
+                                                    globalIndex,
+                                                  )
+                                                }
+                                                loading="lazy"
+                                              />
+                                            )}
                                             <div className="absolute top-2 left-2 bg-black/60 text-white text-[8px] md:text-[10px] px-1.5 py-0.5 md:px-2 md:py-1 rounded-full backdrop-blur-sm">
                                               GIF
                                             </div>
@@ -3590,14 +3671,17 @@ useEffect(() => {
                             )}
 
                           {/* Text content with highlighting */}
-                          {hasTextContent && (
-                            isBillMessage ? (
+                          {hasTextContent &&
+                            (isBillMessage ? (
                               // Bill message
                               msg.billCancelled ? (
                                 <div className="bill-message-content w-full max-w-[280px] md:max-w-sm">
                                   <div className="rounded-[30px] p-4 md:p-5 w-full bg-gray-300 dark:bg-gray-700">
                                     <div className="flex items-center gap-2 mb-2">
-                                      <XCircle size={16} className="text-red-500" />
+                                      <XCircle
+                                        size={16}
+                                        className="text-red-500"
+                                      />
                                       <h3 className="text-lg md:text-xl font-extrabold text-gray-700 dark:text-gray-300">
                                         Bill Cancelled
                                       </h3>
@@ -3613,7 +3697,7 @@ useEffect(() => {
                                     messageContent,
                                     msg.billId,
                                     msg.billCurrency,
-                                    msg.billData
+                                    msg.billData,
                                   )}
                                 </div>
                               )
@@ -3621,9 +3705,12 @@ useEffect(() => {
                               // Check if this message contains a code block
                               (() => {
                                 // Parse the message to check for code blocks
-                                const parts = parseMessageContent(messageContent);
-                                const hasCodeBlock = parts.some(part => part.type === "code-block");
-                                
+                                const parts =
+                                  parseMessageContent(messageContent);
+                                const hasCodeBlock = parts.some(
+                                  (part) => part.type === "code-block",
+                                );
+
                                 // If it has a code block, render it with code blocks outside the bubble
                                 if (hasCodeBlock) {
                                   return (
@@ -3632,14 +3719,21 @@ useEffect(() => {
                                         if (part.type === "code-block") {
                                           // Code block - render outside bubble (like images)
                                           return (
-                                            <div key={`code-${index}`} className="my-2">
+                                            <div
+                                              key={`code-${index}`}
+                                              className="my-2"
+                                            >
                                               <CodeBlock
                                                 code={part.code}
-                                                language={part.language || "javascript"}
+                                                language={
+                                                  part.language || "javascript"
+                                                }
                                               />
                                             </div>
                                           );
-                                        } else if (part.type === "inline-code") {
+                                        } else if (
+                                          part.type === "inline-code"
+                                        ) {
                                           // Inline code - render inside text
                                           return (
                                             <span key={`inline-${index}`}>
@@ -3664,12 +3758,17 @@ useEffect(() => {
                                               }`}
                                             >
                                               <div className="whitespace-pre-wrap break-words leading-relaxed">
-                                                {renderTextWithLinks(part.content, index)}
+                                                {renderTextWithLinks(
+                                                  part.content,
+                                                  index,
+                                                )}
                                               </div>
                                               {/* Only show time and status on the last text bubble if there are multiple */}
                                               {index === parts.length - 1 && (
                                                 <div className="flex items-center justify-end gap-1 mt-2">
-                                                  <p className={`text-[8px] md:text-[10px] ${isOwn ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"}`}>
+                                                  <p
+                                                    className={`text-[8px] md:text-[10px] ${isOwn ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"}`}
+                                                  >
                                                     {formatTime(msg.timestamp)}
                                                   </p>
                                                   {renderMessageStatus(msg)}
@@ -3701,15 +3800,16 @@ useEffect(() => {
                                         content={messageContent}
                                         highlightedText={highlightedText}
                                         formatTime={formatTime}
-                                        renderMessageStatus={renderMessageStatus}
+                                        renderMessageStatus={
+                                          renderMessageStatus
+                                        }
                                         isOwn={isOwn}
                                       />
                                     </div>
                                   );
                                 }
                               })()
-                            )
-                          )}
+                            ))}
                           {/* Reactions */}
                           {msg.reactions && msg.reactions.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1 px-2">
@@ -3770,86 +3870,93 @@ useEffect(() => {
             ))
           )}
 
-{/* Add this after the messages loop and before messagesEndRef */}
-{groupTyping.length > 0 && canSendMessage() && (
-  <div className="flex items-start gap-2 transition-all duration-200 ease-in">
-    {/* Show typing indicators for up to 3 people, then "X people are typing..." */}
-    {groupTyping.length <= 3 ? (
-      groupTyping.map((userId) => {
-        const member = groupData.members?.find(m => m.userId === userId);
-        if (!member) return null;
-        
-        return (
-          <div key={userId} className="flex items-start gap-1 max-w-[85%] md:max-w-[70%]">
-            <div className="flex-shrink-0 mt-1">
-              {renderAvatar(
-                member.avatar,
-                member.userName,
-                "w-6 h-6 md:w-7 md:h-7",
+          {/* Add this after the messages loop and before messagesEndRef */}
+          {groupTyping.length > 0 && canSendMessage() && (
+            <div className="flex items-start gap-2 transition-all duration-200 ease-in">
+              {/* Show typing indicators for up to 3 people, then "X people are typing..." */}
+              {groupTyping.length <= 3 ? (
+                groupTyping.map((userId) => {
+                  const member = groupData.members?.find(
+                    (m) => m.userId === userId,
+                  );
+                  if (!member) return null;
+
+                  return (
+                    <div
+                      key={userId}
+                      className="flex items-start gap-1 max-w-[85%] md:max-w-[70%]"
+                    >
+                      <div className="flex-shrink-0 mt-1">
+                        {renderAvatar(
+                          member.avatar,
+                          member.userName,
+                          "w-6 h-6 md:w-7 md:h-7",
+                        )}
+                      </div>
+                      <div className="bg-white dark:bg-[#101010] border border-[#dadce0] dark:border-[#232529] rounded-2xl rounded-tl-none p-3 md:p-4">
+                        <div className="flex gap-1">
+                          <span
+                            className="w-2 h-2 md:w-2.5 md:h-2.5 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
+                            style={{ animationDelay: "0ms" }}
+                          ></span>
+                          <span
+                            className="w-2 h-2 md:w-2.5 md:h-2.5 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
+                            style={{ animationDelay: "150ms" }}
+                          ></span>
+                          <span
+                            className="w-2 h-2 md:w-2.5 md:h-2.5 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
+                            style={{ animationDelay: "300ms" }}
+                          ></span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="flex items-start gap-2">
+                  <div className="flex -space-x-2">
+                    {groupTyping.slice(0, 3).map((userId) => {
+                      const member = groupData.members?.find(
+                        (m) => m.userId === userId,
+                      );
+                      if (!member) return null;
+
+                      return (
+                        <div key={userId} className="flex-shrink-0">
+                          {renderAvatar(
+                            member.avatar,
+                            member.userName,
+                            "w-6 h-6 md:w-7 md:h-7 border-2 border-white dark:border-[#0c0c0c]",
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="bg-white dark:bg-[#101010] border border-[#dadce0] dark:border-[#232529] rounded-2xl rounded-tl-none p-3 md:p-4">
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1">
+                        <span
+                          className="w-2 h-2 md:w-2.5 md:h-2.5 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
+                          style={{ animationDelay: "0ms" }}
+                        ></span>
+                        <span
+                          className="w-2 h-2 md:w-2.5 md:h-2.5 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
+                          style={{ animationDelay: "150ms" }}
+                        ></span>
+                        <span
+                          className="w-2 h-2 md:w-2.5 md:h-2.5 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
+                          style={{ animationDelay: "300ms" }}
+                        ></span>
+                      </div>
+                      <span className="text-xs md:text-sm text-[#5f6368] dark:text-gray-400">
+                        {groupTyping.length} people are typing
+                      </span>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
-            <div className="bg-white dark:bg-[#101010] border border-[#dadce0] dark:border-[#232529] rounded-2xl rounded-tl-none p-3 md:p-4">
-              <div className="flex gap-1">
-                <span
-                  className="w-2 h-2 md:w-2.5 md:h-2.5 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "0ms" }}
-                ></span>
-                <span
-                  className="w-2 h-2 md:w-2.5 md:h-2.5 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "150ms" }}
-                ></span>
-                <span
-                  className="w-2 h-2 md:w-2.5 md:h-2.5 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "300ms" }}
-                ></span>
-              </div>
-            </div>
-          </div>
-        );
-      })
-    ) : (
-      <div className="flex items-start gap-2">
-        <div className="flex -space-x-2">
-          {groupTyping.slice(0, 3).map((userId) => {
-            const member = groupData.members?.find(m => m.userId === userId);
-            if (!member) return null;
-            
-            return (
-              <div key={userId} className="flex-shrink-0">
-                {renderAvatar(
-                  member.avatar,
-                  member.userName,
-                  "w-6 h-6 md:w-7 md:h-7 border-2 border-white dark:border-[#0c0c0c]",
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <div className="bg-white dark:bg-[#101010] border border-[#dadce0] dark:border-[#232529] rounded-2xl rounded-tl-none p-3 md:p-4">
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1">
-              <span
-                className="w-2 h-2 md:w-2.5 md:h-2.5 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
-                style={{ animationDelay: "0ms" }}
-              ></span>
-              <span
-                className="w-2 h-2 md:w-2.5 md:h-2.5 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
-                style={{ animationDelay: "150ms" }}
-              ></span>
-              <span
-                className="w-2 h-2 md:w-2.5 md:h-2.5 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
-                style={{ animationDelay: "300ms" }}
-              ></span>
-            </div>
-            <span className="text-xs md:text-sm text-[#5f6368] dark:text-gray-400">
-              {groupTyping.length} people are typing
-            </span>
-          </div>
-        </div>
-      </div>
-    )}
-  </div>
-)}
+          )}
           <div ref={messagesEndRef} />
         </div>
 
@@ -3912,527 +4019,572 @@ useEffect(() => {
         )}
 
         {/* Message Input - Fixed */}
-        {/* Message Input - Fixed */}
-<div className={`flex-shrink-0 p-3 md:p-4 border-t border-[#f1f3f4] dark:border-[#181A1E] bg-white dark:bg-[#0c0c0c] ${isMobile ? 'sticky bottom-0 z-20 pb-safe' : ''}`}>
-  
-  {/* Warning banner for restricted messaging */}
-  {!canSendMessage() && !isCurrentUserAdmin && (
-    <div className="absolute -top-8 left-0 right-0 text-center">
-      <span className="text-[10px] md:text-xs flex items-center justify-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2 py-1 md:px-3 md:py-2 rounded-t-lg">
-        <Lock size={10} className="inline mr-1" />
-        {groupData.settings?.onlyAdminsCanMessage
-          ? "🔒 Only admins can send messages"
-          : slowModeSettings.enabled && !canSendInSlowMode()
-            ? `Slow mode active (${timeRemaining}s)`
-            : "Cannot send messages"}
-      </span>
-    </div>
-  )}
-
-  {/* Slash Command Suggestions */}
-  {showSlashSuggestions && (
-    <div className="absolute bottom-full left-2 md:left-4 mb-2 w-56 md:w-64 bg-white dark:bg-[#0c0c0c] border-zinc-200 dark:border-[#232529] rounded-2xl z-50 shadow-lg">
-      <div className="p-1 md:p-2">
-        <div className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400 px-2 md:px-3 py-1 md:py-2">
-          Available commands
-        </div>
-        <button
-          onClick={() => handleSlashCommand("/split")}
-          className="w-full flex items-center gap-2 md:gap-3 p-2 md:p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-lg transition-colors"
+        <div
+          className={`flex-shrink-0 p-3 md:p-4 border-[#f1f3f4] dark:border-[#181A1E] bg-white dark:bg-[#0c0c0c] ${isMobile ? "sticky bottom-0 z-20 pb-safe" : ""}`}
         >
-          <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-            <ReceiptText
-              size={12}
-              className="text-green-600 dark:text-green-400"
-            />
-          </div>
-          <div className="flex-1 text-left">
-            <p className="text-xs md:text-sm font-medium text-[#202124] dark:text-white">
-              /split
-            </p>
-            <p className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400">
-              Split a bill with group members
-            </p>
-          </div>
-        </button>
-      </div>
-    </div>
-  )}
-
-  {/* Mention Suggestions */}
-  {showMentions && (
-    <div className="absolute bottom-full left-0 mb-2 w-56 md:w-64 z-50 mention-suggestions">
-      <MentionSuggestions
-        members={filteredMembers}
-        onSelect={handleSelectMention}
-        query={mentionQuery}
-        currentUserId={currentUserId}
-      />
-    </div>
-  )}
-
-  {/* GIF Picker */}
- {/* GIF Picker */}
-{/* GIF Picker */}
-{showGIFPicker && (
-  <div
-    ref={gifPickerRef}
-    className={`absolute z-50 ${
-      isMobile 
-        ? 'bottom-24 left-1/2 transform -translate-x-1/2 w-[calc(100%-32px)] max-w-[350px]' 
-        : 'bottom-28 right-80'  // Position it near the attachment button
-    }`}
-  >
-    <GIFPicker
-      onSelect={handleSendGIF}
-      onClose={() => setShowGIFPicker(false)}
-    />
-  </div>
-)}
-
-  {isMobile ? (
-    /* Mobile Input Layout - WhatsApp Style */
-    <div className="flex items-center gap-1">
-      {/* Input Container with integrated buttons */}
-      <div className="flex-1 flex items-center bg-gray-100 dark:bg-[#1a1a1a] rounded-3xl px-2 mb-2 min-h-[44px]">
-        {/* AI Enhancement Button */}
-        <button
-          onClick={() => setShowAIEnhancement(true)}
-          className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors relative"
-          disabled={!isConnected || !roomJoined || !canSendMessage()}
-        >
-          <Sparkles
-            size={20}
-            className="text-purple-600 dark:text-purple-400"
-          />
-          {newMessage.trim() && (
-            <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+          {/* Warning banner for restricted messaging */}
+          {!canSendMessage() && !isCurrentUserAdmin && (
+            <div className="absolute -top-8 left-0 right-0 text-center">
+              <span className="text-[10px] md:text-xs flex items-center justify-center text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2 py-1 md:px-3 md:py-2 rounded-t-lg">
+                <Lock size={10} className="inline mr-1" />
+                {groupData.settings?.onlyAdminsCanMessage
+                  ? "🔒 Only admins can send messages"
+                  : slowModeSettings.enabled && !canSendInSlowMode()
+                    ? `Slow mode active (${timeRemaining}s)`
+                    : "Cannot send messages"}
+              </span>
+            </div>
           )}
-        </button>
 
-        {/* Text Input */}
-        <input
-          ref={inputRef}
-          type="text"
-          onPaste={handlePaste}
-          value={editingMessage ? editText : newMessage}
-          onChange={
-            editingMessage
-              ? (e) => setEditText(e.target.value)
-              : handleInputChange
-          }
-          onKeyPress={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
+          {/* Slash Command Suggestions */}
+          {showSlashSuggestions && (
+            <div className="absolute bottom-full left-2 md:left-4 mb-2 w-56 md:w-64 bg-white dark:bg-[#0c0c0c] border-zinc-200 dark:border-[#232529] rounded-2xl z-50 shadow-lg">
+              <div className="p-1 md:p-2">
+                <div className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400 px-2 md:px-3 py-1 md:py-2">
+                  Available commands
+                </div>
+                <button
+                  onClick={() => handleSlashCommand("/split")}
+                  className="w-full flex items-center gap-2 md:gap-3 p-2 md:p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-lg transition-colors"
+                >
+                  <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                    <ReceiptText
+                      size={12}
+                      className="text-green-600 dark:text-green-400"
+                    />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="text-xs md:text-sm font-medium text-[#202124] dark:text-white">
+                      /split
+                    </p>
+                    <p className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400">
+                      Split a bill with group members
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
 
-              // Check for slash command
-              if (
-                newMessage.startsWith("/") &&
-                handleSlashCommand(newMessage)
-              ) {
-                return;
-              }
-
-              if (editingMessage) {
-                handleEditMessage();
-              } else if (attachments.length > 0) {
-                handleSendWithAttachments();
-              } else {
-                handleSendMessage();
-              }
-            }
-          }}
-          placeholder={
-            !isConnected
-              ? "Connecting..."
-              : !roomJoined
-                ? "Joining chat..."
-                : !canSendMessage()
-                  ? isCurrentUserAdmin
-                    ? "Admin (bypassing restrictions)"
-                    : groupData.settings?.onlyAdminsCanMessage
-                      ? "🔒 Only admins can message"
-                      : slowModeSettings.enabled && !canSendInSlowMode()
-                        ? `Slow mode (${timeRemaining}s)`
-                        : "Cannot send"
-                  : isCurrentUserAdmin
-                    ? "Message as admin..."
-                    : "Message..."
-          }
-          className="flex-1 bg-transparent text-[#202124] dark:text-white placeholder-gray-500 dark:placeholder-gray-400 py-3 px-1 focus:outline-none text-base"
-          disabled={
-            !isConnected || !roomJoined || uploading || !canSendMessage()
-          }
-        />
-
-        {/* Attachment Button */}
-        <div className="relative" ref={attachmentPickerRef}>
-          <button
-            onClick={() => {
-              if (!canSendMessage()) return;
-              setShowAttachments(!showAttachments);
-              setShowEmojiPicker(false);
-              setShowGIFPicker(false);
-            }}
-            className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors"
-            disabled={
-              !isConnected ||
-              !roomJoined ||
-              editingMessage ||
-              !canSendMessage()
-            }
-          >
-            <Paperclip
-              size={20}
-              className={
-                !canSendMessage()
-                  ? "text-gray-400 dark:text-gray-600"
-                  : "text-[#5f6368] dark:text-gray-400"
-              }
-            />
-          </button>
-
-         {/* Desktop Attachment Picker */}
-{showAttachments && (
-  <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px] shadow-lg">
-    <div className="space-y-2">
-      {/* ... other buttons ... */}
-      
-      {/* GIF Button - Fix this handler */}
-      <button
-        onClick={() => {
-          // Close attachment picker
-          setShowAttachments(false);
-          // Open GIF picker
-          setShowGIFPicker(true);
-        }}
-        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-      >
-        <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
-          <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
-            GIF
-          </span>
-        </div>
-        <div className="flex-1 text-left">
-          <p className="text-sm font-medium text-[#202124] dark:text-white">
-            Send GIF
-          </p>
-          <p className="text-xs text-[#5f6368] dark:text-gray-400">
-            Animated GIFs
-          </p>
-        </div>
-      </button>
-    </div>
-  </div>
-)}
-
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileSelect}
-            accept="image/*,video/*"
-            multiple
-            className="hidden"
-          />
-        </div>
-
-        {/* Emoji Button */}
-        <div className="relative" ref={emojiPickerRef}>
-          <button
-            onClick={() => {
-              if (!canSendMessage()) return;
-              setShowEmojiPicker(!showEmojiPicker);
-              setShowAttachments(false);
-              setShowGIFPicker(false);
-            }}
-            className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors"
-            disabled={!isConnected || !roomJoined || !canSendMessage()}
-          >
-            <span className={`text-xl ${!canSendMessage() ? "opacity-50" : ""}`}>
-              😊
-            </span>
-          </button>
-
-          {showEmojiPicker && (
-            <div className="absolute bottom-12 right-0 z-50">
-              <EmojiPicker
-                onEmojiClick={onEmojiClick}
-                width={280}
-                height={350}
-                searchDisabled
-                skinTonesDisabled
-                previewConfig={{ showPreview: false }}
-                theme={
-                  document.documentElement.classList.contains("dark")
-                    ? "dark"
-                    : "light"
-                }
+          {/* Mention Suggestions */}
+          {showMentions && (
+            <div className="absolute bottom-full left-0 mb-2 w-56 md:w-64 z-50 mention-suggestions">
+              <MentionSuggestions
+                members={filteredMembers}
+                onSelect={handleSelectMention}
+                query={mentionQuery}
+                currentUserId={currentUserId}
               />
             </div>
           )}
-        </div>
-      </div>
-    </div>
-  ) : (
-    /* Desktop Input Layout */
-    <div className="flex items-center gap-2">
-      {/* AI Enhancement Button */}
-      <button
-        onClick={() => setShowAIEnhancement(true)}
-        className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group"
-        title="Enhance with AI"
-        disabled={!isConnected || !roomJoined || !canSendMessage()}
-      >
-        <Sparkles
-          size={20}
-          className="text-purple-600 dark:text-purple-400"
-        />
-        {newMessage.trim() && (
-          <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
-        )}
-      </button>
 
-      {/* Attachment Button */}
-      <div className="relative" ref={attachmentPickerRef}>
-        <button
-          onClick={() => {
-            if (!canSendMessage()) return;
-            setShowAttachments(!showAttachments);
-            setShowEmojiPicker(false);
-            setShowGIFPicker(false);
-          }}
-          className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
-          disabled={
-            !isConnected ||
-            !roomJoined ||
-            editingMessage ||
-            !canSendMessage()
-          }
-        >
-          <Paperclip
-            size={20}
-            className={
-              !canSendMessage()
-                ? "text-gray-400 dark:text-gray-600"
-                : "text-[#5f6368] dark:text-gray-400"
-            }
-          />
-        </button>
+          {/* GIF Picker */}
+          {showGIFPicker && (
+            <div
+              ref={gifPickerRef}
+              className={`absolute z-50 ${
+                isMobile
+                  ? "bottom-24 left-1/2 transform -translate-x-1/2 w-[calc(100%-32px)] max-w-[350px]"
+                  : "bottom-28 right-80" // Position it near the attachment button
+              }`}
+            >
+              <GIFPicker
+                onSelect={handleSendGIF}
+                onClose={() => setShowGIFPicker(false)}
+              />
+            </div>
+          )}
 
-        {showAttachments && (
-          <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px] shadow-lg">
-            <div className="space-y-2">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-              >
-                <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
-                  <ImageIcon
+          {isMobile ? (
+            /* Mobile Input Layout - WhatsApp Style */
+            <div className="flex items-center">
+              {/* Input Container with integrated buttons */}
+              <div className="flex-1 flex items-center bg-gray-100 dark:bg-[#1a1a1a] rounded-3xl px-2 mb-2 min-h-[44px]">
+                {/* AI Enhancement Button */}
+                <button
+                  onClick={() => {
+                    if (!canSendMessage()) {
+                      alert(groupData.settings?.onlyAdminsCanMessage ? 
+                        "Only admins can send messages" : 
+                        slowModeSettings.enabled ? `Slow mode active (${timeRemaining}s)` : "Cannot send messages");
+                      return;
+                    }
+                    setShowAIEnhancement(true);
+                  }}
+                  className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors relative"
+                  disabled={!isConnected || !roomJoined || !canSendMessage()}
+                >
+                  <Sparkles
                     size={20}
-                    className="text-blue-600 dark:text-blue-400"
+                    className="text-purple-600 dark:text-purple-400"
+                  />
+                  {newMessage.trim() && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+                  )}
+                </button>
+
+                {/* Text Input */}
+                <input
+                  ref={inputRef}
+                  type="text"
+                  onPaste={handlePaste}
+                  value={editingMessage ? editText : newMessage}
+                  onChange={
+                    editingMessage
+                      ? (e) => setEditText(e.target.value)
+                      : handleInputChange
+                  }
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+
+                      // Check for slash command
+                      if (
+                        newMessage.startsWith("/") &&
+                        handleSlashCommand(newMessage)
+                      ) {
+                        return;
+                      }
+
+                      if (editingMessage) {
+                        handleEditMessage();
+                      } else if (attachments.length > 0) {
+                        handleSendWithAttachments();
+                      } else {
+                        handleSendMessage();
+                      }
+                    }
+                  }}
+                  placeholder={
+                    !isConnected
+                      ? "Connecting..."
+                      : !roomJoined
+                        ? "Joining chat..."
+                        : !canSendMessage()
+                          ? isCurrentUserAdmin
+                            ? "Admin (bypassing restrictions)"
+                            : groupData.settings?.onlyAdminsCanMessage
+                              ? "🔒 Only admins can message"
+                              : slowModeSettings.enabled && !canSendInSlowMode()
+                                ? `Slow mode (${timeRemaining}s)`
+                                : "Cannot send"
+                          : isCurrentUserAdmin
+                            ? "Message as admin..."
+                            : "Message..."
+                  }
+                  className="flex-1 bg-transparent text-[#202124] dark:text-white placeholder-gray-500 dark:placeholder-gray-400 py-3 px-1 focus:outline-none text-base"
+                  disabled={
+                    !isConnected ||
+                    !roomJoined ||
+                    uploading ||
+                    !canSendMessage()
+                  }
+                />
+
+                {/* Attachment Button */}
+                <div className="relative" ref={attachmentPickerRef}>
+                  <button
+                    onClick={() => {
+                      if (!canSendMessage()) {
+                        alert(groupData.settings?.onlyAdminsCanMessage ? 
+                          "Only admins can send messages" : 
+                          slowModeSettings.enabled ? `Slow mode active (${timeRemaining}s)` : "Cannot send messages");
+                        return;
+                      }
+                      setShowAttachments(!showAttachments);
+                      setShowEmojiPicker(false);
+                      setShowGIFPicker(false);
+                    }}
+                    className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors"
+                    disabled={
+                      !isConnected ||
+                      !roomJoined ||
+                      editingMessage ||
+                      !canSendMessage()
+                    }
+                  >
+                    <Paperclip
+                      size={20}
+                      className={
+                        !canSendMessage()
+                          ? "text-gray-400 dark:text-gray-600"
+                          : "text-[#5f6368] dark:text-gray-400"
+                      }
+                    />
+                  </button>
+
+                  {/* Mobile Attachment Picker - Compact version like ChatInterface */}
+                  {showAttachments && (
+                    <div className="absolute bottom-12 right-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl z-50 p-1 min-w-[160px] shadow-lg">
+                      <button
+                        onClick={() => {
+                          fileInputRef.current?.click();
+                          setShowAttachments(false);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                          <ImageIcon
+                            size={16}
+                            className="text-blue-600 dark:text-blue-400"
+                          />
+                        </div>
+                        <span className="text-sm text-[#202124] dark:text-white">
+                          Image
+                        </span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          fileInputRef.current?.click();
+                          setShowAttachments(false);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                          <Video
+                            size={16}
+                            className="text-red-600 dark:text-red-400"
+                          />
+                        </div>
+                        <span className="text-sm text-[#202124] dark:text-white">
+                          Video
+                        </span>
+                      </button>
+
+                      {/* GIF Button */}
+                      <button
+                        onClick={() => {
+                          console.log("GIF button clicked in group chat mobile");
+                          setShowAttachments(false);
+                          // Small delay to ensure attachment picker closes first
+                          setTimeout(() => {
+                            setShowGIFPicker(true);
+                          }, 50);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                          <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
+                            GIF
+                          </span>
+                        </div>
+                        <span className="text-sm text-[#202124] dark:text-white">
+                          GIF
+                        </span>
+                      </button>
+                    </div>
+                  )}
+
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    accept="image/*,video/*"
+                    multiple
+                    className="hidden"
                   />
                 </div>
-                <div className="flex-1 text-left">
-                  <p className="text-sm font-medium text-[#202124] dark:text-white">
-                    Send Image
-                  </p>
-                  <p className="text-xs text-[#5f6368] dark:text-gray-400">
-                    Share photos
-                  </p>
+
+                {/* Emoji Button */}
+                <div className="relative" ref={emojiPickerRef}>
+                  <button
+                    onClick={() => {
+                      if (!canSendMessage()) return;
+                      setShowEmojiPicker(!showEmojiPicker);
+                      setShowAttachments(false);
+                      setShowGIFPicker(false);
+                    }}
+                    className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors"
+                    disabled={!isConnected || !roomJoined || !canSendMessage()}
+                  >
+                    <span className={`text-xl ${!canSendMessage() ? "opacity-50" : ""}`}>
+                      😊
+                    </span>
+                  </button>
+
+                  {showEmojiPicker && (
+                    <div className="absolute bottom-12 right-0 z-50">
+                      <EmojiPicker
+                        onEmojiClick={onEmojiClick}
+                        width={280}
+                        height={350}
+                        searchDisabled
+                        skinTonesDisabled
+                        previewConfig={{ showPreview: false }}
+                        theme={
+                          document.documentElement.classList.contains("dark")
+                            ? "dark"
+                            : "light"
+                        }
+                      />
+                    </div>
+                  )}
                 </div>
+              </div>
+            </div>
+          ) : (
+            /* Desktop Input Layout */
+            <div className="flex items-center gap-2">
+              {/* AI Enhancement Button */}
+              <button
+                onClick={() => setShowAIEnhancement(true)}
+                className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group"
+                title="Enhance with AI"
+                disabled={!isConnected || !roomJoined || !canSendMessage()}
+              >
+                <Sparkles
+                  size={20}
+                  className="text-purple-600 dark:text-purple-400"
+                />
+                {newMessage.trim() && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
+                )}
               </button>
 
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-              >
-                <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
-                  <Video
+              {/* Attachment Button */}
+              <div className="relative" ref={attachmentPickerRef}>
+                <button
+                  onClick={() => {
+                    if (!canSendMessage()) return;
+                    setShowAttachments(!showAttachments);
+                    setShowEmojiPicker(false);
+                    setShowGIFPicker(false);
+                  }}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
+                  disabled={
+                    !isConnected ||
+                    !roomJoined ||
+                    editingMessage ||
+                    !canSendMessage()
+                  }
+                >
+                  <Paperclip
                     size={20}
-                    className="text-red-600 dark:text-red-400"
+                    className={
+                      !canSendMessage()
+                        ? "text-gray-400 dark:text-gray-600"
+                        : "text-[#5f6368] dark:text-gray-400"
+                    }
                   />
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="text-sm font-medium text-[#202124] dark:text-white">
-                    Send Video
-                  </p>
-                  <p className="text-xs text-[#5f6368] dark:text-gray-400">
-                    Share videos
-                  </p>
-                </div>
-              </button>
+                </button>
 
-              <button
-                onClick={() => {
-                  setShowGIFPicker(true);
-                  setShowAttachments(false);
-                }}
-                className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-              >
-                <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
-                  <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
-                    GIF
+                {showAttachments && (
+                  <div className="absolute bottom-16 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-3 min-w-[200px] shadow-lg">
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
+                          <ImageIcon
+                            size={20}
+                            className="text-blue-600 dark:text-blue-400"
+                          />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium text-[#202124] dark:text-white">
+                            Send Image
+                          </p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                            Share photos
+                          </p>
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
+                          <Video
+                            size={20}
+                            className="text-red-600 dark:text-red-400"
+                          />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium text-[#202124] dark:text-white">
+                            Send Video
+                          </p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                            Share videos
+                          </p>
+                        </div>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setShowGIFPicker(true);
+                          setShowAttachments(false);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
+                          <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                            GIF
+                          </span>
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-medium text-[#202124] dark:text-white">
+                            Send GIF
+                          </p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                            Animated GIFs
+                          </p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  accept="image/*,video/*"
+                  multiple
+                  className="hidden"
+                />
+              </div>
+
+              {/* Emoji Button */}
+              <div className="relative" ref={emojiPickerRef}>
+                <button
+                  onClick={() => {
+                    if (!canSendMessage()) return;
+                    setShowEmojiPicker(!showEmojiPicker);
+                    setShowAttachments(false);
+                    setShowGIFPicker(false);
+                  }}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+                  disabled={!isConnected || !roomJoined || !canSendMessage()}
+                >
+                  <span
+                    className={`text-xl ${!canSendMessage() ? "opacity-50" : ""}`}
+                  >
+                    😊
                   </span>
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="text-sm font-medium text-[#202124] dark:text-white">
-                    Send GIF
-                  </p>
-                  <p className="text-xs text-[#5f6368] dark:text-gray-400">
-                    Animated GIFs
-                  </p>
-                </div>
+                </button>
+
+                {showEmojiPicker && (
+                  <div className="absolute bottom-14 left-0 z-50">
+                    <EmojiPicker
+                      onEmojiClick={onEmojiClick}
+                      width={320}
+                      height={400}
+                      searchDisabled
+                      skinTonesDisabled
+                      previewConfig={{ showPreview: false }}
+                      theme={
+                        document.documentElement.classList.contains("dark")
+                          ? "dark"
+                          : "light"
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Text Input */}
+              <input
+                ref={inputRef}
+                type="text"
+                onPaste={handlePaste}
+                value={editingMessage ? editText : newMessage}
+                onChange={
+                  editingMessage
+                    ? (e) => setEditText(e.target.value)
+                    : handleInputChange
+                }
+                onKeyPress={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+
+                    // Check for slash command
+                    if (
+                      newMessage.startsWith("/") &&
+                      handleSlashCommand(newMessage)
+                    ) {
+                      return;
+                    }
+
+                    if (editingMessage) {
+                      handleEditMessage();
+                    } else if (attachments.length > 0) {
+                      handleSendWithAttachments();
+                    } else {
+                      handleSendMessage();
+                    }
+                  }
+                }}
+                placeholder={
+                  !isConnected
+                    ? "Connecting..."
+                    : !roomJoined
+                      ? "Joining chat..."
+                      : !canSendMessage()
+                        ? isCurrentUserAdmin
+                          ? "You are an admin (bypassing restrictions)"
+                          : groupData.settings?.onlyAdminsCanMessage
+                            ? "🔒 Only admins can send messages"
+                            : slowModeSettings.enabled && !canSendInSlowMode()
+                              ? `Slow mode active (${timeRemaining}s)`
+                              : "You cannot send messages"
+                        : isCurrentUserAdmin
+                          ? "Type a message as admin... (Use @ to mention, ✨ for AI, 📷 for GIF, /split for bills)"
+                          : "Type a message... (Use @ to mention, ✨ for AI, 📷 for GIF, /split for bills)"
+                }
+                className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
+                disabled={
+                  !isConnected || !roomJoined || uploading || !canSendMessage()
+                }
+              />
+
+              {/* Send Button */}
+              <button
+                onClick={
+                  editingMessage
+                    ? handleEditMessage
+                    : attachments.length > 0
+                      ? handleSendWithAttachments
+                      : handleSendMessage
+                }
+                disabled={
+                  editingMessage
+                    ? !editText.trim()
+                    : (!newMessage.trim() && attachments.length === 0) ||
+                      !isConnected ||
+                      !roomJoined ||
+                      uploading ||
+                      !canSendMessage()
+                }
+                className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative"
+              >
+                {uploading ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                ) : (
+                  <Send size={20} />
+                )}
               </button>
             </div>
-          </div>
-        )}
+          )}
 
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileSelect}
-          accept="image/*,video/*"
-          multiple
-          className="hidden"
-        />
-      </div>
+          {!isConnected && (
+            <div className="absolute -top-8 left-0 right-0 text-center">
+              <span className="text-[10px] md:text-xs text-red-500 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded-full">
+                ⚠️ Reconnecting...
+              </span>
+            </div>
+          )}
 
-      {/* Emoji Button */}
-      <div className="relative" ref={emojiPickerRef}>
-        <button
-          onClick={() => {
-            if (!canSendMessage()) return;
-            setShowEmojiPicker(!showEmojiPicker);
-            setShowAttachments(false);
-            setShowGIFPicker(false);
-          }}
-          className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
-          disabled={!isConnected || !roomJoined || !canSendMessage()}
-        >
-          <span className={`text-xl ${!canSendMessage() ? "opacity-50" : ""}`}>
-            😊
-          </span>
-        </button>
-
-        {showEmojiPicker && (
-          <div className="absolute bottom-14 left-0 z-50">
-            <EmojiPicker
-              onEmojiClick={onEmojiClick}
-              width={320}
-              height={400}
-              searchDisabled
-              skinTonesDisabled
-              previewConfig={{ showPreview: false }}
-              theme={
-                document.documentElement.classList.contains("dark")
-                  ? "dark"
-                  : "light"
-              }
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Text Input */}
-      <input
-        ref={inputRef}
-        type="text"
-        onPaste={handlePaste}
-        value={editingMessage ? editText : newMessage}
-        onChange={
-          editingMessage
-            ? (e) => setEditText(e.target.value)
-            : handleInputChange
-        }
-        onKeyPress={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-
-            // Check for slash command
-            if (
-              newMessage.startsWith("/") &&
-              handleSlashCommand(newMessage)
-            ) {
-              return;
-            }
-
-            if (editingMessage) {
-              handleEditMessage();
-            } else if (attachments.length > 0) {
-              handleSendWithAttachments();
-            } else {
-              handleSendMessage();
-            }
-          }
-        }}
-        placeholder={
-          !isConnected
-            ? "Connecting..."
-            : !roomJoined
-              ? "Joining chat..."
-              : !canSendMessage()
-                ? isCurrentUserAdmin
-                  ? "You are an admin (bypassing restrictions)"
-                  : groupData.settings?.onlyAdminsCanMessage
-                    ? "🔒 Only admins can send messages"
-                    : slowModeSettings.enabled && !canSendInSlowMode()
-                      ? `Slow mode active (${timeRemaining}s)`
-                      : "You cannot send messages"
-                : isCurrentUserAdmin
-                  ? "Type a message as admin... (Use @ to mention, ✨ for AI, 📷 for GIF, /split for bills)"
-                  : "Type a message... (Use @ to mention, ✨ for AI, 📷 for GIF, /split for bills)"
-        }
-        className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
-        disabled={
-          !isConnected || !roomJoined || uploading || !canSendMessage()
-        }
-      />
-
-      {/* Send Button */}
-      <button
-        onClick={
-          editingMessage
-            ? handleEditMessage
-            : attachments.length > 0
-              ? handleSendWithAttachments
-              : handleSendMessage
-        }
-        disabled={
-          editingMessage
-            ? !editText.trim()
-            : (!newMessage.trim() && attachments.length === 0) ||
-              !isConnected ||
-              !roomJoined ||
-              uploading ||
-              !canSendMessage()
-        }
-        className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative"
-      >
-        {uploading ? (
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-        ) : (
-          <Send size={20} />
-        )}
-      </button>
-    </div>
-  )}
-
-  {!isConnected && (
-    <div className="absolute -top-8 left-0 right-0 text-center">
-      <span className="text-[10px] md:text-xs text-red-500 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded-full">
-        ⚠️ Reconnecting...
-      </span>
-    </div>
-  )}
-
-  {isConnected && !roomJoined && (
-    <div className="absolute -top-8 left-0 right-0 text-center">
-      <span className="text-[10px] md:text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/30 px-2 py-1 rounded-full">
-        ⏳ Joining group...
-      </span>
-    </div>
-  )}
-</div>
+          {isConnected && !roomJoined && (
+            <div className="absolute -top-8 left-0 right-0 text-center">
+              <span className="text-[10px] md:text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/30 px-2 py-1 rounded-full">
+                ⏳ Joining group...
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* AI Enhancement Modal */}
@@ -4753,7 +4905,7 @@ useEffect(() => {
           .xs\\:hidden {
             display: none;
           }
-          
+
           .xs\\:inline {
             display: inline;
           }
@@ -4764,7 +4916,7 @@ useEffect(() => {
           .pb-safe {
             padding-bottom: env(safe-area-inset-bottom);
           }
-          
+
           .pt-safe {
             padding-top: env(safe-area-inset-top);
           }
@@ -4774,47 +4926,47 @@ useEffect(() => {
         body:has(.fixed.inset-0) {
           overflow: hidden;
         }
-          @media (max-width: 768px) {
-  .min-h-[44px] {
-    min-height: 44px; /* Apple's recommended minimum touch target size */
-  }
-  
-  /* Ensure input is properly padded for keyboard */
-  .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  
-  /* Better touch targets */
-  button {
-    min-height: 44px;
-    min-width: 44px;
-  }
-  
-  /* Adjust emoji picker for mobile */
-  .EmojiPickerReact {
-    --epr-emoji-size: 24px !important;
-  }
-  
-  /* Ensure attachment picker is positioned correctly */
-  .absolute.bottom-12 {
-    bottom: 48px;
-  }
-}
+        @media (max-width: 768px) {
+          .min-h-[44px] {
+            min-height: 44px; /* Apple's recommended minimum touch target size */
+          }
 
-/* Focus state for mobile */
-input:focus {
-  outline: none;
-}
+          /* Ensure input is properly padded for keyboard */
+          .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom);
+          }
 
-/* Placeholder styling */
-::placeholder {
-  color: #9ca3af;
-  opacity: 1;
-}
+          /* Better touch targets */
+          button {
+            min-height: 44px;
+            min-width: 44px;
+          }
 
-.dark ::placeholder {
-  color: #6b7280;
-}
+          /* Adjust emoji picker for mobile */
+          .EmojiPickerReact {
+            --epr-emoji-size: 24px !important;
+          }
+
+          /* Ensure attachment picker is positioned correctly */
+          .absolute.bottom-12 {
+            bottom: 48px;
+          }
+        }
+
+        /* Focus state for mobile */
+        input:focus {
+          outline: none;
+        }
+
+        /* Placeholder styling */
+        ::placeholder {
+          color: #9ca3af;
+          opacity: 1;
+        }
+
+        .dark ::placeholder {
+          color: #6b7280;
+        }
       `}</style>
     </>
   );

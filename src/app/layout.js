@@ -1,16 +1,16 @@
 // app/layout.js
 
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
-import { Menu } from 'lucide-react';
-import { UserProvider, useUser } from '@/context/UserContext';
-import { SocketProvider } from '@/context/SocketContext';
-import Sidebar from '@/components/Sidebar';
-import ModerationNotification from '@/components/ModerationNotification';
+import { useState, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Menu } from "lucide-react";
+import { UserProvider, useUser } from "@/context/UserContext";
+import { SocketProvider } from "@/context/SocketContext";
+import Sidebar from "@/components/Sidebar";
+import ModerationNotification from "@/components/ModerationNotification";
 
-import './globals.css';
+import "./globals.css";
 
 function LayoutContent({ children }) {
   const pathname = usePathname();
@@ -19,13 +19,19 @@ function LayoutContent({ children }) {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const { isInitialized } = useUser();
 
-  const publicRoutes = ['/signup', '/signin', '/welcome', '/onboarding', '/debug'];
+  const publicRoutes = [
+    "/signup",
+    "/signin",
+    "/welcome",
+    "/onboarding",
+    "/debug",
+  ];
   const isPublicRoute = publicRoutes.includes(pathname);
 
   useEffect(() => {
     const checkAuth = async () => {
-      const userId = localStorage.getItem('userId');
-      const userName = localStorage.getItem('userName');
+      const userId = localStorage.getItem("userId");
+      const userName = localStorage.getItem("userName");
 
       if (isPublicRoute) {
         setIsCheckingAuth(false);
@@ -33,22 +39,24 @@ function LayoutContent({ children }) {
       }
 
       if (!userId || !userName) {
-        router.push('/signin');
+        router.push("/signin");
         return;
       }
 
       try {
-        const response = await fetch(`/api/user?userId=${encodeURIComponent(userId)}`);
+        const response = await fetch(
+          `/api/user?userId=${encodeURIComponent(userId)}`,
+        );
         const data = await response.json();
 
         if (data.user && !data.user.onboardingCompleted) {
-          router.push('/welcome');
+          router.push("/welcome");
           return;
         }
 
         setIsCheckingAuth(false);
       } catch (error) {
-        console.error('Auth check error:', error);
+        console.error("Auth check error:", error);
         setIsCheckingAuth(false);
       }
     };
@@ -101,20 +109,32 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <head>
         <title>Daily Positivity - Spread Good Deeds</title>
-                     
-<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
 
-<meta name="theme-color" content="#0C0C0D" media="(prefers-color-scheme: dark)" />
+        <meta
+          name="theme-color"
+          content="#ffffff"
+          media="(prefers-color-scheme: light)"
+        />
 
-        <meta name="description" content="Your daily dose of inspiration and kindness" />
+        <meta
+          name="theme-color"
+          content="#0C0C0D"
+          media="(prefers-color-scheme: dark)"
+        />
+
+        <meta
+          name="description"
+          content="Your daily dose of inspiration and kindness"
+        />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body className="newq">
         <UserProvider>
           <SocketProvider>
-            <LayoutContent>{children}
-               <ModerationNotification />
+            <LayoutContent>
+              {children}
+              <ModerationNotification />
             </LayoutContent>
           </SocketProvider>
         </UserProvider>

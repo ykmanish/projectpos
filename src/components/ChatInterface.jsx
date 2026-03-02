@@ -2310,7 +2310,7 @@ export default function ChatInterface({
   return (
     <>
       <div
-        className={`h-full flex flex-col bg-white dark:bg-[#0c0c0c] rounded-3xl border border-none dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300 ${isMobile ? "fixed inset-0 z-50 rounded-none" : ""}`}
+        className={`h-full flex flex-col bg-white dark:bg-[#0c0c0c] rounded-3xl  border-none dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300 ${isMobile ? "fixed inset-0 z-50 rounded-none" : ""}`}
       >
         {/* Chat Header - Fixed */}
         {/* Chat Header - Fixed */}

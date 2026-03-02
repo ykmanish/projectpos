@@ -107,14 +107,14 @@ export default function LoginContent() {
   };
 
   const bgimage = {
-    backgroundImage: 'url("/tbgss.png")',
+    backgroundImage: 'url("https://dz.quantafile.com/bglo.jpg")',
     backgroundSize: 'cover',
     backgroundPosition: 'center',
   };
 
   return (
     <div
-      className="relative min-h-screen flex flex-col items-center justify-center text-[#202124] p-6"
+      className="relative min-h-screen flex flex-col items-center justify-center text-[#202124] p-3 lg:p-6"
       style={bgimage}
     >
       <div className="absolute inset-0 bg-black/40 z-0"></div>
@@ -125,15 +125,13 @@ export default function LoginContent() {
       </div>
 
       <div className="relative z-50 w-full max-w-md animate-fade-in">
-        <div className="bg-white rounded-[35px] p-8 border border-[#dadce0] shadow-sm">
+        <div className="bg-white rounded-3xl lg:rounded-[35px] p-5 lg:p-8 border border-[#dadce0] shadow-sm">
           <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1a73e8] to-[#4285f4] flex items-center justify-center">
-              <Sparkles className="w-8 h-8 text-white" />
-            </div>
+           <img src="https://dz.quantafile.com/chatlogo.png" alt="Goodish Logo" className="w-12 h-12" />
           </div>
 
           <div className="text-center mb-6">
-            <h1 className="text-3xl font-semibold text-[#000000] mb-2">
+            <h1 className="text-3xl small font-semibold text-[#000000] mb-2">
               Welcome Back
             </h1>
             <p className="text-base text-[#5f6368]">

@@ -101,6 +101,11 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <head>
         <title>Daily Positivity - Spread Good Deeds</title>
+                     
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+
+<meta name="theme-color" content="#0C0C0D" media="(prefers-color-scheme: dark)" />
+
         <meta name="description" content="Your daily dose of inspiration and kindness" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />

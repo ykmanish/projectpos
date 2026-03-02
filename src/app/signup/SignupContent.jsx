@@ -157,7 +157,7 @@ export default function SignupContent() {
   };
 
   const bgimage = {
-    backgroundImage: 'url("/tbgss.png")',
+    backgroundImage: 'url("https://dz.quantafile.com/bglo.jpg")',
     backgroundSize: 'cover',
     backgroundPosition: 'center',
   };
@@ -184,7 +184,7 @@ export default function SignupContent() {
         <div className="relative z-50 w-full max-w-6xl animate-fade-in">
           <div className="grid md:grid-cols-2 gap-6">
             {/* Left Card - Referral Info */}
-            <div className="bg-white rounded-[35px] p-8 border border-[#dadce0] shadow-sm h-fit md:sticky md:top-8">
+            <div className="bg-white rounded-3xl lg:rounded-[35px] p-5 lg:p-8 border border-[#dadce0] shadow-sm h-fit md:sticky md:top-8">
               <div className="flex justify-center mb-6">
                 <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#f39c12] to-[#f1c40f] flex items-center justify-center">
                   <Gift className="w-10 h-10 text-white" />
@@ -251,9 +251,9 @@ export default function SignupContent() {
             {/* Right Card - Signup Form */}
             <div className="bg-white rounded-[35px] p-8 border border-[#dadce0] shadow-sm">
               <div className="flex justify-center mb-6">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1a73e8] to-[#4285f4] flex items-center justify-center">
-                  <Sparkles className="w-8 h-8 text-white" />
-                </div>
+                  <div className="flex justify-center mb-6">
+           <img src="https://dz.quantafile.com/chatlogo.png" alt="Goodish Logo" className="w-12 h-12" />
+          </div>
               </div>
 
               <div className="text-center mb-6">
@@ -405,7 +405,7 @@ export default function SignupContent() {
 
   // Single-column layout (no referral)
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center text-[#202124] p-6" style={bgimage}>
+    <div className="relative min-h-screen flex flex-col items-center justify-center text-[#202124] p-3 lg:p-6" style={bgimage}>
       <div className="absolute inset-0 bg-black/40 z-0"></div>
 
       <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
@@ -414,15 +414,15 @@ export default function SignupContent() {
       </div>
 
       <div className="relative z-50 w-full max-w-md animate-fade-in">
-        <div className="bg-white rounded-[35px] p-8 border border-[#dadce0] shadow-sm">
+        <div className="bg-white rounded-3xl lg:rounded-[35px] p-5 lg:p-8 border border-[#dadce0] shadow-sm">
           <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1a73e8] to-[#4285f4] flex items-center justify-center">
-              <Sparkles className="w-8 h-8 text-white" />
-            </div>
+             <div className="flex justify-center mb-6">
+           <img src="https://dz.quantafile.com/chatlogo.png" alt="Goodish Logo" className="w-12 h-12" />
+          </div>
           </div>
 
           <div className="text-center mb-6">
-            <h1 className="text-3xl font-semibold text-[#000000] mb-2">
+            <h1 className="text-3xl small font-semibold text-[#000000] mb-2">
               {step === 1 ? 'Create Account' : 'Set Your Password'}
             </h1>
             <p className="text-base text-[#5f6368]">
@@ -618,9 +618,7 @@ export default function SignupContent() {
           )}
         </div>
 
-        <p className="text-xs text-[#5f6368] text-center mt-6">
-          By signing up, you agree to our Terms of Service and Privacy Policy
-        </p>
+       
       </div>
 
       <style jsx>{`

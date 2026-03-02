@@ -1,6 +1,6 @@
 // components/ChatInterface.js
 
-'use client';
+"use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSocket } from "@/context/SocketContext";
@@ -31,14 +31,18 @@ import {
   Trash2,
   Eraser,
   AlertTriangle,
-  Code
+  Code,
 } from "lucide-react";
 import { BeanHead } from "beanheads";
-import LinkPreview from './LinkPreview';
-import CodeBlock from './CodeBlock';
-import { parseMessageContent, detectCode, detectLanguage } from '@/utils/codeUtils';
-import { extractUrls, enhancedUrlRegex, isValidUrl } from '../utils/urlUtils';
-import EmojiPicker from 'emoji-picker-react';
+import LinkPreview from "./LinkPreview";
+import CodeBlock from "./CodeBlock";
+import {
+  parseMessageContent,
+  detectCode,
+  detectLanguage,
+} from "@/utils/codeUtils";
+import { extractUrls, enhancedUrlRegex, isValidUrl } from "../utils/urlUtils";
+import EmojiPicker from "emoji-picker-react";
 import AttachmentPreviewModal from "./AttachmentPreviewModal";
 import PreSendAttachmentPreview from "./PreSendAttachmentPreview";
 import MessageContextMenu from "./MessageContextMenu";
@@ -53,7 +57,13 @@ import ReplyPreview from "./ReplyPreview";
 import GIFPicker from "./GIFPicker";
 import ConfirmationModal from "./ConfirmationModal";
 
-export default function ChatInterface({ friend, currentUserId, currentUserAvatar, onClose, onMessageUpdate }) {
+export default function ChatInterface({
+  friend,
+  currentUserId,
+  currentUserAvatar,
+  onClose,
+  onMessageUpdate,
+}) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -75,56 +85,57 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
   const [isSearching, setIsSearching] = useState(false);
   const [highlightedText, setHighlightedText] = useState("");
-  
+
   // Code mode state
   const [codeMode, setCodeMode] = useState(false);
-  
+
   // Confirmation modals
   const [showDeleteChatConfirm, setShowDeleteChatConfirm] = useState(false);
   const [showClearChatConfirm, setShowClearChatConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
-  
+
   // Reply feature states
   const [replyToMessage, setReplyToMessage] = useState(null);
   const [replyingToMessage, setReplyingToMessage] = useState(null);
-  
+
   // AI Enhancement states
   const [showAIEnhancement, setShowAIEnhancement] = useState(false);
   const [isAIProcessing, setIsAIProcessing] = useState(false);
   const [aiEnhancedText, setAiEnhancedText] = useState("");
   const [aiError, setAiError] = useState("");
-  
+
   const [blockStatus, setBlockStatus] = useState({
     iBlockedThem: false,
-    theyBlockedMe: false
+    theyBlockedMe: false,
   });
-  
+
   const [encryptionReady, setEncryptionReady] = useState(false);
   const [isEncrypted, setIsEncrypted] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
   const [showEncryptionModal, setShowEncryptionModal] = useState(false);
   const [sharedSecret, setSharedSecret] = useState(null);
   const [decryptedMessages, setDecryptedMessages] = useState(new Map());
-  
+
   const [showMessageInfo, setShowMessageInfo] = useState(false);
   const [messageInfoData, setMessageInfoData] = useState(null);
-  
+
   const [previewAttachment, setPreviewAttachment] = useState(null);
   const [currentAttachmentIndex, setCurrentAttachmentIndex] = useState(0);
   const [allAttachments, setAllAttachments] = useState([]);
-  
-  const [previewPreSendAttachment, setPreviewPreSendAttachment] = useState(null);
-  
+
+  const [previewPreSendAttachment, setPreviewPreSendAttachment] =
+    useState(null);
+
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
-  
+
   const [editingMessage, setEditingMessage] = useState(null);
   const [editText, setEditText] = useState("");
-  
+
   // Mobile detection
   const [isMobile, setIsMobile] = useState(false);
-  
+
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -136,23 +147,25 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const dropdownRef = useRef(null);
   const searchInputRef = useRef(null);
   const messageRefs = useRef(new Map());
-  
-  const { socket, isConnected, getUserOnlineStatus, checkUndeliveredMessages } = useSocket();
-  const roomId = [currentUserId, friend.userId].sort().join('-');
+
+  const { socket, isConnected, getUserOnlineStatus, checkUndeliveredMessages } =
+    useSocket();
+  const roomId = [currentUserId, friend.userId].sort().join("-");
 
   // ==================== DETECT MOBILE ====================
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
     };
-    
+
     checkMobile();
-    window.addEventListener('resize', checkMobile);
-    
-    return () => window.removeEventListener('resize', checkMobile);
+    window.addEventListener("resize", checkMobile);
+
+    return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  const canSendMessages = !blockStatus.iBlockedThem && !blockStatus.theyBlockedMe;
+  const canSendMessages =
+    !blockStatus.iBlockedThem && !blockStatus.theyBlockedMe;
 
   // Monitor friend's online status
   useEffect(() => {
@@ -166,18 +179,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   // Check for undelivered messages when friend comes online
   useEffect(() => {
     if (friendOnline && roomJoined) {
-      console.log('👤 Friend came online, checking undelivered messages...');
-      setMessages(prev => 
-        prev.map(msg => {
+      console.log("👤 Friend came online, checking undelivered messages...");
+      setMessages((prev) =>
+        prev.map((msg) => {
           if (msg.senderId === currentUserId && !msg.delivered) {
-            return { 
-              ...msg, 
-              delivered: true, 
-              deliveredAt: new Date().toISOString() 
+            return {
+              ...msg,
+              delivered: true,
+              deliveredAt: new Date().toISOString(),
             };
           }
           return msg;
-        })
+        }),
       );
     }
   }, [friendOnline, roomJoined, currentUserId]);
@@ -188,13 +201,22 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowDropdown(false);
       }
-      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target)
+      ) {
         setShowEmojiPicker(false);
       }
-      if (attachmentPickerRef.current && !attachmentPickerRef.current.contains(event.target)) {
+      if (
+        attachmentPickerRef.current &&
+        !attachmentPickerRef.current.contains(event.target)
+      ) {
         setShowAttachments(false);
       }
-      if (gifPickerRef.current && !gifPickerRef.current.contains(event.target)) {
+      if (
+        gifPickerRef.current &&
+        !gifPickerRef.current.contains(event.target)
+      ) {
         setShowGIFPicker(false);
       }
     }
@@ -214,35 +236,40 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const initializeEncryption = async () => {
     try {
-      console.log('🔐 Initializing encryption for chat...');
-      
+      console.log("🔐 Initializing encryption for chat...");
+
       await encryptionService.initializeKeys(currentUserId);
-      
-      const targetKeyCheck = await fetch(`/api/chat/encryption?userId=${friend.userId}&action=my-keys`);
+
+      const targetKeyCheck = await fetch(
+        `/api/chat/encryption?userId=${friend.userId}&action=my-keys`,
+      );
       if (!targetKeyCheck.ok) {
-        console.log('🔑 Generating keys for friend:', friend.userId);
-        await fetch('/api/chat/encryption', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        console.log("🔑 Generating keys for friend:", friend.userId);
+        await fetch("/api/chat/encryption", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             userId: friend.userId,
-            action: 'generate-keys'
-          })
+            action: "generate-keys",
+          }),
         });
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 300));
       }
-      
-      console.log('✅ Both users have keys, establishing shared secret...');
-      
-      const secret = await encryptionService.getSharedSecret(currentUserId, friend.userId);
+
+      console.log("✅ Both users have keys, establishing shared secret...");
+
+      const secret = await encryptionService.getSharedSecret(
+        currentUserId,
+        friend.userId,
+      );
       setSharedSecret(secret.secret);
       setIsVerified(secret.isVerified);
       setIsEncrypted(true);
       setEncryptionReady(true);
-      
-      console.log('✅ Encryption ready, verified:', secret.isVerified);
+
+      console.log("✅ Encryption ready, verified:", secret.isVerified);
     } catch (error) {
-      console.error('❌ Encryption initialization failed:', error);
+      console.error("❌ Encryption initialization failed:", error);
       setEncryptionReady(false);
     }
   };
@@ -285,7 +312,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     setShowAIEnhancement(false);
     setAiEnhancedText("");
     setAiError("");
-    
+
     setTimeout(() => {
       inputRef.current?.focus();
     }, 100);
@@ -300,33 +327,39 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const decryptAllMessages = async () => {
     const newDecryptedMap = new Map(decryptedMessages);
-    
+
     for (const message of messages) {
-      if (message.encryptedContent && !decryptedMessages.has(message.timestamp)) {
+      if (
+        message.encryptedContent &&
+        !decryptedMessages.has(message.timestamp)
+      ) {
         try {
           let encryptedData = message.encryptedContent;
-          if (typeof encryptedData === 'string') {
+          if (typeof encryptedData === "string") {
             try {
               encryptedData = JSON.parse(encryptedData);
             } catch {
-              encryptedData = { encrypted: encryptedData, iv: '' };
+              encryptedData = { encrypted: encryptedData, iv: "" };
             }
           }
-          
-          const decrypted = await encryptionService.decryptMessage(encryptedData, sharedSecret);
+
+          const decrypted = await encryptionService.decryptMessage(
+            encryptedData,
+            sharedSecret,
+          );
           newDecryptedMap.set(message.timestamp, decrypted);
         } catch (error) {
-          console.error('Decryption error:', error);
-          newDecryptedMap.set(message.timestamp, '[Decryption failed]');
+          console.error("Decryption error:", error);
+          newDecryptedMap.set(message.timestamp, "[Decryption failed]");
         }
       }
     }
-    
+
     setDecryptedMessages(newDecryptedMap);
   };
 
   const handleVerificationChange = (verified) => {
-    console.log('🔐 Verification status changed:', verified);
+    console.log("🔐 Verification status changed:", verified);
     setIsVerified(verified);
   };
 
@@ -339,30 +372,36 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const checkBlockStatus = async () => {
     try {
-      const iBlockedRes = await fetch(`/api/friends/blocked/check?userId=${currentUserId}&targetId=${friend.userId}`);
+      const iBlockedRes = await fetch(
+        `/api/friends/blocked/check?userId=${currentUserId}&targetId=${friend.userId}`,
+      );
       const iBlockedData = await iBlockedRes.json();
-      
-      const theyBlockedRes = await fetch(`/api/friends/blocked/check?userId=${friend.userId}&targetId=${currentUserId}`);
+
+      const theyBlockedRes = await fetch(
+        `/api/friends/blocked/check?userId=${friend.userId}&targetId=${currentUserId}`,
+      );
       const theyBlockedData = await theyBlockedRes.json();
-      
+
       setBlockStatus({
         iBlockedThem: iBlockedData.success && iBlockedData.isBlocked,
-        theyBlockedMe: theyBlockedData.success && theyBlockedData.isBlocked
+        theyBlockedMe: theyBlockedData.success && theyBlockedData.isBlocked,
       });
     } catch (error) {
-      console.error('Error checking block status:', error);
+      console.error("Error checking block status:", error);
     }
   };
 
   const fetchFriendshipStatus = async () => {
     try {
-      const res = await fetch(`/api/friends/status?userId=${currentUserId}&targetUserId=${friend.userId}`);
+      const res = await fetch(
+        `/api/friends/status?userId=${currentUserId}&targetUserId=${friend.userId}`,
+      );
       const data = await res.json();
       if (data.success) {
         setFriendshipStatus(data.status);
       }
     } catch (error) {
-      console.error('Error fetching friendship status:', error);
+      console.error("Error fetching friendship status:", error);
     }
   };
 
@@ -371,12 +410,12 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   };
 
   const handleBlock = async () => {
-    setBlockStatus(prev => ({ ...prev, iBlockedThem: true }));
+    setBlockStatus((prev) => ({ ...prev, iBlockedThem: true }));
     onClose();
   };
 
   const handleUnblock = async () => {
-    setBlockStatus(prev => ({ ...prev, iBlockedThem: false }));
+    setBlockStatus((prev) => ({ ...prev, iBlockedThem: false }));
     fetchFriendshipStatus();
   };
 
@@ -479,7 +518,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const handleReplyClick = (replyTo) => {
     const messageId = `${replyTo.timestamp}-${replyTo.senderId}`;
     scrollToMessage(messageId);
-    
+
     const messageElement = messageRefs.current.get(messageId);
     if (messageElement) {
       messageElement.classList.add("highlight-reply-message");
@@ -490,7 +529,14 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   };
 
   // MessageContent component - enhanced with code block support
-  const MessageContent = ({ message, content, highlightedText, formatTime, renderMessageStatus, isOwn }) => {
+  const MessageContent = ({
+    message,
+    content,
+    highlightedText,
+    formatTime,
+    renderMessageStatus,
+    isOwn,
+  }) => {
     const [showFullContent, setShowFullContent] = useState(false);
 
     const isValidUrl = (string) => {
@@ -507,7 +553,10 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         return text;
       }
 
-      const regex = new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      const regex = new RegExp(
+        `(${highlight.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+        "gi",
+      );
       const parts = text.split(regex);
 
       return parts.map((part, index) => {
@@ -527,30 +576,31 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
     const renderTextWithLinks = (text) => {
       if (!text) return null;
-      
-      const urlPattern = /(https?:\/\/[^\s]+)|(www\.[^\s]+\.[^\s]+)|([^\s]+\.[^\s]+\.[^\s]+\/[^\s]*)/gi;
+
+      const urlPattern =
+        /(https?:\/\/[^\s]+)|(www\.[^\s]+\.[^\s]+)|([^\s]+\.[^\s]+\.[^\s]+\/[^\s]*)/gi;
       const parts = text.split(urlPattern);
       const matches = text.match(urlPattern) || [];
-      
+
       let result = [];
-      
+
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
-        
+
         let isUrl = false;
         let url = part;
-        
+
         if (matches.includes(part)) {
           isUrl = true;
-        } else if (part && (part.startsWith('http') || part.includes('.'))) {
-          if (part.startsWith('www.')) {
+        } else if (part && (part.startsWith("http") || part.includes("."))) {
+          if (part.startsWith("www.")) {
             url = `https://${part}`;
-          } else if (!part.startsWith('http') && part.includes('.')) {
+          } else if (!part.startsWith("http") && part.includes(".")) {
             url = `https://${part}`;
           }
           isUrl = isValidUrl(url);
         }
-        
+
         if (isUrl && part) {
           result.push(
             <a
@@ -562,15 +612,17 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               onClick={(e) => e.stopPropagation()}
             >
               {part}
-            </a>
+            </a>,
           );
         } else if (part) {
           if (highlightedText) {
             const highlighted = highlightText(part, highlightedText);
             if (Array.isArray(highlighted)) {
-              result.push(...highlighted.map((item, idx) => (
-                <span key={`text-${i}-${idx}`}>{item}</span>
-              )));
+              result.push(
+                ...highlighted.map((item, idx) => (
+                  <span key={`text-${i}-${idx}`}>{item}</span>
+                )),
+              );
             } else {
               result.push(<span key={`text-${i}`}>{highlighted}</span>);
             }
@@ -579,23 +631,25 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           }
         }
       }
-      
+
       return result;
     };
 
     const extractUrls = (text) => {
       if (!text) return [];
-      const urlPattern = /(https?:\/\/[^\s]+)|(www\.[^\s]+\.[^\s]+)|([^\s]+\.[^\s]+\.[^\s]+\/[^\s]*)/gi;
+      const urlPattern =
+        /(https?:\/\/[^\s]+)|(www\.[^\s]+\.[^\s]+)|([^\s]+\.[^\s]+\.[^\s]+\/[^\s]*)/gi;
       const matches = text.match(urlPattern) || [];
-      return matches.map(url => {
-        if (url.startsWith('www.')) return `https://${url}`;
-        if (!url.startsWith('http') && url.includes('.')) return `https://${url}`;
+      return matches.map((url) => {
+        if (url.startsWith("www.")) return `https://${url}`;
+        if (!url.startsWith("http") && url.includes("."))
+          return `https://${url}`;
         return url;
       });
     };
 
     const parts = parseMessageContent(content);
-    const hasCodeBlock = parts.some(part => part.type === "code-block");
+    const hasCodeBlock = parts.some((part) => part.type === "code-block");
     const urls = extractUrls(content);
     const hasUrls = urls.length > 0;
 
@@ -621,11 +675,17 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                 </span>
               );
             } else if (part.content) {
-              const shouldTruncate = part.content.length > 300 && !showFullContent;
-              const displayContent = shouldTruncate ? part.content.substring(0, 300) + '...' : part.content;
-              
+              const shouldTruncate =
+                part.content.length > 300 && !showFullContent;
+              const displayContent = shouldTruncate
+                ? part.content.substring(0, 300) + "..."
+                : part.content;
+
               return (
-                <div key={`text-${index}`} className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                <div
+                  key={`text-${index}`}
+                  className="text-sm whitespace-pre-wrap break-words leading-relaxed"
+                >
                   {renderTextWithLinks(displayContent)}
                 </div>
               );
@@ -638,26 +698,28 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               onClick={() => setShowFullContent(!showFullContent)}
               className="text-xs text-blue-600 dark:text-blue-400 mt-2 hover:underline focus:outline-none"
             >
-              {showFullContent ? 'Show less' : 'Show more'}
+              {showFullContent ? "Show less" : "Show more"}
             </button>
           )}
 
           {hasUrls && urls.length > 0 && !message.deleted && (
             <div className="mt-2 space-y-2">
-              <LinkPreview 
+              <LinkPreview
                 key={`preview-${urls[0]}-${message.timestamp}`}
-                url={urls[0]} 
+                url={urls[0]}
               />
               {urls.length > 1 && (
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  +{urls.length - 1} more link{urls.length - 1 > 1 ? 's' : ''}
+                  +{urls.length - 1} more link{urls.length - 1 > 1 ? "s" : ""}
                 </div>
               )}
             </div>
           )}
 
           <div className="flex items-center justify-end gap-1 mt-2">
-            <p className={`text-[10px] ${isOwn ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
+            <p
+              className={`text-[10px] ${isOwn ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"}`}
+            >
               {formatTime(message.timestamp)}
             </p>
             {renderMessageStatus(message)}
@@ -667,14 +729,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     }
 
     const shouldTruncate = content.length > 300 && !showFullContent;
-    const displayContent = shouldTruncate ? content.substring(0, 300) + '...' : content;
+    const displayContent = shouldTruncate
+      ? content.substring(0, 300) + "..."
+      : content;
 
     return (
       <div>
         <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
           {renderTextWithLinks(displayContent)}
           {message.edited && !message.deleted && (
-            <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">(edited)</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">
+              (edited)
+            </span>
           )}
         </p>
 
@@ -683,26 +749,28 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             onClick={() => setShowFullContent(!showFullContent)}
             className="text-xs text-blue-600 dark:text-blue-400 mt-1 hover:underline"
           >
-            {showFullContent ? 'Show less' : 'Show more'}
+            {showFullContent ? "Show less" : "Show more"}
           </button>
         )}
 
         {hasUrls && urls.length > 0 && !message.deleted && (
           <div className="mt-2 space-y-2">
-            <LinkPreview 
+            <LinkPreview
               key={`preview-${urls[0]}-${message.timestamp}`}
-              url={urls[0]} 
+              url={urls[0]}
             />
             {urls.length > 1 && (
               <div className="text-xs text-gray-500 dark:text-gray-400">
-                +{urls.length - 1} more link{urls.length - 1 > 1 ? 's' : ''}
+                +{urls.length - 1} more link{urls.length - 1 > 1 ? "s" : ""}
               </div>
             )}
           </div>
         )}
 
         <div className="flex items-center justify-end gap-1 mt-1">
-          <p className={`text-[10px] ${isOwn ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
+          <p
+            className={`text-[10px] ${isOwn ? "text-gray-500 dark:text-gray-400" : "text-gray-400 dark:text-gray-500"}`}
+          >
             {formatTime(message.timestamp)}
           </p>
           {renderMessageStatus(message)}
@@ -715,35 +783,35 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const handleDeleteChat = async () => {
     setIsDeleting(true);
     try {
-      const response = await fetch('/api/chat/delete-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/chat/delete-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomId,
           userId: currentUserId,
-          friendId: friend.userId
-        })
+          friendId: friend.userId,
+        }),
       });
 
       const data = await response.json();
 
       if (data.success) {
-        console.log('✅ Chat deleted successfully');
+        console.log("✅ Chat deleted successfully");
         if (onMessageUpdate) {
-          onMessageUpdate({ 
-            type: 'chat-deleted', 
+          onMessageUpdate({
+            type: "chat-deleted",
             roomId,
-            friendId: friend.userId 
+            friendId: friend.userId,
           });
         }
         onClose();
       } else {
-        console.error('❌ Failed to delete chat:', data.error);
-        alert('Failed to delete chat. Please try again.');
+        console.error("❌ Failed to delete chat:", data.error);
+        alert("Failed to delete chat. Please try again.");
       }
     } catch (error) {
-      console.error('Error deleting chat:', error);
-      alert('An error occurred while deleting the chat.');
+      console.error("Error deleting chat:", error);
+      alert("An error occurred while deleting the chat.");
     } finally {
       setIsDeleting(false);
       setShowDeleteChatConfirm(false);
@@ -755,35 +823,35 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const handleClearChat = async () => {
     setIsClearing(true);
     try {
-      const response = await fetch('/api/chat/clear-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/chat/clear-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomId,
-          userId: currentUserId
-        })
+          userId: currentUserId,
+        }),
       });
 
       const data = await response.json();
 
       if (data.success) {
-        console.log('✅ Chat cleared successfully');
+        console.log("✅ Chat cleared successfully");
         setMessages([]);
         setDecryptedMessages(new Map());
         setAllAttachments([]);
         if (onMessageUpdate) {
-          onMessageUpdate({ 
-            type: 'chat-cleared', 
-            roomId 
+          onMessageUpdate({
+            type: "chat-cleared",
+            roomId,
           });
         }
       } else {
-        console.error('❌ Failed to clear chat:', data.error);
-        alert('Failed to clear chat. Please try again.');
+        console.error("❌ Failed to clear chat:", data.error);
+        alert("Failed to clear chat. Please try again.");
       }
     } catch (error) {
-      console.error('Error clearing chat:', error);
-      alert('An error occurred while clearing the chat.');
+      console.error("Error clearing chat:", error);
+      alert("An error occurred while clearing the chat.");
     } finally {
       setIsClearing(false);
       setShowClearChatConfirm(false);
@@ -794,16 +862,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   // Handle sending GIF directly
   const handleSendGIF = async (gif) => {
     if (!canSendMessages) {
-      alert(blockStatus.iBlockedThem 
-        ? "You have blocked this user. Unblock to send messages."
-        : "You cannot send messages to this user because they have blocked you.");
+      alert(
+        blockStatus.iBlockedThem
+          ? "You have blocked this user. Unblock to send messages."
+          : "You cannot send messages to this user because they have blocked you.",
+      );
       return;
     }
 
     if (!socket || !isConnected || !roomJoined) return;
 
     const now = new Date().toISOString();
-    
+
     let replyTo = null;
     if (replyingToMessage && !replyingToMessage.deleted) {
       const replyContent = getMessageContent(replyingToMessage);
@@ -811,10 +881,15 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         messageId: `${replyingToMessage.timestamp}-${replyingToMessage.senderId}`,
         timestamp: replyingToMessage.timestamp,
         senderId: replyingToMessage.senderId,
-        senderName: replyingToMessage.senderId === currentUserId ? 'You' : friend.userName,
+        senderName:
+          replyingToMessage.senderId === currentUserId
+            ? "You"
+            : friend.userName,
         content: replyContent,
-        hasAttachments: replyingToMessage.attachments && replyingToMessage.attachments.length > 0,
-        attachmentType: replyingToMessage.attachments?.[0]?.type
+        hasAttachments:
+          replyingToMessage.attachments &&
+          replyingToMessage.attachments.length > 0,
+        attachmentType: replyingToMessage.attachments?.[0]?.type,
       };
     }
 
@@ -822,18 +897,21 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
     if (encryptionReady && sharedSecret) {
       try {
-        encryptedContent = await encryptionService.encryptMessage('', sharedSecret);
+        encryptedContent = await encryptionService.encryptMessage(
+          "",
+          sharedSecret,
+        );
       } catch (error) {
-        console.error('❌ Encryption failed:', error);
+        console.error("❌ Encryption failed:", error);
       }
     }
 
     const gifAttachment = {
       url: gif.images?.fixed_height?.url || gif.url,
-      type: 'gif',
-      name: gif.title || gif.name || 'GIF',
+      type: "gif",
+      name: gif.title || gif.name || "GIF",
       gifId: gif.id,
-      gifData: gif
+      gifData: gif,
     };
 
     const messageData = {
@@ -857,7 +935,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
     const localMessage = {
       ...messageData,
-      content: '',
+      content: "",
     };
 
     setMessages((prev) => [...prev, localMessage]);
@@ -923,7 +1001,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   const scrollToMessage = (messageId) => {
@@ -943,13 +1021,13 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   useEffect(() => {
     const attachments = [];
-    messages.forEach(msg => {
+    messages.forEach((msg) => {
       if (msg.attachments && msg.attachments.length > 0) {
-        msg.attachments.forEach(att => {
+        msg.attachments.forEach((att) => {
           attachments.push({
             ...att,
             messageId: msg.timestamp,
-            senderId: msg.senderId
+            senderId: msg.senderId,
           });
         });
       }
@@ -964,19 +1042,19 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       return;
     }
 
-    console.log('🔌 Setting up chat for room:', roomId);
-    
-    socket.emit('join-chat', { roomId, userId: currentUserId });
+    console.log("🔌 Setting up chat for room:", roomId);
 
-    socket.emit('get-user-status', { userId: friend.userId }, (status) => {
-      console.log('User status:', status);
+    socket.emit("join-chat", { roomId, userId: currentUserId });
+
+    socket.emit("get-user-status", { userId: friend.userId }, (status) => {
+      console.log("User status:", status);
       setFriendOnline(status.online);
       setFriendLastSeen(status.lastSeen);
     });
 
     const onJoinedRoom = ({ roomId: joinedRoom, success }) => {
       if (success && joinedRoom === roomId) {
-        console.log('✅ Successfully joined room:', roomId);
+        console.log("✅ Successfully joined room:", roomId);
         setRoomJoined(true);
         fetchMessages();
         markMessagesAsRead();
@@ -984,15 +1062,15 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     };
 
     const onMessage = (message) => {
-      console.log('📩 Message received in chat:', message);
+      console.log("📩 Message received in chat:", message);
       if (message.roomId === roomId) {
         if (message.encryptedContent && sharedSecret) {
           let encryptedData = message.encryptedContent;
-          if (typeof encryptedData === 'string') {
+          if (typeof encryptedData === "string") {
             try {
               encryptedData = JSON.parse(encryptedData);
             } catch {
-              encryptedData = { encrypted: encryptedData, iv: '' };
+              encryptedData = { encrypted: encryptedData, iv: "" };
             }
           }
 
@@ -1000,7 +1078,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             .decryptMessage(encryptedData, sharedSecret)
             .then((decrypted) => {
               setDecryptedMessages((prev) =>
-                new Map(prev).set(message.timestamp, decrypted)
+                new Map(prev).set(message.timestamp, decrypted),
               );
             })
             .catch((error) => {
@@ -1008,25 +1086,26 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               setDecryptedMessages((prev) =>
                 new Map(prev).set(
                   message.timestamp,
-                  message.content || "[Decryption failed]"
-                )
+                  message.content || "[Decryption failed]",
+                ),
               );
             });
         }
 
-        setMessages(prev => {
-          const exists = prev.some(m => 
-            m.timestamp === message.timestamp && 
-            m.senderId === message.senderId
+        setMessages((prev) => {
+          const exists = prev.some(
+            (m) =>
+              m.timestamp === message.timestamp &&
+              m.senderId === message.senderId,
           );
           if (exists) return prev;
           return [...prev, message];
         });
-        
+
         if (message.senderId === friend.userId) {
           setTimeout(() => markMessagesAsRead(), 500);
         }
-        
+
         if (onMessageUpdate) {
           onMessageUpdate(message);
         }
@@ -1034,16 +1113,16 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     };
 
     const onMessageUpdated = (data) => {
-      console.log('📝 Message updated:', data);
+      console.log("📝 Message updated:", data);
       if (data.roomId === roomId) {
-        setMessages(prev =>
-          prev.map(msg =>
+        setMessages((prev) =>
+          prev.map((msg) =>
             msg.timestamp === data.timestamp && msg.senderId === data.senderId
               ? { ...msg, ...data }
-              : msg
-          )
+              : msg,
+          ),
         );
-        setDecryptedMessages(prev => {
+        setDecryptedMessages((prev) => {
           const newMap = new Map(prev);
           newMap.delete(data.timestamp);
           return newMap;
@@ -1052,34 +1131,38 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     };
 
     const onMessageDeleted = (data) => {
-      console.log('🗑️ Message deleted:', data);
+      console.log("🗑️ Message deleted:", data);
       if (data.roomId === roomId) {
         if (data.deleteForEveryone) {
-          setMessages(prev =>
-            prev.map(msg =>
+          setMessages((prev) =>
+            prev.map((msg) =>
               msg.timestamp === data.timestamp && msg.senderId === data.senderId
-                ? { 
-                    ...msg, 
-                    deleted: true, 
-                    content: "This message was deleted", 
+                ? {
+                    ...msg,
+                    deleted: true,
+                    content: "This message was deleted",
                     attachments: [],
-                    deletedAt: data.deletedAt
+                    deletedAt: data.deletedAt,
                   }
-                : msg
-            )
+                : msg,
+            ),
           );
-          setDecryptedMessages(prev => {
+          setDecryptedMessages((prev) => {
             const newMap = new Map(prev);
             newMap.delete(data.timestamp);
             return newMap;
           });
         } else {
-          setMessages(prev =>
-            prev.filter(msg =>
-              !(msg.timestamp === data.timestamp && msg.senderId === data.senderId)
-            )
+          setMessages((prev) =>
+            prev.filter(
+              (msg) =>
+                !(
+                  msg.timestamp === data.timestamp &&
+                  msg.senderId === data.senderId
+                ),
+            ),
           );
-          setDecryptedMessages(prev => {
+          setDecryptedMessages((prev) => {
             const newMap = new Map(prev);
             newMap.delete(data.timestamp);
             return newMap;
@@ -1089,76 +1172,84 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     };
 
     const onMessageReaction = (data) => {
-      console.log('😊 Message reaction:', data);
+      console.log("😊 Message reaction:", data);
       if (data.roomId === roomId) {
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.timestamp === data.timestamp && msg.senderId === data.messageOwnerId
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.timestamp === data.timestamp &&
+            msg.senderId === data.messageOwnerId
               ? { ...msg, reactions: data.reactions }
-              : msg
-          )
+              : msg,
+          ),
         );
       }
     };
 
     const onMessageRead = (data) => {
-      console.log('✓✓ Messages marked as read:', data);
+      console.log("✓✓ Messages marked as read:", data);
       if (data.roomId === roomId) {
-        setMessages(prev =>
-          prev.map(msg => {
+        setMessages((prev) =>
+          prev.map((msg) => {
             if (msg.senderId === currentUserId && !msg.read) {
               return { ...msg, read: true, readAt: data.readAt };
             }
             return msg;
-          })
+          }),
         );
       }
     };
 
     const onMessageDelivered = (data) => {
-      console.log('✓ Messages delivered:', data);
+      console.log("✓ Messages delivered:", data);
       if (data.roomId === roomId) {
-        setMessages(prev =>
-          prev.map(msg => {
+        setMessages((prev) =>
+          prev.map((msg) => {
             if (msg.senderId === currentUserId) {
               if (data.timestamp) {
                 if (msg.timestamp === data.timestamp && !msg.delivered) {
-                  return { ...msg, delivered: true, deliveredAt: data.deliveredAt };
+                  return {
+                    ...msg,
+                    delivered: true,
+                    deliveredAt: data.deliveredAt,
+                  };
                 }
-              } 
-              else if (!msg.delivered) {
-                return { ...msg, delivered: true, deliveredAt: data.deliveredAt };
+              } else if (!msg.delivered) {
+                return {
+                  ...msg,
+                  delivered: true,
+                  deliveredAt: data.deliveredAt,
+                };
               }
             }
             return msg;
-          })
+          }),
         );
       }
     };
 
     const onUserCameOnline = (data) => {
-      console.log('👤 User came online:', data);
+      console.log("👤 User came online:", data);
       if (data.userId === friend.userId) {
         setFriendOnline(true);
         setFriendLastSeen(data.timestamp);
-        
-        setMessages(prev =>
-          prev.map(msg => {
+
+        setMessages((prev) =>
+          prev.map((msg) => {
             if (msg.senderId === currentUserId && !msg.delivered) {
-              return { 
-                ...msg, 
-                delivered: true, 
-                deliveredAt: data.timestamp 
+              return {
+                ...msg,
+                delivered: true,
+                deliveredAt: data.timestamp,
               };
             }
             return msg;
-          })
+          }),
         );
       }
     };
 
     const onCheckUndelivered = (data) => {
-      console.log('🔍 Check undelivered messages:', data);
+      console.log("🔍 Check undelivered messages:", data);
       if (data.roomId === roomId) {
         checkUndeliveredMessages(roomId, friend.userId);
       }
@@ -1188,61 +1279,70 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       }
     };
 
-    socket.on('joined-room', onJoinedRoom);
-    socket.on('receive-message', onMessage);
-    socket.on('message-updated', onMessageUpdated);
-    socket.on('message-deleted', onMessageDeleted);
-    socket.on('message-reaction', onMessageReaction);
-    socket.on('message-read', onMessageRead);
-    socket.on('message-delivered', onMessageDelivered);
-    socket.on('user-came-online', onUserCameOnline);
-    socket.on('check-undelivered-messages', onCheckUndelivered);
-    socket.on('user-typing', onTyping);
-    socket.on('user-online', onOnline);
-    socket.on('user-status-change', onStatusChange);
+    socket.on("joined-room", onJoinedRoom);
+    socket.on("receive-message", onMessage);
+    socket.on("message-updated", onMessageUpdated);
+    socket.on("message-deleted", onMessageDeleted);
+    socket.on("message-reaction", onMessageReaction);
+    socket.on("message-read", onMessageRead);
+    socket.on("message-delivered", onMessageDelivered);
+    socket.on("user-came-online", onUserCameOnline);
+    socket.on("check-undelivered-messages", onCheckUndelivered);
+    socket.on("user-typing", onTyping);
+    socket.on("user-online", onOnline);
+    socket.on("user-status-change", onStatusChange);
 
     fetchMessages();
     markMessagesAsRead();
 
     return () => {
-      console.log('🧹 Cleaning up chat listeners');
-      socket.off('joined-room', onJoinedRoom);
-      socket.off('receive-message', onMessage);
-      socket.off('message-updated', onMessageUpdated);
-      socket.off('message-deleted', onMessageDeleted);
-      socket.off('message-reaction', onMessageReaction);
-      socket.off('message-read', onMessageRead);
-      socket.off('message-delivered', onMessageDelivered);
-      socket.off('user-came-online', onUserCameOnline);
-      socket.off('check-undelivered-messages', onCheckUndelivered);
-      socket.off('user-typing', onTyping);
-      socket.off('user-online', onOnline);
-      socket.off('user-status-change', onStatusChange);
-      
-      socket.emit('leave-chat', { roomId, userId: currentUserId });
+      console.log("🧹 Cleaning up chat listeners");
+      socket.off("joined-room", onJoinedRoom);
+      socket.off("receive-message", onMessage);
+      socket.off("message-updated", onMessageUpdated);
+      socket.off("message-deleted", onMessageDeleted);
+      socket.off("message-reaction", onMessageReaction);
+      socket.off("message-read", onMessageRead);
+      socket.off("message-delivered", onMessageDelivered);
+      socket.off("user-came-online", onUserCameOnline);
+      socket.off("check-undelivered-messages", onCheckUndelivered);
+      socket.off("user-typing", onTyping);
+      socket.off("user-online", onOnline);
+      socket.off("user-status-change", onStatusChange);
+
+      socket.emit("leave-chat", { roomId, userId: currentUserId });
       setRoomJoined(false);
-      
+
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
     };
-  }, [socket, isConnected, friend?.userId, currentUserId, roomId, sharedSecret]);
+  }, [
+    socket,
+    isConnected,
+    friend?.userId,
+    currentUserId,
+    roomId,
+    sharedSecret,
+  ]);
 
   const fetchMessages = async () => {
     try {
-      const res = await fetch(`/api/chat/messages?roomId=${roomId}&userId=${currentUserId}`);
+      const res = await fetch(
+        `/api/chat/messages?roomId=${roomId}&userId=${currentUserId}`,
+      );
       const data = await res.json();
       if (data.success) {
-        const processedMessages = data.messages.map(msg => ({
+        const processedMessages = data.messages.map((msg) => ({
           ...msg,
           delivered: msg.delivered || false,
-          read: msg.read || false
+          read: msg.read || false,
         }));
         setMessages(processedMessages);
         console.log(`✅ Loaded ${processedMessages.length} messages`);
       }
     } catch (error) {
-      console.error('Error fetching messages:', error);
+      console.error("Error fetching messages:", error);
     } finally {
       setLoading(false);
     }
@@ -1251,45 +1351,47 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const markMessagesAsRead = async () => {
     try {
       const unreadMessages = messages.filter(
-        msg => msg.senderId === friend.userId && !msg.read
+        (msg) => msg.senderId === friend.userId && !msg.read,
       );
-      
+
       if (unreadMessages.length === 0) return;
-      
-      const response = await fetch('/api/chat/messages/read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          roomId, 
+
+      const response = await fetch("/api/chat/messages/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomId,
           userId: currentUserId,
-          messageIds: unreadMessages.map(msg => `${msg.roomId}-${msg.timestamp}-${msg.senderId}`)
+          messageIds: unreadMessages.map(
+            (msg) => `${msg.roomId}-${msg.timestamp}-${msg.senderId}`,
+          ),
         }),
       });
-      
+
       const data = await response.json();
-      
+
       if (data.success && socket && isConnected) {
-        socket.emit('mark-as-read', { 
-          roomId, 
+        socket.emit("mark-as-read", {
+          roomId,
           userId: currentUserId,
           readAt: data.readAt,
-          isGroupMessage: false
+          isGroupMessage: false,
         });
-        
-        setMessages(prev =>
-          prev.map(msg =>
+
+        setMessages((prev) =>
+          prev.map((msg) =>
             msg.senderId === friend.userId && !msg.read
               ? { ...msg, read: true, readAt: data.readAt }
-              : msg
-          )
+              : msg,
+          ),
         );
       }
-      
+
       if (onMessageUpdate) {
         onMessageUpdate({ roomId, markAsRead: true });
       }
     } catch (error) {
-      console.error('Error marking messages as read:', error);
+      console.error("Error marking messages as read:", error);
     }
   };
 
@@ -1316,7 +1418,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         let startPos = 0;
         let index;
         const contentLower = content.toLowerCase();
-        
+
         while ((index = contentLower.indexOf(searchLower, startPos)) > -1) {
           indices.push(index);
           startPos = index + searchLower.length;
@@ -1329,13 +1431,13 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           timestamp: msg.timestamp,
           senderId: msg.senderId,
           matchIndices: indices,
-          matchCount: indices.length
+          matchCount: indices.length,
         });
       }
     });
 
     results.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    
+
     setSearchResults(results);
     setCurrentSearchIndex(results.length > 0 ? 0 : -1);
 
@@ -1375,26 +1477,37 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const handleSendMessage = async () => {
     if (!canSendMessages) {
-      alert(blockStatus.iBlockedThem 
-        ? "You have blocked this user. Unblock to send messages."
-        : "You cannot send messages to this user because they have blocked you.");
+      alert(
+        blockStatus.iBlockedThem
+          ? "You have blocked this user. Unblock to send messages."
+          : "You cannot send messages to this user because they have blocked you.",
+      );
       return;
     }
 
-    if ((!newMessage.trim() && attachments.length === 0) || !socket || !isConnected || !roomJoined) return;
+    if (
+      (!newMessage.trim() && attachments.length === 0) ||
+      !socket ||
+      !isConnected ||
+      !roomJoined
+    )
+      return;
 
     const now = new Date().toISOString();
     const originalMessage = newMessage.trim();
-    
+
     let encryptedContent = null;
     let contentForDB = originalMessage;
-    
+
     if (encryptionReady && sharedSecret && originalMessage) {
       try {
-        encryptedContent = await encryptionService.encryptMessage(originalMessage, sharedSecret);
+        encryptedContent = await encryptionService.encryptMessage(
+          originalMessage,
+          sharedSecret,
+        );
         contentForDB = null;
       } catch (error) {
-        console.error('❌ Encryption failed:', error);
+        console.error("❌ Encryption failed:", error);
       }
     }
 
@@ -1405,13 +1518,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         messageId: `${replyingToMessage.timestamp}-${replyingToMessage.senderId}`,
         timestamp: replyingToMessage.timestamp,
         senderId: replyingToMessage.senderId,
-        senderName: replyingToMessage.senderId === currentUserId ? 'You' : friend.userName,
+        senderName:
+          replyingToMessage.senderId === currentUserId
+            ? "You"
+            : friend.userName,
         content: replyContent,
-        hasAttachments: replyingToMessage.attachments && replyingToMessage.attachments.length > 0,
-        attachmentType: replyingToMessage.attachments?.[0]?.type
+        hasAttachments:
+          replyingToMessage.attachments &&
+          replyingToMessage.attachments.length > 0,
+        attachmentType: replyingToMessage.attachments?.[0]?.type,
       };
     }
-    
+
     const messageData = {
       roomId,
       senderId: currentUserId,
@@ -1419,12 +1537,12 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       isGroupMessage: false,
       content: contentForDB,
       encryptedContent: encryptedContent,
-      attachments: attachments.map(att => ({
+      attachments: attachments.map((att) => ({
         url: att.url,
         type: att.type,
         name: att.name,
         gifId: att.gifId,
-        gifData: att.gifData
+        gifData: att.gifData,
       })),
       replyTo: replyTo,
       timestamp: now,
@@ -1434,19 +1552,19 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       readAt: null,
       readBy: [currentUserId],
       reactions: [],
-      isEncrypted: !!encryptedContent
+      isEncrypted: !!encryptedContent,
     };
 
     const localMessage = {
       ...messageData,
-      content: originalMessage
+      content: originalMessage,
     };
 
     if (encryptedContent && sharedSecret && originalMessage) {
       setDecryptedMessages((prev) => new Map(prev).set(now, originalMessage));
     }
 
-    setMessages(prev => [...prev, localMessage]);
+    setMessages((prev) => [...prev, localMessage]);
     setNewMessage("");
     setAttachments([]);
     setShowAttachments(false);
@@ -1457,53 +1575,71 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       handleTyping(false);
     }
 
-    socket.emit('send-message', messageData);
+    socket.emit("send-message", messageData);
 
-    fetch('/api/chat/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    fetch("/api/chat/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(messageData),
-    }).then(() => {
-      if (onMessageUpdate) {
-        onMessageUpdate(localMessage);
-      }
-    }).catch(console.error);
+    })
+      .then(() => {
+        if (onMessageUpdate) {
+          onMessageUpdate(localMessage);
+        }
+      })
+      .catch(console.error);
   };
 
   const handleSendWithAttachments = async () => {
     if (!canSendMessages) {
-      alert(blockStatus.iBlockedThem 
-        ? "You have blocked this user. Unblock to send messages."
-        : "You cannot send messages to this user because they have blocked you.");
+      alert(
+        blockStatus.iBlockedThem
+          ? "You have blocked this user. Unblock to send messages."
+          : "You cannot send messages to this user because they have blocked you.",
+      );
       return;
     }
 
-    if ((!newMessage.trim() && attachments.length === 0) || !socket || !isConnected || !roomJoined) return;
+    if (
+      (!newMessage.trim() && attachments.length === 0) ||
+      !socket ||
+      !isConnected ||
+      !roomJoined
+    )
+      return;
 
     setUploading(true);
-    
+
     const uploadedAttachments = await uploadAttachments();
-    
-    const existingUploaded = attachments.filter(att => att.url).map(att => ({
-      url: att.url,
-      type: att.type,
-      name: att.name,
-    }));
-    
-    const allUploadedAttachments = [...existingUploaded, ...uploadedAttachments];
+
+    const existingUploaded = attachments
+      .filter((att) => att.url)
+      .map((att) => ({
+        url: att.url,
+        type: att.type,
+        name: att.name,
+      }));
+
+    const allUploadedAttachments = [
+      ...existingUploaded,
+      ...uploadedAttachments,
+    ];
 
     const now = new Date().toISOString();
     const originalMessage = newMessage.trim();
-    
+
     let encryptedContent = null;
     let contentForDB = originalMessage;
-    
+
     if (encryptionReady && sharedSecret && originalMessage) {
       try {
-        encryptedContent = await encryptionService.encryptMessage(originalMessage, sharedSecret);
+        encryptedContent = await encryptionService.encryptMessage(
+          originalMessage,
+          sharedSecret,
+        );
         contentForDB = null;
       } catch (error) {
-        console.error('❌ Encryption failed:', error);
+        console.error("❌ Encryption failed:", error);
       }
     }
 
@@ -1514,13 +1650,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         messageId: `${replyingToMessage.timestamp}-${replyingToMessage.senderId}`,
         timestamp: replyingToMessage.timestamp,
         senderId: replyingToMessage.senderId,
-        senderName: replyingToMessage.senderId === currentUserId ? 'You' : friend.userName,
+        senderName:
+          replyingToMessage.senderId === currentUserId
+            ? "You"
+            : friend.userName,
         content: replyContent,
-        hasAttachments: replyingToMessage.attachments && replyingToMessage.attachments.length > 0,
-        attachmentType: replyingToMessage.attachments?.[0]?.type
+        hasAttachments:
+          replyingToMessage.attachments &&
+          replyingToMessage.attachments.length > 0,
+        attachmentType: replyingToMessage.attachments?.[0]?.type,
       };
     }
-    
+
     const messageData = {
       roomId,
       senderId: currentUserId,
@@ -1537,22 +1678,22 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       readAt: null,
       readBy: [currentUserId],
       reactions: [],
-      isEncrypted: !!encryptedContent
+      isEncrypted: !!encryptedContent,
     };
 
     const localMessage = {
       ...messageData,
-      content: originalMessage
+      content: originalMessage,
     };
 
     if (encryptedContent && sharedSecret && originalMessage) {
       setDecryptedMessages((prev) => new Map(prev).set(now, originalMessage));
     }
 
-    setMessages(prev => [...prev, localMessage]);
+    setMessages((prev) => [...prev, localMessage]);
     setNewMessage("");
-    
-    attachments.forEach(att => {
+
+    attachments.forEach((att) => {
       if (att.preview) {
         URL.revokeObjectURL(att.preview);
       }
@@ -1566,19 +1707,22 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       handleTyping(false);
     }
 
-    socket.emit('send-message', messageData);
+    socket.emit("send-message", messageData);
 
-    fetch('/api/chat/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    fetch("/api/chat/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(messageData),
-    }).then(() => {
-      if (onMessageUpdate) {
-        onMessageUpdate(localMessage);
-      }
-    }).catch(console.error).finally(() => {
-      setUploading(false);
-    });
+    })
+      .then(() => {
+        if (onMessageUpdate) {
+          onMessageUpdate(localMessage);
+        }
+      })
+      .catch(console.error)
+      .finally(() => {
+        setUploading(false);
+      });
   };
 
   const handleEditMessage = async () => {
@@ -1591,7 +1735,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       editedAt: new Date().toISOString(),
     };
 
-    socket.emit('edit-message', {
+    socket.emit("edit-message", {
       roomId,
       timestamp: editingMessage.timestamp,
       senderId: editingMessage.senderId,
@@ -1600,9 +1744,9 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     });
 
     try {
-      await fetch('/api/chat/messages/edit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/chat/messages/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomId,
           timestamp: editingMessage.timestamp,
@@ -1612,7 +1756,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         }),
       });
     } catch (error) {
-      console.error('Error editing message:', error);
+      console.error("Error editing message:", error);
     }
 
     setEditingMessage(null);
@@ -1621,7 +1765,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const handleDeleteMessage = async (message, forEveryone = false) => {
     if (forEveryone) {
-      socket.emit('delete-message', {
+      socket.emit("delete-message", {
         roomId,
         timestamp: message.timestamp,
         senderId: message.senderId,
@@ -1630,9 +1774,9 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       });
 
       try {
-        await fetch('/api/chat/messages/delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        await fetch("/api/chat/messages/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             roomId,
             timestamp: message.timestamp,
@@ -1642,31 +1786,35 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           }),
         });
       } catch (error) {
-        console.error('Error deleting message for everyone:', error);
+        console.error("Error deleting message for everyone:", error);
       }
     } else {
-      setMessages(prev =>
-        prev.filter(msg =>
-          !(msg.timestamp === message.timestamp && msg.senderId === message.senderId)
-        )
+      setMessages((prev) =>
+        prev.filter(
+          (msg) =>
+            !(
+              msg.timestamp === message.timestamp &&
+              msg.senderId === message.senderId
+            ),
+        ),
       );
 
       try {
-        await fetch('/api/chat/messages/delete-for-me', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        await fetch("/api/chat/messages/delete-for-me", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             userId: currentUserId,
             messageId: `${message.roomId}-${message.timestamp}-${message.senderId}`,
-            roomId: message.roomId
+            roomId: message.roomId,
           }),
         });
       } catch (error) {
-        console.error('Error deleting message for me:', error);
+        console.error("Error deleting message for me:", error);
       }
     }
-    
-    setDecryptedMessages(prev => {
+
+    setDecryptedMessages((prev) => {
       const newMap = new Map(prev);
       newMap.delete(message.timestamp);
       return newMap;
@@ -1676,7 +1824,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   const handleReactToMessage = async (message, emoji) => {
     const updatedReactions = message.reactions || [];
     const existingReactionIndex = updatedReactions.findIndex(
-      r => r.userId === currentUserId && r.emoji === emoji
+      (r) => r.userId === currentUserId && r.emoji === emoji,
     );
 
     if (existingReactionIndex > -1) {
@@ -1689,7 +1837,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
       });
     }
 
-    socket.emit('react-to-message', {
+    socket.emit("react-to-message", {
       roomId,
       timestamp: message.timestamp,
       messageOwnerId: message.senderId,
@@ -1698,9 +1846,9 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     });
 
     try {
-      await fetch('/api/chat/messages/react', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/chat/messages/react", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roomId,
           timestamp: message.timestamp,
@@ -1710,26 +1858,26 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         }),
       });
     } catch (error) {
-      console.error('Error reacting to message:', error);
+      console.error("Error reacting to message:", error);
     }
   };
 
   const handleTyping = (isTyping) => {
     if (socket && isConnected && roomJoined && canSendMessages) {
-      socket.emit('typing', { roomId, userId: currentUserId, isTyping });
+      socket.emit("typing", { roomId, userId: currentUserId, isTyping });
     }
   };
 
   const handleInputChange = (e) => {
     setNewMessage(e.target.value);
-    
+
     if (e.target.value.length > 0 && canSendMessages) {
       handleTyping(true);
-      
+
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      
+
       typingTimeoutRef.current = setTimeout(() => {
         handleTyping(false);
       }, 1000);
@@ -1740,36 +1888,41 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const handleFileSelect = (e) => {
     if (!canSendMessages) {
-      alert(blockStatus.iBlockedThem 
-        ? "You have blocked this user. Unblock to send messages."
-        : "You cannot send messages to this user because they have blocked you.");
-      e.target.value = '';
+      alert(
+        blockStatus.iBlockedThem
+          ? "You have blocked this user. Unblock to send messages."
+          : "You cannot send messages to this user because they have blocked you.",
+      );
+      e.target.value = "";
       return;
     }
 
     const files = Array.from(e.target.files);
-    
-    files.forEach(file => {
-      const fileType = file.type.split('/')[0];
-      if (fileType !== 'image' && fileType !== 'video') {
-        alert('Only images and videos are allowed!');
+
+    files.forEach((file) => {
+      const fileType = file.type.split("/")[0];
+      if (fileType !== "image" && fileType !== "video") {
+        alert("Only images and videos are allowed!");
         return;
       }
 
       const previewUrl = URL.createObjectURL(file);
-      
-      setAttachments(prev => [...prev, {
-        file,
-        preview: previewUrl,
-        type: fileType,
-        name: file.name,
-        size: file.size,
-        uploading: false,
-      }]);
+
+      setAttachments((prev) => [
+        ...prev,
+        {
+          file,
+          preview: previewUrl,
+          type: fileType,
+          name: file.name,
+          size: file.size,
+          uploading: false,
+        },
+      ]);
     });
 
     setShowAttachments(false);
-    e.target.value = '';
+    e.target.value = "";
   };
 
   const handleRemoveAttachment = (index) => {
@@ -1777,11 +1930,11 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     if (attachment.preview) {
       URL.revokeObjectURL(attachment.preview);
     }
-    setAttachments(prev => prev.filter((_, i) => i !== index));
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleClearAllAttachments = () => {
-    attachments.forEach(att => {
+    attachments.forEach((att) => {
       if (att.preview) {
         URL.revokeObjectURL(att.preview);
       }
@@ -1794,24 +1947,26 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   };
 
   const uploadAttachments = async () => {
-    const attachmentsToUpload = attachments.filter(att => !att.url && att.file);
-    
+    const attachmentsToUpload = attachments.filter(
+      (att) => !att.url && att.file,
+    );
+
     if (attachmentsToUpload.length === 0) {
       return attachments;
     }
 
     setUploading(true);
-    
+
     const uploadedAttachments = [];
-    
+
     for (const att of attachmentsToUpload) {
       const formData = new FormData();
-      formData.append('file', att.file);
-      formData.append('userId', currentUserId);
+      formData.append("file", att.file);
+      formData.append("userId", currentUserId);
 
       try {
-        const res = await fetch('/api/upload', {
-          method: 'POST',
+        const res = await fetch("/api/upload", {
+          method: "POST",
           body: formData,
         });
         const data = await res.json();
@@ -1823,10 +1978,10 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           });
         }
       } catch (error) {
-        console.error('Error uploading file:', error);
+        console.error("Error uploading file:", error);
       }
     }
-    
+
     setUploading(false);
     return uploadedAttachments;
   };
@@ -1854,9 +2009,9 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const onEmojiClick = (emojiObject) => {
     if (editingMessage) {
-      setEditText(prev => prev + emojiObject.emoji);
+      setEditText((prev) => prev + emojiObject.emoji);
     } else {
-      setNewMessage(prev => prev + emojiObject.emoji);
+      setNewMessage((prev) => prev + emojiObject.emoji);
     }
     setShowEmojiPicker(false);
   };
@@ -1882,20 +2037,20 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const handleGifHoverStart = (e) => {
     const img = e.currentTarget;
-    const playCount = parseInt(img.dataset.playCount || '0');
-    const isPaused = img.dataset.isPaused === 'true';
-    
+    const playCount = parseInt(img.dataset.playCount || "0");
+    const isPaused = img.dataset.isPaused === "true";
+
     if (playCount < 3 || !isPaused) {
       img.dataset.playCount = (playCount + 1).toString();
-      img.dataset.isPaused = 'false';
-      
+      img.dataset.isPaused = "false";
+
       const src = img.src;
-      img.src = '';
+      img.src = "";
       img.src = src;
-      
+
       setTimeout(() => {
-        if (parseInt(img.dataset.playCount || '0') >= 3) {
-          img.dataset.isPaused = 'true';
+        if (parseInt(img.dataset.playCount || "0") >= 3) {
+          img.dataset.isPaused = "true";
         }
       }, 3000);
     }
@@ -1915,9 +2070,9 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
   };
 
   const formatTime = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
+    return new Date(timestamp).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -1925,18 +2080,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     const messageDate = new Date(timestamp).toDateString();
     const today = new Date().toDateString();
     const yesterday = new Date(Date.now() - 86400000).toDateString();
-    
-    if (messageDate === today) return 'Today';
-    if (messageDate === yesterday) return 'Yesterday';
-    return new Date(timestamp).toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric' 
+
+    if (messageDate === today) return "Today";
+    if (messageDate === yesterday) return "Yesterday";
+    return new Date(timestamp).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
     });
   };
 
   const formatLastSeen = (lastSeen) => {
-    if (!lastSeen) return 'Offline';
-    
+    if (!lastSeen) return "Offline";
+
     const now = new Date();
     const seenDate = new Date(lastSeen);
     const diffMs = now - seenDate;
@@ -1944,13 +2099,13 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'Just now';
+    if (diffMins < 1) return "Just now";
     if (diffMins < 60) return `Last seen ${diffMins}m ago`;
     if (diffHours < 24) return `Last seen ${diffHours}h ago`;
-    if (diffDays === 1) return 'Last seen yesterday';
+    if (diffDays === 1) return "Last seen yesterday";
     if (diffDays < 7) return `Last seen ${diffDays}d ago`;
-    
-    return `Last seen ${seenDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+
+    return `Last seen ${seenDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
   };
 
   const groupedMessages = messages.reduce((groups, message) => {
@@ -1964,15 +2119,25 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const renderMessageStatus = (message) => {
     if (message.senderId !== currentUserId) return null;
-    
+
     if (message.read) {
       return <CheckCheck size={16} className="text-blue-500" title="Read" />;
-    } 
-    else if (message.delivered) {
-      return <CheckCheck size={16} className="text-gray-400 dark:text-gray-500" title="Delivered" />;
-    } 
-    else {
-      return <Check size={16} className="text-gray-400 dark:text-gray-500" title="Sent" />;
+    } else if (message.delivered) {
+      return (
+        <CheckCheck
+          size={16}
+          className="text-gray-400 dark:text-gray-500"
+          title="Delivered"
+        />
+      );
+    } else {
+      return (
+        <Check
+          size={16}
+          className="text-gray-400 dark:text-gray-500"
+          title="Sent"
+        />
+      );
     }
   };
 
@@ -1980,7 +2145,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     if (!replyTo) return null;
 
     return (
-      <div 
+      <div
         className="mb-2 p-2 bg-gray-50 dark:bg-[#1a1a1a] rounded border-l-4 border-green-500 cursor-pointer hover:bg-gray-100 dark:hover:bg-[#222222] transition-colors"
         onClick={() => handleReplyClick(replyTo)}
       >
@@ -1991,14 +2156,21 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         <div className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2">
           {replyTo.hasAttachments ? (
             <span className="flex items-center gap-1">
-              {replyTo.attachmentType === 'image' ? <ImageIcon size={12} /> : 
-               replyTo.attachmentType === 'gif' ? <span className="font-bold">GIF</span> :
-               <Video size={12} />}
-              {replyTo.attachmentType === 'image' ? 'Photo' : 
-               replyTo.attachmentType === 'gif' ? 'GIF' : 'Video'}
+              {replyTo.attachmentType === "image" ? (
+                <ImageIcon size={12} />
+              ) : replyTo.attachmentType === "gif" ? (
+                <span className="font-bold">GIF</span>
+              ) : (
+                <Video size={12} />
+              )}
+              {replyTo.attachmentType === "image"
+                ? "Photo"
+                : replyTo.attachmentType === "gif"
+                  ? "GIF"
+                  : "Video"}
             </span>
           ) : (
-            replyTo.content || ''
+            replyTo.content || ""
           )}
         </div>
       </div>
@@ -2009,18 +2181,27 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
     const longPressEvent = useLongPress(
       (e) => handleMessageLongPress(e, message),
       null,
-      { threshold: 500 }
+      { threshold: 500 },
     );
 
-    const isCurrentSearchResult = searchResults[currentSearchIndex]?.messageId === `${message.timestamp}-${message.senderId}`;
+    const isCurrentSearchResult =
+      searchResults[currentSearchIndex]?.messageId ===
+      `${message.timestamp}-${message.senderId}`;
 
     return (
       <div
-        ref={el => messageRefs.current.set(`${message.timestamp}-${message.senderId}`, el)}
+        ref={(el) =>
+          messageRefs.current.set(
+            `${message.timestamp}-${message.senderId}`,
+            el,
+          )
+        }
         {...longPressEvent}
         onContextMenu={(e) => handleMessageRightClick(e, message)}
-        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group transition-all duration-300 ${
-          isCurrentSearchResult ? ' ring-green-400 dark:ring-green-500 rounded-lg' : ''
+        className={`flex ${isOwn ? "justify-end" : "justify-start"} group transition-all duration-300 ${
+          isCurrentSearchResult
+            ? " ring-green-400 dark:ring-green-500 rounded-lg"
+            : ""
         }`}
       >
         {!message.deleted && isOwn && (
@@ -2032,9 +2213,9 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             <Reply size={12} className="text-[#5f6368] dark:text-gray-400" />
           </button>
         )}
-        
+
         {children}
-        
+
         {!message.deleted && !isOwn && (
           <button
             onClick={() => handleReplyToMessage(message)}
@@ -2070,31 +2251,31 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
   const dropdownItems = [
     {
-      id: 'encryption',
-      label: isVerified ? 'Encryption Verified' : 'Encryption Info',
-      icon: isVerified ? ShieldCheck : (isEncrypted ? ShieldAlert : Shield),
+      id: "encryption",
+      label: isVerified ? "Encryption Verified" : "Encryption Info",
+      icon: isVerified ? ShieldCheck : isEncrypted ? ShieldAlert : Shield,
       onClick: () => {
         setShowDropdown(false);
         setShowEncryptionModal(true);
       },
-      className: isVerified 
-        ? 'text-green-600 dark:text-green-400' 
-        : isEncrypted 
-          ? 'text-yellow-600 dark:text-yellow-400'
-          : 'text-gray-600 dark:text-gray-400'
+      className: isVerified
+        ? "text-green-600 dark:text-green-400"
+        : isEncrypted
+          ? "text-yellow-600 dark:text-yellow-400"
+          : "text-gray-600 dark:text-gray-400",
     },
     {
-      id: 'user-info',
-      label: 'User Info',
+      id: "user-info",
+      label: "User Info",
       icon: Info,
       onClick: () => {
         setShowDropdown(false);
         setShowUserInfo(true);
-      }
+      },
     },
     {
-      id: 'search',
-      label: 'Search Messages',
+      id: "search",
+      label: "Search Messages",
       icon: Search,
       onClick: () => {
         setShowDropdown(false);
@@ -2102,47 +2283,65 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         setTimeout(() => {
           searchInputRef.current?.focus();
         }, 100);
-      }
+      },
     },
     {
-      id: 'clear-chat',
-      label: 'Clear Chat',
+      id: "clear-chat",
+      label: "Clear Chat",
       icon: Eraser,
       onClick: () => {
         setShowDropdown(false);
         setShowClearChatConfirm(true);
       },
-      className: 'text-orange-600 dark:text-orange-400'
+      className: "text-orange-600 dark:text-orange-400",
     },
     {
-      id: 'delete-chat',
-      label: 'Delete Chat',
+      id: "delete-chat",
+      label: "Delete Chat",
       icon: Trash2,
       onClick: () => {
         setShowDropdown(false);
         setShowDeleteChatConfirm(true);
       },
-      className: 'text-red-600 dark:text-red-400'
-    }
+      className: "text-red-600 dark:text-red-400",
+    },
   ];
 
   return (
     <>
-      <div className={`h-full flex flex-col bg-white dark:bg-[#0c0c0c] rounded-3xl border border-none dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300 ${isMobile ? 'fixed inset-0 z-50 rounded-none' : ''}`}>
+      <div
+        className={`h-full flex flex-col bg-white dark:bg-[#0c0c0c] rounded-3xl border border-none dark:border-[#0c0c0c] overflow-hidden transition-colors duration-300 ${isMobile ? "fixed inset-0 z-50 rounded-none" : ""}`}
+      >
         {/* Chat Header - Fixed */}
-        <div className={`flex-shrink-0 p-3 md:p-4 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between bg-white dark:bg-[#0c0c0c] ${isMobile ? 'sticky top-0 z-20' : ''}`}>
+        {/* Chat Header - Fixed */}
+        <div
+          className={`flex-shrink-0 p-3 md:p-4 border-b border-[#f1f3f4] dark:border-[#181A1E] flex items-center justify-between bg-white dark:bg-[#0c0c0c] ${isMobile ? "sticky top-0 z-20" : ""}`}
+        >
           <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-            <button
-              onClick={onClose}
-              className="lg:hidden p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
-            >
-              <ChevronLeft size={20} className="text-[#202124] dark:text-white" />
-            </button>
+            {/* Back button - only show on mobile */}
+            {isMobile && (
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+              >
+                <ChevronLeft
+                  size={20}
+                  className="text-[#202124] dark:text-white"
+                />
+              </button>
+            )}
+
             <div className="relative flex-shrink-0">
-              {renderAvatar(friend.avatar, friend.userName, isMobile ? "w-8 h-8" : "w-10 h-10")}
-              {friendOnline && !blockStatus.theyBlockedMe && !blockStatus.iBlockedThem && (
-                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 md:w-3 md:h-3 bg-green-500 border-2 border-white dark:border-[#0c0c0c] rounded-full"></span>
+              {renderAvatar(
+                friend.avatar,
+                friend.userName,
+                isMobile ? "w-8 h-8" : "w-10 h-10",
               )}
+              {friendOnline &&
+                !blockStatus.theyBlockedMe &&
+                !blockStatus.iBlockedThem && (
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 md:w-3 md:h-3 bg-green-500 border-2 border-white dark:border-[#0c0c0c] rounded-full"></span>
+                )}
               {(blockStatus.iBlockedThem || blockStatus.theyBlockedMe) && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 md:w-5 md:h-5 bg-red-500 border-2 border-white dark:border-[#0c0c0c] rounded-full flex items-center justify-center">
                   <Ban size={8} className="text-white" />
@@ -2150,16 +2349,26 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-sm md:text-base font-semibold text-[#202124] dark:text-white truncate">{friend.userName}</h3>
+              <h3 className="text-sm md:text-base font-semibold text-[#202124] dark:text-white truncate">
+                {friend.userName}
+              </h3>
               <p className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400 truncate">
                 {blockStatus.iBlockedThem ? (
-                  <span className="text-red-600 dark:text-red-400">You blocked this user</span>
+                  <span className="text-red-600 dark:text-red-400">
+                    You blocked this user
+                  </span>
                 ) : blockStatus.theyBlockedMe ? (
-                  <span className="text-red-600 dark:text-red-400">This user blocked you</span>
+                  <span className="text-red-600 dark:text-red-400">
+                    This user blocked you
+                  </span>
                 ) : friendTyping ? (
-                  <span className="text-green-600 dark:text-green-400">typing...</span>
+                  <span className="text-green-600 dark:text-green-400">
+                    typing...
+                  </span>
                 ) : friendOnline ? (
-                  <span className="text-green-600 dark:text-green-400">● Online</span>
+                  <span className="text-green-600 dark:text-green-400">
+                    ● Online
+                  </span>
                 ) : (
                   <span>{formatLastSeen(friendLastSeen)}</span>
                 )}
@@ -2172,7 +2381,10 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                 onClick={() => setShowDropdown(!showDropdown)}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
               >
-                <MoreVertical size={18} className="text-[#5f6368] dark:text-gray-400" />
+                <MoreVertical
+                  size={18}
+                  className="text-[#5f6368] dark:text-gray-400"
+                />
               </button>
 
               {showDropdown && (
@@ -2181,7 +2393,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                     <button
                       key={item.id}
                       onClick={item.onClick}
-                      className={`w-full flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 md:py-3 hover:bg-gray-100 dark:hover:bg-[#101010] transition-colors text-sm ${item.className || 'text-[#202124] dark:text-white'}`}
+                      className={`w-full flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 md:py-3 hover:bg-gray-100 dark:hover:bg-[#101010] transition-colors text-sm ${item.className || "text-[#202124] dark:text-white"}`}
                     >
                       <item.icon size={16} />
                       <span>{item.label}</span>
@@ -2190,13 +2402,16 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                 </div>
               )}
             </div>
-            
-            <button 
-              onClick={onClose}
-              className="p-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors"
-            >
-              <X size={16} className="text-red-600 dark:text-red-400" />
-            </button>
+
+            {/* Close button - only show on desktop */}
+            {!isMobile && (
+              <button
+                onClick={onClose}
+                className="p-2 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-full transition-colors"
+              >
+                <X size={16} className="text-red-600 dark:text-red-400" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -2229,7 +2444,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         <div
           ref={messagesContainerRef}
           className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4 bg-[#F8F9FA] dark:bg-[#000000] transition-colors duration-300"
-          style={{scrollBehavior: 'smooth'}}
+          style={{ scrollBehavior: "smooth" }}
         >
           {loading ? (
             <div className="flex justify-center py-8">
@@ -2237,16 +2452,19 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             </div>
           ) : messages.length === 0 ? (
             <div className="text-center py-8 md:py-12">
-              <MessageCircle size={40} className="mx-auto text-[#dadce0] dark:text-[#232529] mb-2 md:mb-3" />
-              <p className="text-xs md:text-sm text-[#5f6368] dark:text-gray-400">No messages yet</p>
+              <MessageCircle
+                size={40}
+                className="mx-auto text-[#dadce0] dark:text-[#232529] mb-2 md:mb-3"
+              />
+              <p className="text-xs md:text-sm text-[#5f6368] dark:text-gray-400">
+                No messages yet
+              </p>
               <p className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-500 mt-1">
-                {blockStatus.iBlockedThem ? (
-                  "You've blocked this user. Unblock to send messages."
-                ) : blockStatus.theyBlockedMe ? (
-                  "This user has blocked you. You cannot send messages."
-                ) : (
-                  "Send a message to start chatting!"
-                )}
+                {blockStatus.iBlockedThem
+                  ? "You've blocked this user. Unblock to send messages."
+                  : blockStatus.theyBlockedMe
+                    ? "This user has blocked you. You cannot send messages."
+                    : "Send a message to start chatting!"}
               </p>
             </div>
           ) : (
@@ -2257,52 +2475,79 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                     {date}
                   </span>
                 </div>
-                
+
                 {dateMessages.map((msg, index) => {
                   const isOwn = msg.senderId === currentUserId;
-                  const showAvatar = !isOwn && (
-                    index === 0 || 
-                    dateMessages[index - 1]?.senderId !== msg.senderId
-                  );
+                  const showAvatar =
+                    !isOwn &&
+                    (index === 0 ||
+                      dateMessages[index - 1]?.senderId !== msg.senderId);
                   const messageContent = getMessageContent(msg);
-                  const hasTextContent = messageContent && messageContent.trim().length > 0;
+                  const hasTextContent =
+                    messageContent && messageContent.trim().length > 0;
 
                   return (
-                    <MessageWrapper key={`${msg.timestamp}-${index}`} message={msg} isOwn={isOwn}>
+                    <MessageWrapper
+                      key={`${msg.timestamp}-${index}`}
+                      message={msg}
+                      isOwn={isOwn}
+                    >
                       <div
                         className={`max-w-[85%] md:max-w-[70%] transition-all duration-200 ease-out mb-2`}
                       >
-                          {!isOwn && showAvatar && (
-                            <div className="flex items-center gap-1 md:gap-2 mb-1 ml-1">
-                              {renderAvatar(friend.avatar, friend.userName, "w-5 h-5 md:w-6 md:h-6")}
-                              <span className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400">{friend.userName}</span>
-                            </div>
-                          )}
-                          
-                          {/* Reply preview if this message is a reply */}
-                          {msg.replyTo && renderReplyPreview(msg.replyTo)}
-                          
-                          {/* Media attachments - including GIFs */}
-                          {msg.attachments && msg.attachments.length > 0 && !msg.deleted && (
-                            <div className={`space-y-2 ${hasTextContent ? 'mb-2' : ''}`}>
+                        {!isOwn && showAvatar && (
+                          <div className="flex items-center gap-1 md:gap-2 mb-1 ml-1">
+                            {renderAvatar(
+                              friend.avatar,
+                              friend.userName,
+                              "w-5 h-5 md:w-6 md:h-6",
+                            )}
+                            <span className="text-[10px] md:text-xs text-[#5f6368] dark:text-gray-400">
+                              {friend.userName}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Reply preview if this message is a reply */}
+                        {msg.replyTo && renderReplyPreview(msg.replyTo)}
+
+                        {/* Media attachments - including GIFs */}
+                        {msg.attachments &&
+                          msg.attachments.length > 0 &&
+                          !msg.deleted && (
+                            <div
+                              className={`space-y-2 ${hasTextContent ? "mb-2" : ""}`}
+                            >
                               {msg.attachments.map((att, idx) => {
                                 const globalIndex = allAttachments.findIndex(
-                                  a => a.url === att.url && a.messageId === msg.timestamp
+                                  (a) =>
+                                    a.url === att.url &&
+                                    a.messageId === msg.timestamp,
                                 );
-                                
+
                                 return (
                                   <div key={idx} className="relative group">
-                                    {att.type === 'image' ? (
+                                    {att.type === "image" ? (
                                       <div className="relative">
                                         <img
                                           src={att.url}
                                           alt="Attachment"
                                           className="max-w-full rounded-2xl max-h-48 md:max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                          onClick={() => handleAttachmentClick(att, globalIndex)}
+                                          onClick={() =>
+                                            handleAttachmentClick(
+                                              att,
+                                              globalIndex,
+                                            )
+                                          }
                                         />
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
                                           <button
-                                            onClick={() => handleAttachmentClick(att, globalIndex)}
+                                            onClick={() =>
+                                              handleAttachmentClick(
+                                                att,
+                                                globalIndex,
+                                              )
+                                            }
                                             className="p-1 md:p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
                                           >
                                             <Maximize2 size={16} />
@@ -2310,37 +2555,56 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                                         </div>
                                         <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[8px] md:text-[10px] px-1.5 py-0.5 md:px-2 md:py-1 rounded-full backdrop-blur-sm">
                                           {formatTime(msg.timestamp)}
-                                          <span className="ml-1">{renderMessageStatus(msg)}</span>
+                                          <span className="ml-1">
+                                            {renderMessageStatus(msg)}
+                                          </span>
                                         </div>
                                       </div>
-                                    ) : att.type === 'video' ? (
+                                    ) : att.type === "video" ? (
                                       <div className="relative">
                                         <video
                                           src={att.url}
                                           className="max-w-full rounded-2xl max-h-48 md:max-h-64 object-cover cursor-pointer"
-                                          onClick={() => handleAttachmentClick(att, globalIndex)}
+                                          onClick={() =>
+                                            handleAttachmentClick(
+                                              att,
+                                              globalIndex,
+                                            )
+                                          }
                                         />
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
                                           <button
-                                            onClick={() => handleAttachmentClick(att, globalIndex)}
+                                            onClick={() =>
+                                              handleAttachmentClick(
+                                                att,
+                                                globalIndex,
+                                              )
+                                            }
                                             className="p-1 md:p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
                                           >
                                             <Maximize2 size={16} />
                                           </button>
                                         </div>
                                         <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[8px] md:text-[10px] px-1.5 py-0.5 md:px-2 md:py-1 rounded-full backdrop-blur-sm flex items-center gap-1">
-                                          <span>{formatTime(msg.timestamp)}</span>
+                                          <span>
+                                            {formatTime(msg.timestamp)}
+                                          </span>
                                           {renderMessageStatus(msg)}
                                         </div>
                                       </div>
-                                    ) : att.type === 'gif' ? (
+                                    ) : att.type === "gif" ? (
                                       <div className="flex flex-col group/gif relative">
                                         <div className="relative">
                                           <img
                                             src={att.url}
-                                            alt={att.name || 'GIF'}
+                                            alt={att.name || "GIF"}
                                             className="max-w-full rounded-2xl max-h-48 md:max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                            onClick={() => handleAttachmentClick(att, globalIndex)}
+                                            onClick={() =>
+                                              handleAttachmentClick(
+                                                att,
+                                                globalIndex,
+                                              )
+                                            }
                                             loading="lazy"
                                             data-play-count="0"
                                             data-is-paused="true"
@@ -2352,7 +2616,12 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                                           </div>
                                           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center">
                                             <button
-                                              onClick={() => handleAttachmentClick(att, globalIndex)}
+                                              onClick={() =>
+                                                handleAttachmentClick(
+                                                  att,
+                                                  globalIndex,
+                                                )
+                                              }
                                               className="p-1 md:p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
                                             >
                                               <Maximize2 size={16} />
@@ -2373,52 +2642,58 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                               })}
                             </div>
                           )}
-                          
-                          {/* Text content with highlighting and code block support */}
-                          {hasTextContent && (
-                            <div
-                              className={`rounded-2xl p-2 md:p-3 ${
-                                msg.deleted 
-                                  ? 'bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400'
-                                  : isOwn
-                                  ? 'bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none'
-                                  : 'bg-white dark:bg-[#101010] border-[#dadce0] dark:text-white dark:border-[#232529] rounded-tl-none'
-                              }`}
-                            >
-                              {msg.deleted ? (
-                                <p className="text-xs md:text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                              ) : (
-                                <MessageContent
-                                  message={msg}
-                                  content={messageContent}
-                                  highlightedText={highlightedText}
-                                  formatTime={formatTime}
-                                  renderMessageStatus={renderMessageStatus}
-                                  isOwn={isOwn}
-                                />
-                              )}
-                            </div>
-                          )}
-                          
-                          {/* Reactions */}
-                          {msg.reactions && msg.reactions.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1 px-1 md:px-2">
-                              {Object.entries(
-                                msg.reactions.reduce((acc, r) => {
-                                  acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-                                  return acc;
-                                }, {})
-                              ).map(([emoji, count]) => (
-                                <span
-                                  key={emoji}
-                                  className="text-[10px] md:text-xs bg-gray-100 dark:bg-[#101010] z-50 rounded-full px-1.5 py-0.5 md:px-2 md:py-1 flex items-center gap-1"
-                                >
-                                  <span>{emoji}</span>
-                                  {count > 1 && <span className="text-gray-600 dark:text-gray-400">{count}</span>}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+
+                        {/* Text content with highlighting and code block support */}
+                        {hasTextContent && (
+                          <div
+                            className={`rounded-2xl p-2 md:p-3 ${
+                              msg.deleted
+                                ? "bg-gray-100 dark:bg-[#101010] italic text-gray-500 dark:text-gray-400"
+                                : isOwn
+                                  ? "bg-zinc-100 dark:bg-[#181A1E] text-black dark:text-white rounded-br-none"
+                                  : "bg-white dark:bg-[#101010] border-[#dadce0] dark:text-white dark:border-[#232529] rounded-tl-none"
+                            }`}
+                          >
+                            {msg.deleted ? (
+                              <p className="text-xs md:text-sm whitespace-pre-wrap break-words">
+                                {msg.content}
+                              </p>
+                            ) : (
+                              <MessageContent
+                                message={msg}
+                                content={messageContent}
+                                highlightedText={highlightedText}
+                                formatTime={formatTime}
+                                renderMessageStatus={renderMessageStatus}
+                                isOwn={isOwn}
+                              />
+                            )}
+                          </div>
+                        )}
+
+                        {/* Reactions */}
+                        {msg.reactions && msg.reactions.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1 px-1 md:px-2">
+                            {Object.entries(
+                              msg.reactions.reduce((acc, r) => {
+                                acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                                return acc;
+                              }, {}),
+                            ).map(([emoji, count]) => (
+                              <span
+                                key={emoji}
+                                className="text-[10px] md:text-xs bg-gray-100 dark:bg-[#101010] z-50 rounded-full px-1.5 py-0.5 md:px-2 md:py-1 flex items-center gap-1"
+                              >
+                                <span>{emoji}</span>
+                                {count > 1 && (
+                                  <span className="text-gray-600 dark:text-gray-400">
+                                    {count}
+                                  </span>
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </MessageWrapper>
                   );
@@ -2426,15 +2701,28 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               </div>
             ))
           )}
-          
+
           {friendTyping && canSendMessages && (
             <div className="flex items-center gap-1 md:gap-2 transition-all duration-200 ease-in">
-              {renderAvatar(friend.avatar, friend.userName, "w-5 h-5 md:w-6 md:h-6")}
+              {renderAvatar(
+                friend.avatar,
+                friend.userName,
+                "w-5 h-5 md:w-6 md:h-6",
+              )}
               <div className="bg-white dark:bg-[#101010] border border-[#dadce0] dark:border-[#232529] rounded-2xl rounded-bl-none p-2 md:p-3">
                 <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                  <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                  <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  <span
+                    className="w-1.5 h-1.5 md:w-2 md:h-2 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
+                    style={{ animationDelay: "0ms" }}
+                  ></span>
+                  <span
+                    className="w-1.5 h-1.5 md:w-2 md:h-2 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
+                    style={{ animationDelay: "150ms" }}
+                  ></span>
+                  <span
+                    className="w-1.5 h-1.5 md:w-2 md:h-2 bg-[#5f6368] dark:bg-gray-500 rounded-full animate-bounce"
+                    style={{ animationDelay: "300ms" }}
+                  ></span>
                 </div>
               </div>
             </div>
@@ -2465,13 +2753,15 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         {editingMessage && (
           <div className="p-2 md:p-3 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-900/30 flex items-center gap-2">
             <div className="flex-1">
-              <p className="text-[10px] md:text-xs text-blue-600 dark:text-blue-400 mb-1">Editing message</p>
+              <p className="text-[10px] md:text-xs text-blue-600 dark:text-blue-400 mb-1">
+                Editing message
+              </p>
               <input
                 type="text"
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
                 onKeyPress={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     handleEditMessage();
                   }
@@ -2499,12 +2789,15 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
         )}
 
         {/* Message Input - Fixed */}
-        <div className={`flex-shrink-0 p-3 md:p-4 border-t border-[#f1f3f4] dark:border-[#181A1E] bg-white dark:bg-[#0c0c0c] ${isMobile ? 'sticky bottom-0 z-20' : ''}`}>
+        {/* Message Input - Fixed */}
+        <div
+          className={`flex-shrink-0 p-3 md:p-4 border-t border-[#f1f3f4] dark:border-[#181A1E]  ${isMobile ? "sticky bottom-0 z-20" : ""}`}
+        >
           {isMobile ? (
-            /* Mobile Input Layout */
-            <>
-              {/* Input Controls */}
-              <div className="flex items-center gap-1 mb-2">
+            /* Mobile Input Layout - WhatsApp Style */
+            <div className="flex items-center gap-1 ">
+              {/* Input Container with integrated buttons */}
+              <div className="flex-1 flex items-center bg-gray-100 dark:bg-[#1a1a1a] rounded-3xl px-2 min-h-[44px]">
                 {/* AI Enhancement Button */}
                 <button
                   onClick={() => {
@@ -2514,25 +2807,57 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                     }
                     setShowAIEnhancement(true);
                   }}
-                  className="p-2 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-full transition-colors relative group"
-                  title="Enhance with AI"
+                  className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors relative"
                   disabled={!isConnected || !roomJoined || !canSendMessages}
                 >
-                  <Sparkles size={18} className="text-purple-600 dark:text-purple-400" />
+                  <Sparkles
+                    size={20}
+                    className="text-purple-600 dark:text-purple-400"
+                  />
                   {newMessage.trim() && (
                     <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
                   )}
                 </button>
 
                 {/* Code Mode Button */}
-                <button
-                  onClick={handleCodeModeToggle}
-                  className={`p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors ${codeMode ? 'bg-green-100 dark:bg-green-900/30' : ''}`}
-                  title="Code Mode"
-                  disabled={!isConnected || !roomJoined || !canSendMessages}
-                >
-                  <Code size={18} className={codeMode ? 'text-green-600 dark:text-green-400' : 'text-[#5f6368] dark:text-gray-400'} />
-                </button>
+
+                {/* Text Input */}
+                <input
+                  ref={inputRef}
+                  type="text"
+                  onPaste={handlePaste}
+                  value={editingMessage ? editText : newMessage}
+                  onChange={
+                    editingMessage
+                      ? (e) => setEditText(e.target.value)
+                      : handleInputChange
+                  }
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && canSendMessages) {
+                      e.preventDefault();
+                      if (editingMessage) {
+                        handleEditMessage();
+                      } else if (attachments.length > 0) {
+                        handleSendWithAttachments();
+                      } else {
+                        handleSendMessage();
+                      }
+                    }
+                  }}
+                  placeholder={
+                    !canSendMessages
+                      ? getBlockMessage()
+                      : !isConnected
+                        ? "Connecting..."
+                        : !roomJoined
+                          ? "Joining..."
+                          : "Message"
+                  }
+                  className="flex-1 bg-transparent text-[#202124] dark:text-white placeholder-gray-500 dark:placeholder-gray-400 py-3 px-1 focus:outline-none text-base"
+                  disabled={
+                    !isConnected || !roomJoined || uploading || !canSendMessages
+                  }
+                />
 
                 {/* Attachment Button */}
                 <div className="relative" ref={attachmentPickerRef}>
@@ -2546,54 +2871,76 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                       setShowEmojiPicker(false);
                       setShowGIFPicker(false);
                     }}
-                    className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
-                    disabled={!isConnected || !roomJoined || editingMessage || !canSendMessages}
+                    className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors"
+                    disabled={
+                      !isConnected ||
+                      !roomJoined ||
+                      editingMessage ||
+                      !canSendMessages
+                    }
                   >
-                    <Paperclip size={18} className={!canSendMessages ? "text-gray-400 dark:text-gray-600" : "text-[#5f6368] dark:text-gray-400"} />
+                    <Paperclip
+                      size={20}
+                      className={
+                        !canSendMessages
+                          ? "text-gray-400 dark:text-gray-600"
+                          : "text-[#5f6368] dark:text-gray-400"
+                      }
+                    />
                   </button>
 
                   {showAttachments && (
-                    <div className="absolute bottom-12 left-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-3xl z-50 p-2 min-w-[180px] shadow-lg">
-                      <div className="space-y-1">
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="w-full flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-                        >
-                          <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
-                            <ImageIcon size={16} className="text-blue-600 dark:text-blue-400" />
-                          </div>
-                          <div className="flex-1 text-left">
-                            <p className="text-xs font-medium text-[#202124] dark:text-white">Image</p>
-                          </div>
-                        </button>
+                    <div className="absolute bottom-12 right-0 bg-white dark:bg-[#0c0c0c] border border-zinc-200 dark:border-[#232529] rounded-2xl z-50 p-1 min-w-[160px] shadow-lg">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                          <ImageIcon
+                            size={16}
+                            className="text-blue-600 dark:text-blue-400"
+                          />
+                        </div>
+                        <span className="text-sm text-[#202124] dark:text-white">
+                          Image
+                        </span>
+                      </button>
 
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="w-full flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-                        >
-                          <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
-                            <Video size={16} className="text-red-600 dark:text-red-400" />
-                          </div>
-                          <div className="flex-1 text-left">
-                            <p className="text-xs font-medium text-[#202124] dark:text-white">Video</p>
-                          </div>
-                        </button>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                          <Video
+                            size={16}
+                            className="text-red-600 dark:text-red-400"
+                          />
+                        </div>
+                        <span className="text-sm text-[#202124] dark:text-white">
+                          Video
+                        </span>
+                      </button>
 
-                        <button
-                          onClick={() => {
+                      <button
+                        onClick={() => {
+                          console.log("GIF button clicked");
+                          setShowAttachments(false);
+                          // Small delay to ensure attachment picker closes first
+                          setTimeout(() => {
                             setShowGIFPicker(true);
-                            setShowAttachments(false);
-                          }}
-                          className="w-full flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
-                        >
-                          <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
-                            <span className="text-sm font-bold text-purple-600 dark:text-purple-400">GIF</span>
-                          </div>
-                          <div className="flex-1 text-left">
-                            <p className="text-xs font-medium text-[#202124] dark:text-white">GIF</p>
-                          </div>
-                        </button>
-                      </div>
+                          }, 50);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                          <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
+                            GIF
+                          </span>
+                        </div>
+                        <span className="text-sm text-[#202124] dark:text-white">
+                          GIF
+                        </span>
+                      </button>
                     </div>
                   )}
 
@@ -2619,85 +2966,38 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                       setShowAttachments(false);
                       setShowGIFPicker(false);
                     }}
-                    className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
+                    className="p-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-full transition-colors"
                     disabled={!isConnected || !roomJoined || !canSendMessages}
                   >
-                    <span className={`text-lg ${!canSendMessages ? 'opacity-50' : ''}`}>😊</span>
+                    <span
+                      className={`text-xl ${!canSendMessages ? "opacity-50" : ""}`}
+                    >
+                      😊
+                    </span>
                   </button>
+
                   {showEmojiPicker && (
-                    <div className="absolute bottom-12 left-0 z-50">
-                      <EmojiPicker 
+                    <div className="absolute bottom-12 right-0 z-50">
+                      <EmojiPicker
                         onEmojiClick={onEmojiClick}
                         width={280}
                         height={350}
-                        theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'}
+                        searchDisabled
+                        skinTonesDisabled
+                        previewConfig={{ showPreview: false }}
+                        theme={
+                          document.documentElement.classList.contains("dark")
+                            ? "dark"
+                            : "light"
+                        }
                       />
                     </div>
                   )}
                 </div>
-
-                {/* GIF Picker */}
-                {showGIFPicker && (
-                  <div 
-                    ref={gifPickerRef}
-                    className="absolute bottom-20 left-2 z-50"
-                  >
-                    <GIFPicker
-                      onSelect={handleSendGIF}
-                      onClose={() => setShowGIFPicker(false)}
-                    />
-                  </div>
-                )}
               </div>
-
-              {/* Text Input Row */}
-              <div className="flex items-center gap-2">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  onPaste={handlePaste}
-                  value={editingMessage ? editText : newMessage}
-                  onChange={editingMessage ? (e) => setEditText(e.target.value) : handleInputChange}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey && canSendMessages) {
-                      e.preventDefault();
-                      if (editingMessage) {
-                        handleEditMessage();
-                      } else if (attachments.length > 0) {
-                        handleSendWithAttachments();
-                      } else {
-                        handleSendMessage();
-                      }
-                    }
-                  }}
-                  placeholder={
-                    !canSendMessages 
-                      ? getBlockMessage()
-                      : (!isConnected ? "Connecting..." : !roomJoined ? "Joining..." : codeMode ? "Type your code..." : "Type a message...")
-                  }
-                  className="flex-1 px-3 py-2.5 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all text-sm"
-                  disabled={!isConnected || !roomJoined || uploading || !canSendMessages}
-                />
-                
-                <button
-                  onClick={editingMessage ? handleEditMessage : (attachments.length > 0 ? handleSendWithAttachments : handleSendMessage)}
-                  disabled={
-                    editingMessage 
-                      ? !editText.trim()
-                      : ((!newMessage.trim() && attachments.length === 0) || !isConnected || !roomJoined || uploading || !canSendMessages)
-                  }
-                  className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative"
-                >
-                  {uploading ? (
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  ) : (
-                    <Send size={18} />
-                  )}
-                </button>
-              </div>
-            </>
+            </div>
           ) : (
-            /* Desktop Input Layout */
+            /* Desktop Input Layout - Keep existing desktop code */
             <div className="flex items-center gap-2">
               {/* AI Enhancement Button */}
               <button
@@ -2712,21 +3012,17 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                 title="Enhance with AI"
                 disabled={!isConnected || !roomJoined || !canSendMessages}
               >
-                <Sparkles size={20} className="text-purple-600 dark:text-purple-400" />
+                <Sparkles
+                  size={20}
+                  className="text-purple-600 dark:text-purple-400"
+                />
                 {newMessage.trim() && (
                   <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>
                 )}
               </button>
 
               {/* Code Mode Button */}
-              <button
-                onClick={handleCodeModeToggle}
-                className={`p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors ${codeMode ? 'bg-green-100 dark:bg-green-900/30' : ''}`}
-                title="Code Mode"
-                disabled={!isConnected || !roomJoined || !canSendMessages}
-              >
-                <Code size={20} className={codeMode ? 'text-green-600 dark:text-green-400' : 'text-[#5f6368] dark:text-gray-400'} />
-              </button>
+              
 
               {/* Attachment Button */}
               <div className="relative" ref={attachmentPickerRef}>
@@ -2741,9 +3037,21 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                     setShowGIFPicker(false);
                   }}
                   className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full relative transition-colors"
-                  disabled={!isConnected || !roomJoined || editingMessage || !canSendMessages}
+                  disabled={
+                    !isConnected ||
+                    !roomJoined ||
+                    editingMessage ||
+                    !canSendMessages
+                  }
                 >
-                  <Paperclip size={20} className={!canSendMessages ? "text-gray-400 dark:text-gray-600" : "text-[#5f6368] dark:text-gray-400"} />
+                  <Paperclip
+                    size={20}
+                    className={
+                      !canSendMessages
+                        ? "text-gray-400 dark:text-gray-600"
+                        : "text-[#5f6368] dark:text-gray-400"
+                    }
+                  />
                 </button>
 
                 {/* Attachment Picker Popup */}
@@ -2755,11 +3063,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                         className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
                       >
                         <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
-                          <ImageIcon size={20} className="text-blue-600 dark:text-blue-400" />
+                          <ImageIcon
+                            size={20}
+                            className="text-blue-600 dark:text-blue-400"
+                          />
                         </div>
                         <div className="flex-1 text-left">
-                          <p className="text-sm font-medium text-[#202124] dark:text-white">Send Image</p>
-                          <p className="text-xs text-[#5f6368] dark:text-gray-400">Share photos</p>
+                          <p className="text-sm font-medium text-[#202124] dark:text-white">
+                            Send Image
+                          </p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                            Share photos
+                          </p>
                         </div>
                       </button>
 
@@ -2768,11 +3083,18 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                         className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
                       >
                         <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
-                          <Video size={20} className="text-red-600 dark:text-red-400" />
+                          <Video
+                            size={20}
+                            className="text-red-600 dark:text-red-400"
+                          />
                         </div>
                         <div className="flex-1 text-left">
-                          <p className="text-sm font-medium text-[#202124] dark:text-white">Send Video</p>
-                          <p className="text-xs text-[#5f6368] dark:text-gray-400">Share videos</p>
+                          <p className="text-sm font-medium text-[#202124] dark:text-white">
+                            Send Video
+                          </p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                            Share videos
+                          </p>
                         </div>
                       </button>
 
@@ -2785,11 +3107,17 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                         className="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-xl transition-colors group"
                       >
                         <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
-                          <span className="text-xl font-bold text-purple-600 dark:text-purple-400">GIF</span>
+                          <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                            GIF
+                          </span>
                         </div>
                         <div className="flex-1 text-left">
-                          <p className="text-sm font-medium text-[#202124] dark:text-white">Send GIF</p>
-                          <p className="text-xs text-[#5f6368] dark:text-gray-400">Animated GIFs</p>
+                          <p className="text-sm font-medium text-[#202124] dark:text-white">
+                            Send GIF
+                          </p>
+                          <p className="text-xs text-[#5f6368] dark:text-gray-400">
+                            Animated GIFs
+                          </p>
                         </div>
                       </button>
                     </div>
@@ -2808,9 +3136,13 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
 
               {/* GIF Picker */}
               {showGIFPicker && (
-                <div 
+                <div
                   ref={gifPickerRef}
-                  className="absolute bottom-20 left-0 z-50"
+                  className={`absolute z-50 ${
+                    isMobile
+                      ? "bottom-24 left-1/2 transform -translate-x-1/2 w-[calc(100%-32px)] max-w-[350px]"
+                      : "bottom-28 right-80" // Position it near the attachment button
+                  }`}
                 >
                   <GIFPicker
                     onSelect={handleSendGIF}
@@ -2834,29 +3166,41 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                   className="p-2 hover:bg-gray-100 dark:hover:bg-[#101010] rounded-full transition-colors"
                   disabled={!isConnected || !roomJoined || !canSendMessages}
                 >
-                  <span className={`text-xl ${!canSendMessages ? 'opacity-50' : ''}`}>😊</span>
+                  <span
+                    className={`text-xl ${!canSendMessages ? "opacity-50" : ""}`}
+                  >
+                    😊
+                  </span>
                 </button>
                 {showEmojiPicker && (
                   <div className="absolute bottom-12 left-0 z-50">
-                    <EmojiPicker 
+                    <EmojiPicker
                       onEmojiClick={onEmojiClick}
                       width={320}
                       height={400}
-                      theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'}
+                      theme={
+                        document.documentElement.classList.contains("dark")
+                          ? "dark"
+                          : "light"
+                      }
                     />
                   </div>
                 )}
               </div>
-              
+
               {/* Text Input */}
               <input
                 ref={inputRef}
                 type="text"
                 onPaste={handlePaste}
                 value={editingMessage ? editText : newMessage}
-                onChange={editingMessage ? (e) => setEditText(e.target.value) : handleInputChange}
+                onChange={
+                  editingMessage
+                    ? (e) => setEditText(e.target.value)
+                    : handleInputChange
+                }
                 onKeyPress={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && canSendMessages) {
+                  if (e.key === "Enter" && !e.shiftKey && canSendMessages) {
                     e.preventDefault();
                     if (editingMessage) {
                       handleEditMessage();
@@ -2868,21 +3212,37 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
                   }
                 }}
                 placeholder={
-                  !canSendMessages 
+                  !canSendMessages
                     ? getBlockMessage()
-                    : (!isConnected ? "Connecting..." : !roomJoined ? "Joining chat..." : codeMode ? "Type your code here... (```auto-detected)" : "Type a message... (✨ for AI, 📷 for GIF, </> for code)")
+                    : !isConnected
+                      ? "Connecting..."
+                      : !roomJoined
+                        ? "Joining chat..."
+                        : "Type a message... (✨ for AI, 📷 for GIF, </> for code)"
                 }
                 className="flex-1 px-4 py-3 border border-[#dadce0] dark:border-[#232529] bg-white dark:bg-[#101010] text-[#202124] dark:text-white rounded-3xl focus:ring-2 focus:ring-[#34A853] focus:border-[#34A853] focus:outline-none transition-all"
-                disabled={!isConnected || !roomJoined || uploading || !canSendMessages}
+                disabled={
+                  !isConnected || !roomJoined || uploading || !canSendMessages
+                }
               />
-              
+
               {/* Send Button */}
               <button
-                onClick={editingMessage ? handleEditMessage : (attachments.length > 0 ? handleSendWithAttachments : handleSendMessage)}
+                onClick={
+                  editingMessage
+                    ? handleEditMessage
+                    : attachments.length > 0
+                      ? handleSendWithAttachments
+                      : handleSendMessage
+                }
                 disabled={
-                  editingMessage 
+                  editingMessage
                     ? !editText.trim()
-                    : ((!newMessage.trim() && attachments.length === 0) || !isConnected || !roomJoined || uploading || !canSendMessages)
+                    : (!newMessage.trim() && attachments.length === 0) ||
+                      !isConnected ||
+                      !roomJoined ||
+                      uploading ||
+                      !canSendMessages
                 }
                 className="p-3 bg-[#34A853] text-white rounded-full hover:bg-[#2D9249] disabled:bg-gray-200 dark:disabled:bg-[#232529] disabled:text-gray-400 dark:disabled:text-gray-600 transition-all relative"
               >
@@ -2902,7 +3262,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
               </span>
             </div>
           )}
-          
+
           {isConnected && !roomJoined && canSendMessages && (
             <div className="absolute -top-8 left-0 right-0 text-center">
               <span className="text-[10px] md:text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/30 px-2 py-1 rounded-full">
@@ -3042,21 +3402,22 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           padding: 0 2px;
           border-radius: 2px;
         }
-        
+
         .dark mark {
           background-color: rgba(245, 158, 11, 0.5);
         }
-        
+
         .highlight-message {
           animation: highlight-pulse 2s ease-in-out;
         }
-        
+
         .highlight-reply-message {
           animation: highlight-reply-pulse 2s ease-in-out;
         }
-        
+
         @keyframes highlight-pulse {
-          0%, 100% {
+          0%,
+          100% {
             opacity: 1;
           }
           50% {
@@ -3064,9 +3425,10 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             background-color: rgba(245, 158, 11, 0.1);
           }
         }
-        
+
         @keyframes highlight-reply-pulse {
-          0%, 100% {
+          0%,
+          100% {
             opacity: 1;
           }
           50% {
@@ -3074,68 +3436,68 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
             background-color: rgba(59, 130, 246, 0.1);
           }
         }
-        
+
         .line-clamp-2 {
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
-        
+
         img[data-is-paused="true"] {
           filter: saturate(0.8);
           transition: filter 0.3s ease;
         }
-        
+
         img[data-is-paused="false"] {
           filter: saturate(1);
         }
-        
+
         a {
           text-decoration: none;
         }
-        
+
         a:hover {
           text-decoration: underline;
         }
-        
+
         .message-content a {
           color: #1a73e8;
           word-break: break-all;
         }
-        
+
         .dark .message-content a {
           color: #8ab4f8;
         }
-        
+
         .line-clamp-1 {
           display: -webkit-box;
           -webkit-line-clamp: 1;
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
-        
+
         .line-clamp-2 {
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
-        
+
         .max-w-[70%] {
           max-width: min(70%, 600px);
         }
-        
+
         @media (max-width: 768px) {
           .max-w-[70%] {
             max-width: 85%;
           }
         }
-        
+
         code {
-          font-family: 'Fira Code', 'Courier New', monospace;
+          font-family: "Fira Code", "Courier New", monospace;
         }
-        
+
         .whitespace-pre-wrap {
           white-space: pre-wrap !important;
           word-break: break-word;
@@ -3162,7 +3524,7 @@ export default function ChatInterface({ friend, currentUserId, currentUserAvatar
           .pb-safe {
             padding-bottom: env(safe-area-inset-bottom);
           }
-          
+
           .pt-safe {
             padding-top: env(safe-area-inset-top);
           }
